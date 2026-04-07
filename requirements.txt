@@ -1,0 +1,5 @@
+anthropic
+flask
+flask-sqlalchemy
+pytest
+gitpython

@@ -1,0 +1,19 @@
+Build a complete raytracer from scratch that reads scene.json and renders it to output.png.
+
+The scene contains: a reflective chrome box (axis-aligned), 5 spheres with different materials (metal, glass with refraction, matte diffuse), a checkered floor plane, two point lights, and a configurable camera. The image should be 800x600 with 4x anti-aliasing.
+
+Required components:
+
+1. Vector math: A Vec3 class with add, subtract, multiply, divide, dot product, cross product, normalize, length, reflect, and refract operations. Must work with numpy for performance.
+
+2. Ray-object intersection: A Ray class (origin + direction). Hit detection for spheres (quadratic formula), axis-aligned boxes (slab method), and infinite planes. Each hit returns the point, surface normal, distance, and whether the hit is front-face or back-face.
+
+3. Materials and shading: Three material types. Diffuse (Lambertian) scatters rays randomly in the hemisphere. Metal reflects rays with configurable roughness (perturbed reflection). Dielectric (glass) refracts rays using Snell's law with Schlick's approximation for the reflection/refraction split. Checkerboard is a diffuse material with alternating colors based on floor position.
+
+4. Camera: Configurable position, look-at target, up vector, and field of view. Generates rays for each pixel. Supports multi-sample anti-aliasing by jittering ray positions within each pixel.
+
+5. Scene loader: Parses scene.json into the object and material types defined by the other components. Builds the list of objects, lights, materials, and camera configuration.
+
+6. Render engine: For each pixel, cast a ray from the camera. On hit, compute direct lighting (shadow rays to each light source, Phong-style diffuse + specular shading). For reflective/refractive materials, recursively trace bounce rays up to max depth. Accumulate color across anti-aliasing samples. Write the final image as PNG using Pillow.
+
+The scene.json file already exists in the repo. The output should be saved as output.png. Running `python main.py` should render the scene and save the image.
