@@ -1,0 +1,9 @@
+anthropic
+flask
+flask-sqlalchemy
+pytest
+pydantic
+gitpython
+fastapi
+uvicorn
+httpx
