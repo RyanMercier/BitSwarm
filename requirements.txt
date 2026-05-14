@@ -7,3 +7,10 @@ gitpython
 fastapi
 uvicorn
 httpx
+tree-sitter
+tree-sitter-typescript
+tree-sitter-java
+tree-sitter-c-sharp
+tree-sitter-c
+tree-sitter-cpp
+tree-sitter-rust

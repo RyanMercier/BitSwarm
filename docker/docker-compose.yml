@@ -1,0 +1,79 @@
+# Local dev stack: 1 validator + 3 miners on a shared bridge network.
+#
+# Usage:
+#   cd docker/
+#   docker compose --env-file ../.env up --build
+#
+# Then submit a job to the validator:
+#   curl -X POST http://localhost:8080/submit \
+#     -H 'Content-Type: application/json' \
+#     -d '{
+#       "spec": "...",
+#       "target_repo_path": "/work/target_repo",
+#       "miner_urls": ["http://miner-1:8081", "http://miner-2:8081", "http://miner-3:8081"]
+#     }'
+
+services:
+  validator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.validator
+    container_name: bitswarm-validator
+    ports:
+      - "8080:8080"
+    environment:
+      VALIDATOR_HOST: "0.0.0.0"
+      VALIDATOR_PORT: "8080"
+      VALIDATOR_ID: "validator-local"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
+    networks:
+      - bitswarm
+    depends_on:
+      - miner-1
+      - miner-2
+      - miner-3
+    # Validator needs the target repo on its filesystem. Bind-mount the
+    # parent project directory so submitted target_repo_path values can
+    # point at /work/<your-target>.
+    volumes:
+      - ..:/work:ro
+
+  miner-1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.miner
+    container_name: bitswarm-miner-1
+    environment: &miner_env
+      MINER_HOST: "0.0.0.0"
+      MINER_PORT: "8081"
+      MINER_ID: "miner-1"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
+    # No published ports: miners are reached via the internal bridge only.
+    networks:
+      - bitswarm
+
+  miner-2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.miner
+    container_name: bitswarm-miner-2
+    environment:
+      <<: *miner_env
+      MINER_ID: "miner-2"
+    networks:
+      - bitswarm
+
+  miner-3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.miner
+    container_name: bitswarm-miner-3
+    environment:
+      <<: *miner_env
+      MINER_ID: "miner-3"
+    networks:
+      - bitswarm
+
+networks:
+  bitswarm:
+    driver: bridge

@@ -4,7 +4,12 @@ import subprocess
 
 import anthropic
 
-from config import ANTHROPIC_API_KEY, COORDINATOR_MODEL, MAX_COORDINATOR_RETRIES
+from config import (
+    ANTHROPIC_API_KEY,
+    ANTHROPIC_BASE_URL,
+    COORDINATOR_MODEL,
+    MAX_COORDINATOR_RETRIES,
+)
 from validator.prompts import COORDINATOR_SYSTEM_PROMPT
 
 
@@ -348,7 +353,10 @@ def call_coordinator(repo_path, feature_spec, previous_errors=None, debug_dir=No
     This split is necessary because the model reliably produces the plan
     but consistently truncates file contents when both are in one response.
     """
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(
+        api_key=ANTHROPIC_API_KEY,
+        base_url=ANTHROPIC_BASE_URL,  # None = SDK default
+    )
 
     # ── Phase 1: decomposition plan ─────────────────────────────────────────
     print("  [Phase 1] Decomposition plan...", end="", flush=True)

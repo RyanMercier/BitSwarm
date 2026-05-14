@@ -15,7 +15,9 @@ GIT_ENV = {
 def write_file(repo_path, relative_path, content):
     """Write a file to the repo, creating directories as needed."""
     full_path = os.path.join(repo_path, relative_path)
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    # Top-level files have an empty dirname; makedirs("") would crash.
+    parent = os.path.dirname(full_path) or "."
+    os.makedirs(parent, exist_ok=True)
     with open(full_path, "w") as f:
         f.write(content)
 
@@ -54,11 +56,13 @@ def write_scaffolding(decomposition, repo_path):
     # Ensure __init__.py for all package dirs
     ensure_init_files(repo_path, all_files.keys())
 
-    # Update requirements.txt
+    # Update requirements.txt (create it if the repo doesn't ship one).
     if requirements_additions:
         req_path = os.path.join(repo_path, "requirements.txt")
-        with open(req_path, "r") as f:
-            existing = f.read()
+        existing = ""
+        if os.path.isfile(req_path):
+            with open(req_path, "r") as f:
+                existing = f.read()
         with open(req_path, "a") as f:
             for req in requirements_additions:
                 if req not in existing:

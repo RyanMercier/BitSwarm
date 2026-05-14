@@ -57,15 +57,24 @@ async def status_post(check: StatusCheck) -> StatusResponse:
 
 @app.post("/task")
 async def run_task(task: TaskAssignment) -> MinerResponse:
-    if state.lock.locked():
+    # Race-free single-task gate: try to acquire without blocking.
+    # The previous ``if lock.locked(): ...; async with lock`` form had a
+    # TOCTOU window where two concurrent requests could both pass the
+    # check, with the second blocking forever on acquire instead of
+    # getting a clean 409.
+    try:
+        await asyncio.wait_for(state.lock.acquire(), timeout=0)
+    except asyncio.TimeoutError:
         raise HTTPException(status_code=409, detail="miner busy")
 
-    async with state.lock:
+    try:
         state.current_task_id = task.task_id or task.subtask_id
         try:
             return await _run_task(task)
         finally:
             state.current_task_id = ""
+    finally:
+        state.lock.release()
 
 
 def _run_agent_blocking(task: TaskAssignment):

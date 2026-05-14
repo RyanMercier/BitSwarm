@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import anthropic
 
-from config import ANTHROPIC_API_KEY, MINER_MODEL
+from config import ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, MINER_MODEL
 from miner.prompts import MINER_SYSTEM_PROMPT
 from miner.tools import TOOL_DEFINITIONS, run_tool, configure as configure_tools
 from miner.recovery import (
@@ -95,7 +95,10 @@ async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
         ],
     }
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(
+        api_key=ANTHROPIC_API_KEY,
+        base_url=ANTHROPIC_BASE_URL,  # None = SDK default (api.anthropic.com)
+    )
 
     # messages[0] is always the cached warm-start.
     # Subsequent tool exchanges are appended as plain dicts.

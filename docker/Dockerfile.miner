@@ -6,5 +6,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY miner/ ./miner/
 COPY protocol/ ./protocol/
 COPY config.py .
-EXPOSE 8001
+ENV MINER_HOST=0.0.0.0 MINER_PORT=8081
+EXPOSE 8081
 CMD ["python", "-m", "miner.server"]

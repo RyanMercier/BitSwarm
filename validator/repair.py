@@ -14,7 +14,7 @@ import time
 
 import anthropic
 
-from config import ANTHROPIC_API_KEY, MINER_MODEL
+from config import ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, MINER_MODEL
 from miner.tools import TOOL_DEFINITIONS, run_tool, configure as configure_tools
 from validator.test_runner import run_stub_tests
 
@@ -104,7 +104,7 @@ async def repair_miner(subtask, merge_repo, test_output):
     # Scope tools to miner's files only (no free-range repo access)
     configure_tools(merge_repo, allowed_files, test_files)
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, base_url=ANTHROPIC_BASE_URL)
 
     # Read current file contents from merged repo (miner's own files)
     file_contents = ""
@@ -242,7 +242,7 @@ async def repair_integration_tests(integration_files, merge_repo, test_output):
     # Also allow reading test files for the tool scope
     configure_tools(merge_repo, allowed_files, allowed_files)
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, base_url=ANTHROPIC_BASE_URL)
 
     # Read integration test contents
     test_contents = ""
