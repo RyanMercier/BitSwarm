@@ -7,6 +7,7 @@ import anthropic
 from config import (
     ANTHROPIC_API_KEY,
     ANTHROPIC_BASE_URL,
+    COORDINATOR_BACKEND,
     COORDINATOR_MODEL,
     MAX_COORDINATOR_RETRIES,
 )
@@ -412,6 +413,24 @@ def call_coordinator(repo_path, feature_spec, previous_errors=None, debug_dir=No
     return decomposition
 
 
+def _select_call_coordinator():
+    """Resolve ``COORDINATOR_BACKEND`` to a ``call_coordinator`` callable.
+
+    Lazy import so the SDK path doesn't drag in subprocess code and
+    vice versa.
+    """
+    if COORDINATOR_BACKEND == "claude_code":
+        from validator.decomposer_cc import call_coordinator as _impl
+        print("[Coordinator] backend=claude_code (subprocess, no API spend)")
+        return _impl
+    if COORDINATOR_BACKEND in ("", "sdk", "anthropic"):
+        return call_coordinator
+    raise RuntimeError(
+        f"Unknown COORDINATOR_BACKEND={COORDINATOR_BACKEND!r}. "
+        f"Set to 'sdk' (default) or 'claude_code'."
+    )
+
+
 def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
     """
     Run the coordinator decomposition with self-verification loop.
@@ -420,6 +439,7 @@ def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
     debug_dir: if set, saves raw API responses there for inspection
     """
     previous_errors = []
+    call_coord = _select_call_coordinator()
 
     for attempt in range(1, MAX_COORDINATOR_RETRIES + 1):
         print(f"\n[Coordinator] Attempt {attempt}/{MAX_COORDINATOR_RETRIES}")
@@ -430,7 +450,7 @@ def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
             os.makedirs(attempt_debug_dir, exist_ok=True)
 
         try:
-            decomposition = call_coordinator(
+            decomposition = call_coord(
                 repo_path, feature_spec,
                 previous_errors=previous_errors if previous_errors else None,
                 debug_dir=attempt_debug_dir,

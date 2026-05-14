@@ -18,7 +18,7 @@ import uuid
 
 from fastapi import FastAPI, HTTPException
 
-from miner.agent import execute_subtask
+from config import MINER_BACKEND
 from protocol.schemas import (
     MinerResponse,
     StatusCheck,
@@ -29,6 +29,30 @@ from protocol.transport import unbundle_repo
 
 
 MINER_ID = os.environ.get("MINER_ID") or f"miner-{uuid.uuid4().hex[:8]}"
+
+
+def _select_backend():
+    """Resolve ``MINER_BACKEND`` to an ``execute_subtask`` callable.
+
+    Imported lazily so a miner running on the Anthropic SDK doesn't
+    need to import ``miner.agent_cc`` (and its ``validator.test_runners``
+    dependency) at module load, and vice versa.
+    """
+    if MINER_BACKEND == "claude_code":
+        from miner.agent_cc import execute_subtask as _impl
+        print(f"[Miner {MINER_ID}] backend=claude_code (subprocess, no API spend)")
+        return _impl
+    if MINER_BACKEND in ("", "sdk", "anthropic"):
+        from miner.agent import execute_subtask as _impl
+        print(f"[Miner {MINER_ID}] backend=sdk (Anthropic API, metered)")
+        return _impl
+    raise RuntimeError(
+        f"Unknown MINER_BACKEND={MINER_BACKEND!r}. "
+        f"Set to 'sdk' (default) or 'claude_code'."
+    )
+
+
+execute_subtask = _select_backend()
 
 
 class MinerState:

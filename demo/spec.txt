@@ -1,0 +1,9 @@
+Build a tiny "calc" Python package that supports two operations:
+
+1. A function `add(a, b)` that returns the sum of two numbers.
+2. A function `multiply(a, b)` that returns the product of two numbers.
+
+The package should be importable as `calc` (i.e., `from calc import add, multiply`).
+
+Decompose into two subtasks, one per function. Each subtask should produce a
+module with the function, plus a test file that exercises it.

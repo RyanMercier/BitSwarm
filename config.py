@@ -25,3 +25,19 @@ SUBTASK_TIMEOUT_SECONDS = 300
 # Languages whose parsers are wired up for Phase 1.5 validation.
 # Add new entries here as parsers come online (java, csharp, c, cpp, rust).
 SUPPORTED_LANGUAGES = ("python", "typescript", "java", "csharp", "c", "cpp", "rust")
+
+# Backend selection for the agent loop. Two options:
+#   "sdk"          - Anthropic Python SDK with metered API tokens. The
+#                    default. Lets you run with just ANTHROPIC_API_KEY.
+#   "claude_code"  - Shell out to the ``claude`` CLI in print mode.
+#                    Uses the user's Claude subscription auth (Max /
+#                    Pro / Team), no per-token API spend. Requires
+#                    ``@anthropic-ai/claude-code`` installed in the
+#                    miner / validator runtime.
+#
+# The miner and the coordinator have independent switches: you can run
+# the coordinator on the API (rare path, runs once per task) and the
+# miners on subprocesses (hot path, runs N times per task), or any
+# other combination.
+MINER_BACKEND = os.environ.get("MINER_BACKEND", "sdk").strip().lower()
+COORDINATOR_BACKEND = os.environ.get("COORDINATOR_BACKEND", "sdk").strip().lower()
