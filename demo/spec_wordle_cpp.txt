@@ -136,14 +136,48 @@ Running `make wordle_bin && ./wordle_bin` should:
   6. Typing `quit` at any prompt exits cleanly with status 0.
 
 
-# C++ API (used by tests)
+# C++ API (used by tests --- PIN THESE EXACT SIGNATURES)
 
-`Game` is a class in the `wordle` namespace:
+The following signatures are non-negotiable. Phase 2 must generate
+stubs with these exact types, and the game miner must implement to
+match. Tests, main.cpp, and integration tests must construct objects
+using ONLY these signatures.
 
 ```cpp
-#include "wordle/game.hpp"
+namespace wordle {
 
-wordle::Game g{"ALLOY"};                          // explicit target
+// In wordle/words.hpp
+bool is_valid_guess(const std::string& word);
+std::string random_target();
+const std::vector<std::string>& word_list();   // small built-in dictionary
+
+// In wordle/scorer.hpp
+std::vector<Feedback> score(const std::string& guess,
+                            const std::string& target);
+
+// In wordle/renderer.hpp
+std::string render_row(const std::string& guess,
+                       const std::vector<Feedback>& feedbacks);
+std::string render_board(const std::vector<GuessResult>& history);
+
+// In wordle/game.hpp --- EXACTLY this constructor, no overloads:
+class Game {
+public:
+    explicit Game(const std::string& target);    // one argument: the target word
+    GuessResult guess(const std::string& word);  // raises InvalidGuessError / GameOverError
+    GameStatus status() const;
+    int attempts_used() const;
+    const std::string& target() const;
+    const std::vector<GuessResult>& history() const;
+};
+
+}  // namespace wordle
+```
+
+Usage from any file (main.cpp, tests, integration):
+
+```cpp
+wordle::Game g{"ALLOY"};                     // EXPLICIT target, single string arg
 wordle::GuessResult r = g.guess("LLAMA");
 assert(r.feedbacks[0] == wordle::Feedback::HIT);
 assert(r.feedbacks[1] == wordle::Feedback::PRESENT);
@@ -152,6 +186,11 @@ assert(g.status() == wordle::GameStatus::IN_PROGRESS);
 g.guess("ALLOY");
 assert(g.status() == wordle::GameStatus::WON);
 ```
+
+DO NOT introduce a separate Words class. The word list is a free
+function ``word_list()`` returning ``const std::vector<std::string>&``.
+DO NOT add a vector<string> parameter to Game's constructor; Game
+calls into ``is_valid_guess`` internally.
 
 
 # Suggested decomposition

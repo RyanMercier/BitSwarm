@@ -124,6 +124,10 @@ async def _run_miners(decomp: dict, scaffolded_repo: str,
 
         print(f"\n[pipeline] === miner: {sid} ===")
         started = time.perf_counter()
+        # Default 600s is fine for tier-1 subtasks but the heaviest
+        # mid-tier ones (game, scorer with subtle bugs) occasionally
+        # need more. Override via MINER_TIMEOUT_SECONDS.
+        miner_timeout = int(os.environ.get("MINER_TIMEOUT_SECONDS", "1200"))
         result = await execute_subtask(
             subtask=st,
             repo_path=per_miner,
@@ -133,6 +137,7 @@ async def _run_miners(decomp: dict, scaffolded_repo: str,
             stub_files_content=stub_files,
             test_files_content=test_files,
             all_subtasks=subtasks,
+            timeout_seconds=miner_timeout,
         )
         elapsed = time.perf_counter() - started
         results[sid] = result
