@@ -52,6 +52,30 @@ _DEFAULT_MODEL = os.environ.get("MINER_CC_MODEL", "") or "sonnet"
 # Tool allowlist for the subprocess. Local-only — no network, no MCP.
 _TOOLS = "Read,Edit,Write,Bash,Glob,Grep"
 
+# Optional language switch for the miner prompt + final-test command.
+# Empty / "python" -> pytest (default). "cpp" / "c++" -> a single
+# targeted Makefile test binary, so cross-subtask stubs don't poison
+# the pass/fail signal.
+_LANGUAGE = os.environ.get("MINER_LANGUAGE", "").strip().lower()
+
+
+def _test_command_for(subtask: dict) -> tuple[str, list[str] | None]:
+    """Return ``(display_string, argv_or_None)`` for verifying a subtask.
+
+    ``argv`` is the shell-invocable command to run after the
+    subprocess exits. ``None`` means defer to the auto-detecting
+    ``validator.test_runners.run_test``. The display string goes into
+    the agent prompt so claude runs the same thing iteratively.
+    """
+    sid = subtask["subtask_id"]
+    test_files = subtask.get("stub_test_files", []) or []
+    if _LANGUAGE in ("cpp", "c++"):
+        bin_path = f"tests/test_{sid}"
+        display = f"make {bin_path} && ./{bin_path}"
+        return display, ["sh", "-c", display]
+    display = f"pytest {' '.join(test_files) or '<your test file>'} -x --tb=short"
+    return display, None
+
 
 def _build_prompt(subtask: dict,
                    shared_files_content: dict,
@@ -110,22 +134,24 @@ def _build_prompt(subtask: dict,
             "",
         ]
 
+    test_display, _ = _test_command_for(subtask)
     out += [
         "## Instructions",
         "1. Read the stub files to see the interfaces.",
         "2. Read the test files to understand expected behavior.",
-        "3. Replace the NotImplementedError (or equivalent placeholder)",
-        "   bodies in the stub files with real implementations.",
-        "4. Run pytest on the test files:",
-        f"     pytest {' '.join(test_files)} -x --tb=short",
+        "3. Replace the placeholder bodies in the stub files (which",
+        "   throw / raise a 'not implemented' error) with real",
+        "   implementations.",
+        "4. Verify the tests for this subtask pass by running:",
+        f"     {test_display}",
         "   Fix any failures by iterating on the implementation.",
-        "5. Stop when ALL listed tests pass. Do not commit. Do not modify",
+        "5. Stop when YOUR tests pass. Do not commit. Do not modify",
         "   files outside the allowed list above.",
         "",
-        "If a test depends on another subtask's stub that isn't yet",
-        "implemented, mock it with `unittest.mock.MagicMock()` rather",
-        "than importing the real class. Your job is to implement YOUR",
-        "stub, not the other ones.",
+        ("If a test depends on another subtask's stub that isn't yet "
+         "implemented, mock it (Python: unittest.mock.MagicMock; C++: "
+         "a hand-written stub in your own test file). Your job is to "
+         "implement YOUR stub, not the other ones."),
     ]
     return "\n".join(out)
 
@@ -193,7 +219,30 @@ def _run_final_tests(subtask: dict, repo_path: str) -> tuple[bool, str]:
     The CLI may already have run them, but we re-run to get a clean
     pass/fail signal independent of whatever Claude said in its final
     message.
+
+    For ``MINER_LANGUAGE=cpp``, we run a single targeted Makefile
+    binary (``make tests/test_<sid> && ./tests/test_<sid>``). Default
+    is per-file pytest via the test-runner auto-detect.
     """
+    display, argv = _test_command_for(subtask)
+
+    if argv is not None:
+        # Language-specific single-command path (currently: C++).
+        try:
+            result = subprocess.run(
+                argv, cwd=repo_path,
+                capture_output=True, text=True, timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            return False, f"--- {display} ---\n[TIMEOUT]\n"
+        except Exception as exc:
+            return False, f"--- {display} ---\n[ERROR: {exc}]\n"
+        output = (result.stdout or "") + (
+            f"\n[stderr]\n{result.stderr}" if result.stderr else ""
+        )
+        passed = result.returncode == 0
+        return passed, f"--- {display} ---\n{output}\n"
+
     combined: list[str] = []
     all_passed = True
     for test_file in subtask.get("stub_test_files", []):

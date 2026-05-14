@@ -1,0 +1,229 @@
+Build a playable Wordle clone in **C++17**.
+
+(For anyone who hasn't seen it: the player has 6 attempts to guess a
+secret 5-letter English word. After each guess, every letter is color
+coded.)
+
+  * HIT     (green)  -- right letter, right position
+  * PRESENT (yellow) -- right letter, wrong position
+  * MISS    (grey)   -- letter not in the target at all
+
+Rendered output (no ANSI colors, just bracketed letters):
+
+  Target: ALLOY     Guess: LLAMA
+  output: [L:HIT] [L:PRESENT] [A:MISS] [M:MISS] [A:MISS]
+
+The duplicate-letter rule is the subtle bit: every target letter can be
+consumed at most once; HITs are matched first, then PRESENTs left to
+right against whatever target letters remain.
+
+
+# Build system (CRITICAL: implement exactly as described)
+
+Use plain g++ and a single top-level Makefile. NO cmake, NO external
+test framework (no Catch2, no gtest, no doctest). Tests are plain
+``int main()`` programs that use ``<cassert>`` and exit with a
+non-zero status on failure.
+
+The Makefile in `shared_files` must contain these targets exactly:
+
+```makefile
+CXX      = g++
+CXXFLAGS = -std=c++17 -Wall -Iwordle
+
+# every .cpp under wordle/ except main.cpp is part of the library
+LIB_SRCS = $(filter-out wordle/main.cpp, $(wildcard wordle/*.cpp))
+
+# build a separate test binary per test_*.cpp file
+TEST_SRCS = $(wildcard tests/test_*.cpp)
+TEST_BINS = $(TEST_SRCS:.cpp=)
+
+wordle_bin: wordle/main.cpp $(LIB_SRCS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+# compile + link each test against the full library
+tests/test_%: tests/test_%.cpp $(LIB_SRCS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+# run every test binary; first failure exits non-zero
+test: $(TEST_BINS)
+	@set -e; for bin in $(TEST_BINS); do echo ">>> $$bin"; ./$$bin; done
+	@echo "all tests passed"
+
+clean:
+	rm -f $(TEST_BINS) wordle_bin
+
+.PHONY: test clean
+```
+
+Running `make test` builds every test_*.cpp binary, then runs them
+sequentially. Any test failure aborts with non-zero. The miners run
+this with `make test`.
+
+
+# File layout
+
+```
+wordle/
+  types.hpp          shared header: Feedback enum, GuessResult struct,
+                                    GameStatus enum, exception classes
+  words.hpp / .cpp   dictionary + validation
+  scorer.hpp / .cpp  the duplicate-letter algorithm
+  renderer.hpp / .cpp formatted-string output
+  game.hpp / .cpp    state machine
+  main.cpp           interactive REPL (uses game + renderer)
+
+tests/
+  test_words.cpp
+  test_scorer.cpp
+  test_renderer.cpp
+  test_game.cpp
+  test_integration.cpp     end-to-end pipeline
+
+Makefile               (in shared_files, see above)
+```
+
+
+# Shared types (in `wordle/types.hpp` — put this in shared_files)
+
+```cpp
+#ifndef WORDLE_TYPES_HPP
+#define WORDLE_TYPES_HPP
+
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace wordle {
+
+enum class Feedback { HIT, PRESENT, MISS };
+enum class GameStatus { IN_PROGRESS, WON, LOST };
+
+struct GuessResult {
+    std::string guess;
+    std::vector<Feedback> feedbacks;
+};
+
+struct InvalidGuessError : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+struct GameOverError : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+}  // namespace wordle
+
+#endif
+```
+
+
+# Required behavior
+
+Running `make wordle_bin && ./wordle_bin` should:
+
+  1. Pick a random 5-letter target word from a built-in dictionary
+     hard-coded in `words.cpp` (~200 common words is plenty).
+  2. Prompt the player for a guess, read a line from stdin, strip
+     whitespace, uppercase it.
+  3. Reject guesses that aren't 5 letters or aren't in the dictionary
+     by printing `not in word list` and reprompting; do not consume an
+     attempt.
+  4. For valid guesses, print a row plus all prior rows (newest at
+     bottom) using the bracketed format above, then reprompt.
+  5. After 6 attempts or a correct guess, print
+     `You won in N!` or `You lost. The word was XYZAB.` and exit.
+  6. Typing `quit` at any prompt exits cleanly with status 0.
+
+
+# C++ API (used by tests)
+
+`Game` is a class in the `wordle` namespace:
+
+```cpp
+#include "wordle/game.hpp"
+
+wordle::Game g{"ALLOY"};                          // explicit target
+wordle::GuessResult r = g.guess("LLAMA");
+assert(r.feedbacks[0] == wordle::Feedback::HIT);
+assert(r.feedbacks[1] == wordle::Feedback::PRESENT);
+assert(g.status() == wordle::GameStatus::IN_PROGRESS);
+
+g.guess("ALLOY");
+assert(g.status() == wordle::GameStatus::WON);
+```
+
+
+# Suggested decomposition
+
+  shared_files (no weight, written by hand to give all subtasks a
+  stable interface):
+    * `wordle/types.hpp` -- the header above.
+    * `Makefile`         -- the build file above.
+
+  Tier 1 (parallel, no cross-subtask deps):
+    * `words`     -- `wordle/words.hpp` + `wordle/words.cpp`, dictionary
+                     + validation (`bool is_valid_guess(std::string)`,
+                     `std::string random_target()`).
+    * `scorer`    -- `wordle/scorer.hpp` + `wordle/scorer.cpp`, the
+                     duplicate-letter algorithm
+                     (`std::vector<Feedback> score(std::string guess,
+                     std::string target)`).
+    * `renderer`  -- `wordle/renderer.hpp` + `wordle/renderer.cpp`,
+                     `std::string render_row(...)` and
+                     `std::string render_board(...)`.
+
+  Tier 2 (depend on Tier 1):
+    * `game`      -- `wordle/game.hpp` + `wordle/game.cpp`, the state
+                     machine. Calls `is_valid_guess` and `score`.
+    * `cli`       -- `wordle/main.cpp`, interactive REPL using the Game
+                     class and the renderer.
+
+Weights: scorer = 0.30, game = 0.25, words = 0.15, renderer = 0.15,
+cli = 0.15. Total = 1.00.
+
+
+# Integration test contract (`tests/test_integration.cpp`)
+
+A single `int main()` that asserts:
+
+  1. Pure greens: `score("ALLOY","ALLOY")` is five HITs.
+  2. Pure misses: `score("QRSTU","ALLOY")` is five MISSes.
+  3. Duplicate-letter case: `score("LLAMA","ALLOY")` is
+     `[HIT, PRESENT, MISS, MISS, MISS]`.
+  4. Game lifecycle: `Game g{"ALLOY"}; g.guess("ALLOY"); assert
+     g.status() == WON`.
+  5. Six wrong guesses set status to LOST and the next guess throws
+     `GameOverError`.
+
+Return 0 on success, non-zero on any failed assert.
+
+
+# Engineering rules
+
+  * Use C-native, directory-relative `#include` paths:
+      - From inside `wordle/<file>.cpp` or `wordle/<file>.hpp`, include
+        siblings WITHOUT a prefix:  `#include "types.hpp"`,
+        `#include "scorer.hpp"`. NEVER `#include "wordle/types.hpp"`
+        from inside the wordle/ directory.
+      - From inside `tests/test_<file>.cpp`, include with the
+        parent-relative path:  `#include "../wordle/types.hpp"`,
+        `#include "../wordle/scorer.hpp"`.
+    The Makefile's `-Iwordle` would make project-rooted includes work
+    at compile time, but the BitSwarm validator does Phase 1.5 import
+    resolution before compilation and that resolution is filesystem-
+    relative. Use the path that's correct from each file's own
+    directory.
+  * Use header guards (`#ifndef ... #define ... #endif`).
+  * Every public function body in a stub file starts with:
+        throw std::logic_error("not implemented: <function_name>");
+    The integration tests will FAIL on those stubs (they assert
+    behavior, not exception types).
+  * Stub tests (`tests/test_*.cpp`) must reference real functions /
+    methods and assert real return values, so they fail on the stubs.
+  * NEVER include another subtask's HPP from your test file --- use
+    forward declarations or duplicate small type aliases if you need
+    a cross-subtask reference.
+  * Stdlib only. No Boost, no third-party headers.
+  * `main()` in `wordle/main.cpp` is the REPL entry point. The library
+    target (everything except main.cpp) must NOT have its own main().

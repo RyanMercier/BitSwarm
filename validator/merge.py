@@ -21,6 +21,11 @@ from validator.scorer import compute_scores
 from validator.repair import repair_miner, repair_integration_tests
 
 
+_REPAIR_DISABLED = os.environ.get("BITSWARM_DISABLE_REPAIR", "").strip().lower() in (
+    "1", "true", "yes"
+)
+
+
 def compute_tiers(subtasks):
     """
     Group subtasks into dependency tiers for ordered merging.
@@ -191,6 +196,11 @@ async def merge_and_test(decomposition, miner_results, base_repo_path):
                 continue
 
             # ── Phase 3: Repair ────────────────────────────────────────
+            if _REPAIR_DISABLED:
+                print(f"    {sid} cross-compile: FAILED (repair disabled)")
+                stub_results[sid] = False
+                repairs_made[sid] = False
+                continue
             print(f"    {sid} cross-compile: FAILED — repairing")
             repair_passed, repair_output = await repair_miner(
                 subtask, merge_repo, output
@@ -218,6 +228,10 @@ async def merge_and_test(decomposition, miner_results, base_repo_path):
 
     if integration_passed:
         print(f"  Integration tests: PASSED")
+    elif _REPAIR_DISABLED:
+        pct = int(integration_ratio * 100)
+        print(f"  Integration tests: FAILED ({pct}% passed) (repair disabled)")
+        repairs_made["_integration"] = False
     else:
         pct = int(integration_ratio * 100)
         print(f"  Integration tests: FAILED ({pct}% passed) — repairing")

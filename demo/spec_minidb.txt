@@ -1,0 +1,207 @@
+Build MiniDB: an in-memory relational query engine that executes a
+SQL subset against tables held entirely in RAM. The engine should be
+usable both as a Python library (`from minidb import Engine; engine =
+Engine(); engine.execute("SELECT * FROM users")`) and through a tiny
+interactive REPL.
+
+The deliverable is a Python package laid out at `minidb/` plus a test
+suite at `tests/`. Tests run with pytest. No external dependencies
+beyond the stdlib and pytest itself.
+
+
+# Functional surface
+
+The engine must execute these SQL statements end-to-end:
+
+```sql
+CREATE TABLE users (id INTEGER, name TEXT, email TEXT, active BOOLEAN);
+
+INSERT INTO users (id, name, email, active)
+       VALUES (1, 'alice', 'a@x.com', TRUE);
+INSERT INTO users (id, name, email, active)
+       VALUES (2, 'bob',   'b@x.com', FALSE);
+INSERT INTO users (id, name, email, active)
+       VALUES (3, 'carol', NULL,       TRUE);
+
+SELECT * FROM users;
+SELECT name, email FROM users WHERE active = TRUE;
+SELECT name FROM users WHERE id >= 2 AND email IS NOT NULL;
+SELECT name FROM users WHERE NOT active OR id = 1;
+
+DELETE FROM users WHERE active = FALSE;
+
+DROP TABLE users;
+```
+
+Type system: four scalar types --- INTEGER (Python int), TEXT (str),
+BOOLEAN (bool), and NULL (Python None, which can inhabit any column).
+Column definitions declare a type; INSERTs whose VALUES tuple type
+doesn't match the table schema must raise a clear typed exception
+(`TypeMismatchError`).
+
+Expressions inside WHERE clauses support, in order of precedence:
+
+  1. Literals: integers (`42`), single-quoted strings (`'alice'`),
+     booleans (`TRUE` / `FALSE`), `NULL`.
+  2. Column references: bare identifiers resolved against the row's
+     schema.
+  3. Comparison: `=`, `<>`, `<`, `<=`, `>`, `>=`. NULL on either side
+     produces NULL (three-valued logic), and a WHERE clause that
+     evaluates to NULL filters the row OUT.
+  4. `IS NULL` / `IS NOT NULL`: the only way to test for NULL.
+  5. `NOT`, `AND`, `OR` with standard precedence (NOT > AND > OR).
+  6. Parenthesized sub-expressions.
+
+Column-list SELECT (`SELECT a, b FROM ...`) projects only the listed
+columns in order. `SELECT *` returns all columns in declaration order.
+SELECT against a non-existent table or column raises a clear typed
+exception (`UnknownTableError` / `UnknownColumnError`).
+
+
+# Required Python API
+
+```python
+from minidb import Engine
+from minidb.types import QueryResult, Row, Schema, Value
+
+engine = Engine()
+result: QueryResult = engine.execute("SELECT id, name FROM users")
+
+assert isinstance(result.columns, list)     # column names, in order
+assert isinstance(result.rows, list)        # list of tuples (row order = insert order)
+assert result.row_count == len(result.rows)
+
+# Statements with no result rows (CREATE, INSERT, DELETE, DROP) still
+# return a QueryResult; .row_count is the number of rows affected, and
+# .columns is empty.
+```
+
+The CLI is a thin wrapper: `python -m minidb.cli` reads SQL statements
+from stdin, prints results as a simple aligned text table, and exits
+on EOF or `.exit`. Errors print to stderr with a single line "ERROR:
+<message>" but do not crash the REPL.
+
+
+# Decomposition guidance
+
+This spec is naturally a 4-tier pipeline. Pick subtasks that respect
+those tiers so the validator's tiered-merge pipeline has work to do:
+
+  Tier 0 (no deps on other subtasks):
+    * Shared types and exceptions (Value, Row, Schema, ColumnDef,
+      QueryResult, Token, plus AST node classes like SelectStmt,
+      InsertStmt, etc., plus the four named exception classes).
+      This belongs in `shared_files` since every other subtask
+      imports from it.
+
+  Tier 1 (depend only on Tier 0):
+    * `tokenizer`: string -> list[Token]. Handles single-quoted
+      strings, integers, identifiers, the keywords above, and the
+      operators (`=`, `<>`, `<=`, `>=`, `<`, `>`, `(`, `)`, `,`, `*`,
+      `;`).
+    * `table_store`: in-memory storage with `create_table(name,
+      schema)`, `drop_table(name)`, `insert(name, row)`,
+      `scan(name) -> Iterator[Row]`, `delete_where(name,
+      predicate)`. Schemas and rows live here; no SQL knowledge.
+
+  Tier 2 (depend on Tier 1):
+    * `parser`: list[Token] -> AST. Recursive descent (or Pratt) with
+      the operator precedence above. Produces typed AST nodes from
+      Tier 0.
+    * `expr_eval`: takes an Expr AST node and a Row (plus its
+      Schema), returns a Value. Implements three-valued logic.
+      Pure: no I/O, no state.
+
+  Tier 3 (depend on Tier 2):
+    * `executor`: takes an AST statement, the table_store, and the
+      expr_eval function, runs the statement, and returns a
+      QueryResult. SELECT streams scan results through the predicate
+      and projects columns. DELETE walks the predicate and removes
+      matched rows. CREATE/INSERT/DROP call table_store directly.
+
+  Tier 4 (top of the pipeline):
+    * `engine`: the facade. `Engine().execute(sql)` runs tokenizer ->
+      parser -> executor and returns the QueryResult. Holds the
+      table_store instance. This is the only class user code should
+      need to import.
+    * `cli`: stdin REPL. Imports Engine, formats results.
+
+Suggested weights: types is implied via shared_files (no weight),
+parser and executor are the heaviest at ~0.20 each, tokenizer /
+table_store / expr_eval / engine around 0.12 each, cli ~0.04. Weights
+must sum to 1.0.
+
+
+# Integration test contract
+
+Integration tests (a single file under `tests/test_integration.py`)
+must exercise the full pipeline:
+
+  1. CREATE + INSERT + SELECT *: insert three rows, SELECT them, check
+     row count and field values.
+
+  2. WHERE with three-valued logic: insert a row whose `email` is
+     NULL, run `SELECT name FROM users WHERE email = 'a@x.com'`, and
+     assert the NULL-email row is excluded (NOT matched, NOT included
+     as an error).
+
+  3. `IS NULL` / `IS NOT NULL`: explicit NULL tests do the right
+     thing.
+
+  4. Boolean composition: `WHERE active OR id = 1` and `WHERE NOT
+     active AND id > 1` both return the correct subsets.
+
+  5. DELETE + re-SELECT: delete rows matching a predicate, then
+     SELECT and confirm they're gone and untouched rows remain.
+
+  6. Error paths: SELECT from an unknown table raises
+     UnknownTableError; SELECT of an unknown column raises
+     UnknownColumnError; INSERT of a string into an INTEGER column
+     raises TypeMismatchError.
+
+  7. Statement chaining via the engine: multiple `execute()` calls
+     against the same Engine instance see each other's effects
+     (state persists across calls).
+
+
+# Out of scope --- do not try to implement these
+
+  * JOIN (INNER, LEFT, etc.)
+  * GROUP BY, HAVING, aggregate functions (COUNT, SUM, etc.)
+  * ORDER BY, LIMIT, OFFSET
+  * Subqueries
+  * Indexes (table scan is the only access path)
+  * Transactions (no BEGIN / COMMIT / ROLLBACK)
+  * Persistence to disk
+  * Schema migrations / ALTER TABLE
+  * Multiple concurrent engine instances sharing state
+
+These keep the surface bounded. Don't add a column for them in any
+AST node "just in case".
+
+
+# Engineering constraints
+
+  * Stdlib only (`re`, `enum`, `dataclasses`, `typing`, `collections`,
+    `itertools`, `argparse`, `sys` are all fine). No `sqlite3`. No
+    `lark`, no `pyparsing`, no `sqlparse`.
+  * Every module imports from `minidb.types` using the full dotted
+    path (no bare imports, no relative imports).
+  * Stub bodies raise `NotImplementedError(...)`. Stub tests fail on
+    those stubs (NOT pytest.raises(NotImplementedError) --- that
+    masks the implementation gap).
+  * Cross-subtask dependencies in tests use `unittest.mock.MagicMock`
+    for objects from other subtasks; never import another subtask's
+    real class into your own test file.
+  * AST node classes are immutable-ish (use `@dataclass(frozen=True)`
+    where reasonable).
+  * No print() in library code. Errors are raised; the CLI is the only
+    place that prints.
+  * Type hints required on every public function/method signature.
+  * Each subtask's test file has at least 5 meaningful tests that
+    call real functions and assert real return values.
+
+This is large enough that the decomposer should produce 6-7 subtasks
+(plus the shared types file). Don't try to fold the parser and
+tokenizer into one subtask; keep them separate so the tier-1/tier-2
+boundary is real.

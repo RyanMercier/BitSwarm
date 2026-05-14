@@ -2,8 +2,10 @@
 __pycache__/
 *.pyc
 output/
+out/
 *.7z
 *.egg-info/
 .venv/
 venv/
 *.Zone.Identifier
+.claude/scheduled_tasks.lock

@@ -29,6 +29,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
 from config import COORDINATOR_MODEL
 from validator.decomposer import (
@@ -43,6 +44,90 @@ _DEFAULT_BINARY = (os.environ.get("CC_COORDINATOR_BINARY", "")
                     or os.environ.get("MINER_CC_BINARY", "")
                     or "claude")
 _DEFAULT_MODEL = os.environ.get("CC_COORDINATOR_MODEL", "") or COORDINATOR_MODEL
+
+# Optional language override for the Phase 2 stub-generation prompt.
+# The hand-written prompt in ``validator/decomposer.py`` is Python-baked
+# ("You are writing Python stub files... raise NotImplementedError").
+# Setting ``COORDINATOR_LANGUAGE=cpp`` (or any other supported target)
+# replaces the Python-specific Rules section with one matching the
+# requested language. Spec text in ``feature_spec`` is the source of
+# truth for build system, header layout, exception type, etc. --- this
+# switch only neutralises the Python rules that would otherwise fight
+# the spec.
+_LANGUAGE = os.environ.get("COORDINATOR_LANGUAGE", "").strip().lower()
+
+
+# Language-specific stub-generation rules. Slotted in just before the
+# "## Output Format" suffix so they override the Python defaults that
+# precede them in ``build_file_generation_prompt``.
+_CPP_RULES = """
+
+## LANGUAGE OVERRIDE: C++17
+
+Disregard any preceding instructions that mention Python, NotImplementedError,
+package imports, or .py files. This decomposition targets C++17.
+
+Stub files:
+- Each stub .hpp declares the public API. Each stub .cpp defines the
+  function with a body that immediately throws:
+      throw std::logic_error("not implemented: <function_or_method_name>");
+- Use header guards (``#ifndef ... #define ... #endif``) on every .hpp.
+- Use the namespace specified in the spec (typically ``wordle`` or the
+  project-name namespace).
+- ``#include`` paths MUST be filesystem-relative from the including
+  file's own directory:
+    - From ``wordle/<x>.cpp`` or ``wordle/<x>.hpp``, include siblings
+      WITHOUT a prefix:  ``#include "types.hpp"``, ``#include "scorer.hpp"``.
+    - From ``tests/test_<x>.cpp``, use the parent-relative form:
+      ``#include "../wordle/types.hpp"``, ``#include "../wordle/scorer.hpp"``.
+    - NEVER use project-rooted paths like ``#include "wordle/types.hpp"``
+      from inside the wordle/ directory. The Makefile's -I would make
+      this work at compile time, but the validator's Phase 1.5 import
+      check is filesystem-relative and will reject it.
+
+Test files:
+- Plain C++17, ``int main()`` programs that use ``<cassert>``.
+- DO NOT use Catch2, doctest, gtest, or any other framework.
+- Each test file MUST fail when compiled against the stub bodies
+  (because the stubs throw). Do NOT wrap stub calls in try/catch ---
+  that would make the test PASS on stubs, which is wrong.
+- Each test file has at least 4 distinct assertions about real return
+  values from real function calls.
+- Tests live under ``tests/`` and compile against the full library
+  per the Makefile in shared_files.
+- EVERY subtask gets its own ``tests/test_<subtask>.cpp`` file. No
+  exceptions: even the ``cli`` subtask, even subtasks whose surface
+  is "trivial", must have their own test file. If you can't think of
+  what to test for a subtask, write a smoke test that constructs the
+  type or calls the main entry point.
+
+Constructors:
+- Each public class has exactly ONE constructor signature in the .hpp.
+  Do NOT declare overloaded constructors --- BitSwarm's Phase 1.5
+  parser registers a single constructor per class. If a class needs
+  optional behaviour (e.g. seeded vs random target), use default
+  argument values (``Game(const Words& w, std::string target = ""))``)
+  rather than two distinct overloads.
+
+Integration tests:
+- Single ``int main()`` returning 0 on success, non-zero on any
+  failure. Assertions cover end-to-end behavior (see the spec's
+  "Integration test contract" section).
+
+Build system:
+- The Makefile in shared_files is the source of truth. Stub files MUST
+  fit the layout that Makefile expects (``wordle/*.cpp`` for the
+  library, ``tests/test_*.cpp`` for tests).
+"""
+
+
+def _language_rules() -> str:
+    """Return the language-specific override block, or empty string if
+    no override is configured (i.e. Python defaults from the base
+    prompt apply)."""
+    if _LANGUAGE in ("cpp", "c++"):
+        return _CPP_RULES
+    return ""
 
 
 def _run_claude(prompt: str, system_prompt: str, timeout: int = 600) -> str:
@@ -63,10 +148,14 @@ def _run_claude(prompt: str, system_prompt: str, timeout: int = 600) -> str:
         "-p", prompt,
         "--no-session-persistence",
         "--dangerously-skip-permissions",
-        # ``json`` output wraps the response in a JSON envelope with a
-        # ``result`` field. Easier to extract than text mode when the
-        # response itself is also JSON.
-        "--output-format", "json",
+        # ``text`` over ``json``: the JSON envelope mode has a size cap
+        # on its ``result`` field that silently returns the empty
+        # string for large outputs (Phase 2 stub-file generation hits
+        # it consistently). Text mode emits the model's response
+        # directly to stdout, which ``parse_json_response`` can then
+        # extract a JSON object out of regardless of how large or
+        # prose-wrapped it is.
+        "--output-format", "text",
         # The coordinator does no tool use; pure text generation.
         "--tools", "",
         "--model", _DEFAULT_MODEL,
@@ -96,28 +185,13 @@ def _run_claude(prompt: str, system_prompt: str, timeout: int = 600) -> str:
             f"coordinator subprocess rc={proc.returncode}\n{tail}"
         )
 
-    raw = proc.stdout or ""
-    # JSON envelope from --output-format json. Shape:
-    #   {"type": "result", "result": "...claude's response...", ...}
-    try:
-        envelope = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        # Some claude versions stream multiple JSON objects; take the last.
-        candidate = raw.strip().split("\n")[-1].strip()
-        try:
-            envelope = json.loads(candidate)
-        except json.JSONDecodeError:
-            raise ValueError(
-                f"coordinator output was not JSON: {raw[:400]}..."
-            ) from exc
-
-    result = envelope.get("result")
-    if not isinstance(result, str) or not result.strip():
+    raw = (proc.stdout or "").strip()
+    if not raw:
         raise ValueError(
-            f"coordinator response envelope missing 'result' field: "
-            f"{json.dumps(envelope)[:400]}..."
+            f"coordinator subprocess returned empty stdout; "
+            f"stderr tail: {(proc.stderr or '')[-400:]}"
         )
-    return result
+    return raw
 
 
 def _save_debug(text: str, debug_path: str | None) -> None:
@@ -126,6 +200,76 @@ def _save_debug(text: str, debug_path: str | None) -> None:
     os.makedirs(os.path.dirname(debug_path), exist_ok=True)
     with open(debug_path, "w") as f:
         f.write(text)
+
+
+def _run_claude_writing_files(prompt: str, workdir: str,
+                               timeout: int = 900) -> tuple[str, str]:
+    """Phase 2 runner: give claude a workspace + Write tool and let it
+    write the requested files directly to disk.
+
+    Returns ``(stdout, stderr)``. Callers should walk ``workdir`` for
+    the actual file content. This sidesteps a claude-code CLI quirk
+    where asking for a large JSON response inline produces a
+    successful exit (rc=0, stop_reason=end_turn) but empty stdout ---
+    presumably because the model tries to use the Write tool, finds it
+    disabled, and falls back to nothing.
+    """
+    if shutil.which(_DEFAULT_BINARY) is None and not os.path.isfile(_DEFAULT_BINARY):
+        raise RuntimeError(
+            f"claude CLI not found at '{_DEFAULT_BINARY}'. "
+            f"Install via 'npm install -g @anthropic-ai/claude-code'."
+        )
+    os.makedirs(workdir, exist_ok=True)
+    cmd = [
+        _DEFAULT_BINARY,
+        "-p", prompt,
+        "--no-session-persistence",
+        "--dangerously-skip-permissions",
+        "--output-format", "text",
+        # Allow only the file-mutation surface. No Bash so claude can't
+        # try to run pytest mid-generation, no MCP, no WebFetch.
+        "--tools", "Write,Edit,Read",
+        "--model", _DEFAULT_MODEL,
+        "--setting-sources", "",
+        "--disable-slash-commands",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Phase 2 subprocess timed out after {timeout}s"
+        ) from exc
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Phase 2 subprocess rc={proc.returncode}: "
+            f"{(proc.stderr or proc.stdout or '')[-800:]}"
+        )
+    return proc.stdout or "", proc.stderr or ""
+
+
+def _harvest_workspace(workdir: str, expected: list[str]) -> dict[str, str]:
+    """Read every file under ``workdir`` whose repo-relative path appears
+    in ``expected``. Paths missing from the workspace are silently
+    omitted; the validator's Phase 1.5 will catch the gap and trigger
+    a coordinator retry."""
+    out: dict[str, str] = {}
+    for rel in expected:
+        full = os.path.join(workdir, rel)
+        if not os.path.isfile(full):
+            continue
+        try:
+            with open(full, "r", encoding="utf-8", errors="replace") as f:
+                out[rel] = f.read()
+        except OSError:
+            continue
+    return out
 
 
 def call_coordinator(repo_path: str, feature_spec: str,
@@ -138,7 +282,7 @@ def call_coordinator(repo_path: str, feature_spec: str,
     dict (subtasks + shared_files + stub_files + stub_test_files +
     integration_test_files + requirements_additions).
     """
-    # Phase 1: plan
+    # Phase 1: plan (small JSON, fits comfortably in text output).
     print("  [Phase 1, cc] Decomposition plan...", flush=True)
     plan_message = build_user_message(repo_path, feature_spec, previous_errors)
     plan_text = _run_claude(plan_message, COORDINATOR_SYSTEM_PROMPT)
@@ -154,23 +298,75 @@ def call_coordinator(repo_path: str, feature_spec: str,
         raise ValueError("Phase 1 returned no subtasks")
     print(f"  [Phase 1, cc] {len(subtasks)} subtask(s) planned", flush=True)
 
-    # Phase 2: file contents
-    print("  [Phase 2, cc] Generating stub files...", flush=True)
+    # Phase 2: file contents. Inline JSON output works for tiny
+    # decompositions but silently fails on real ones (the model tries
+    # to use the Write tool, finds it disabled, and exits with empty
+    # stdout). Give it a workspace and the Write tool instead, then
+    # harvest the files back into the decomposition dict.
+    print(f"  [Phase 2, cc] Generating stub files in tempdir "
+          f"(language={_LANGUAGE or 'python (default)'})...", flush=True)
     file_prompt = build_file_generation_prompt(decomposition, repo_path, feature_spec)
-    # Phase 2 produces a single JSON object with stub contents. Use a
-    # tighter system prompt so the model doesn't add prose.
-    files_system = ("You are a Python code generator. Output ONLY a single "
-                     "JSON object. No prose. No code fences. Start with {.")
-    files_text = _run_claude(file_prompt, files_system, timeout=900)
-    _save_debug(files_text, os.path.join(debug_dir, "phase2_files.txt") if debug_dir else None)
+    # Replace the "## Output Format" suffix that asks for inline JSON
+    # with a file-writing instruction.
+    if "## Output Format" in file_prompt:
+        file_prompt = file_prompt.split("## Output Format")[0]
+    # Language override (if any) goes BEFORE the output-format block so
+    # it can countermand the Python rules baked into the base prompt.
+    file_prompt += _language_rules()
+    file_prompt += (
+        "## Output Format\n\n"
+        "Write each file directly to disk using the Write tool. Paths are\n"
+        "relative to your current working directory. After all files listed\n"
+        "above (stub_files, stub_test_files, integration_test_files) have\n"
+        "been written, stop. Do not print the file contents to stdout.\n"
+    )
+
+    # All paths Phase 2 is expected to produce.
+    expected_stubs: list[str] = []
+    expected_tests: list[str] = []
+    for st in subtasks:
+        expected_stubs.extend(st.get("stub_files", []) or [])
+        expected_tests.extend(st.get("stub_test_files", []) or [])
+    integ_files = list(decomposition.get("integration_test_files", {}).keys())
+    if not integ_files:
+        # Default per language. The spec's "Integration test contract"
+        # section names a specific file, but Phase 1 sometimes leaves
+        # integration_test_files empty.
+        if _LANGUAGE in ("cpp", "c++"):
+            integ_files = ["tests/test_integration.cpp"]
+        else:
+            integ_files = ["tests/test_integration.py"]
+    expected_all = expected_stubs + expected_tests + integ_files
+
+    workdir = (os.path.join(debug_dir, "phase2_workspace") if debug_dir
+               else tempfile.mkdtemp(prefix="bitswarm_phase2_"))
+    cleanup_workdir = workdir if debug_dir is None else None
 
     try:
-        file_contents = parse_json_response(files_text)
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Phase 2 JSON parse error: {exc}") from exc
+        stdout, _stderr = _run_claude_writing_files(file_prompt, workdir, timeout=900)
+        _save_debug(
+            stdout,
+            os.path.join(debug_dir, "phase2_stdout.txt") if debug_dir else None,
+        )
 
-    decomposition["stub_files"] = file_contents.get("stub_files", {})
-    decomposition["stub_test_files"] = file_contents.get("stub_test_files", {})
-    decomposition["integration_test_files"] = file_contents.get("integration_test_files", {})
+        stub_contents = _harvest_workspace(workdir, expected_stubs)
+        test_contents = _harvest_workspace(workdir, expected_tests)
+        integ_contents = _harvest_workspace(workdir, integ_files)
+
+        decomposition["stub_files"] = stub_contents
+        decomposition["stub_test_files"] = test_contents
+        decomposition["integration_test_files"] = integ_contents
+
+        print(f"  [Phase 2, cc] harvested "
+              f"{len(stub_contents)}/{len(expected_stubs)} stubs, "
+              f"{len(test_contents)}/{len(expected_tests)} tests, "
+              f"{len(integ_contents)}/{len(integ_files)} integration",
+              flush=True)
+    finally:
+        if cleanup_workdir is not None:
+            shutil.rmtree(cleanup_workdir, ignore_errors=True)
+
+    if not decomposition["stub_files"]:
+        raise ValueError("Phase 2 produced no stub_files")
 
     return decomposition
