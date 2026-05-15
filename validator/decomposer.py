@@ -109,6 +109,94 @@ Output only the corrected JSON, starting with {{"""
     return message
 
 
+def build_integration_test_prompt(decomposition, repo_path, feature_spec,
+                                    language: str | None = None) -> str:
+    """Phase 1.5 prompt: write the integration tests FIRST.
+
+    Test-first decomposition: the integration tests become the
+    contract that Phase 2 stub generation must satisfy. Writing them
+    here (with shared types in scope, before any stubs exist) keeps
+    the test author from drifting away from the eventual stub
+    signatures, since the same model can't see the stubs yet -- it has
+    to commit to a single set of signatures and have Phase 2 follow.
+    """
+    from validator.lang_profiles import profile_for
+    profile = profile_for(language=language, repo_path=repo_path)
+    subtasks = decomposition.get("subtasks", []) or []
+    shared_files = decomposition.get("shared_files", {}) or {}
+
+    subtask_block = ""
+    for st in subtasks:
+        subtask_block += (
+            f"\n### Subtask: {st['subtask_id']}\n"
+            f"Description: {st.get('description', '')}\n"
+            f"Stub files: {st.get('stub_files', [])}\n"
+            f"Dependencies on other subtasks: {st.get('dependencies', [])}\n"
+        )
+
+    shared_block = ""
+    for path, content in shared_files.items():
+        shared_block += f"\n=== SHARED: {path} ===\n{content}\n"
+    if not shared_block:
+        shared_block = "(none)"
+
+    integ_files = list(decomposition.get("integration_test_files", {}).keys())
+    if not integ_files:
+        integ_files = [profile.integration_test_filename]
+    integ_list = "\n".join(f"  - {p}" for p in integ_files)
+
+    return f"""{profile.phase2_intro.replace('stub files', 'INTEGRATION TESTS')}
+
+Target language: {profile.display_name}.
+
+## Project spec
+{feature_spec[:1500]}
+
+## Decomposition plan (subtasks that WILL be implemented)
+{subtask_block}
+
+## Shared files (already-defined types you can use)
+{shared_block}
+
+## Files you must write NOW
+{integ_list}
+
+## Why now (test-first decomposition)
+
+You are writing these integration tests BEFORE any subtask stubs
+exist. The tests are the contract. Phase 2 will generate stubs to
+match the public API your tests reference. So whatever signatures
+you write into the tests (constructor argument lists, method names,
+return types) become the SOURCE OF TRUTH for the rest of the project.
+
+Be deliberate. Use ONE consistent signature shape per type across
+ALL test files. Don't construct ``Game(words, "hello")`` in one
+function and ``Game("hello")`` in another -- pick one, document it,
+stick to it.
+
+## Rules
+
+Integration tests:
+{profile.integration_rules}
+
+Tests must:
+- Construct real objects with concrete arguments.
+- Call public methods and assert on return values.
+- Fail when run against stubs that throw "not implemented" (the
+  expected pre-mining state). Do NOT wrap calls in try/catch.
+- Cover at least the behaviours called out in the spec's
+  "Integration test contract" section (if present).
+
+## Output Format
+
+Write each integration test file directly to disk using the Write
+tool, at the path indicated above. After all integration test files
+are written, stop. Do not print the contents to stdout.
+
+Paths are relative to your current working directory.
+"""
+
+
 def build_file_generation_prompt(decomposition, repo_path, feature_spec,
                                   language: str | None = None):
     """
@@ -166,6 +254,24 @@ def build_file_generation_prompt(decomposition, repo_path, feature_spec,
                 with open(fpath) as f:
                     config_file_contents += f"\n## {fname} (use these exact field names in test data)\n```json\n{f.read()}\n```\n"
 
+    # Test-first: if Phase 1.5 already produced integration tests,
+    # show them inline as the contract Phase 2 must satisfy.
+    pre_existing_integration = decomposition.get("integration_test_files", {}) or {}
+    if pre_existing_integration:
+        contract_block = (
+            "\n## Integration tests (ALREADY WRITTEN -- this is the "
+            "contract your stubs MUST satisfy)\n\n"
+            "These tests were written BEFORE you wrote any stubs. They\n"
+            "are the source of truth for every public type / function /\n"
+            "method signature. Your stubs must declare exactly the\n"
+            "interfaces these tests reference -- same names, same arg\n"
+            "counts, same types.\n"
+        )
+        for path, content in pre_existing_integration.items():
+            contract_block += f"\n### {path}\n```\n{content}\n```\n"
+    else:
+        contract_block = ""
+
     return f"""{profile.phase2_intro}
 
 Target language: {profile.display_name}. Miners verify their work with:
@@ -182,7 +288,7 @@ Target language: {profile.display_name}. Miners verify their work with:
 ## Shared Files (already implemented -- import from these)
 
 {shared_context if shared_context else "(none)"}
-
+{contract_block}
 ## Files You Must Write
 
 STUB FILES (every function/method body raises the language's "not
@@ -418,6 +524,34 @@ def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
     previous_errors = []
     call_coord = _select_call_coordinator()
 
+    # Cache lookup: hash (spec, repo, language, model, backend) and try
+    # to short-circuit the whole coordinator round trip if we've seen
+    # this exact input before. A cached decomposition still has to pass
+    # ``validate_fn`` to be reused; stale caches fall through to a
+    # fresh run.
+    from validator import cache as _cache
+    from validator.lang_profiles import profile_for as _profile_for
+    _profile = _profile_for(repo_path=repo_path)
+    _backend = COORDINATOR_BACKEND
+    _cache_key = _cache.compute_key(
+        feature_spec=feature_spec,
+        repo_path=repo_path,
+        language=_profile.name,
+        model=COORDINATOR_MODEL,
+        backend=_backend,
+    )
+    _cached = _cache.load(_cache_key)
+    if _cached is not None:
+        if validate_fn is None:
+            print(f"[Coordinator] cache hit ({_cache_key[:12]}) -- reusing")
+            return _cached
+        cached_errors = validate_fn(_cached, repo_path)
+        if not cached_errors:
+            print(f"[Coordinator] cache hit ({_cache_key[:12]}) -- reusing")
+            return _cached
+        print(f"[Coordinator] cache hit ({_cache_key[:12]}) but stale "
+              f"({len(cached_errors)} validation errors), regenerating")
+
     for attempt in range(1, MAX_COORDINATOR_RETRIES + 1):
         print(f"\n[Coordinator] Attempt {attempt}/{MAX_COORDINATOR_RETRIES}")
 
@@ -437,12 +571,32 @@ def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
             previous_errors = [f"Your response was not valid JSON. Error: {e}"]
             continue
 
+        # Self-critique pass (cheap relative to mining). Catches the
+        # cross-file interface drift that Phase 1.5 can't reach for
+        # non-Python languages. Treated as advisory errors when found.
+        from validator.critique import critique as _critique
+        critique_issues = _critique(decomposition)
+        if critique_issues:
+            print(f"[Coordinator] critique flagged {len(critique_issues)} issue(s):")
+            for issue in critique_issues:
+                print(f"  ! {issue}")
+
         if validate_fn is None:
+            if critique_issues:
+                previous_errors = critique_issues
+                continue
+            saved = _cache.save(_cache_key, decomposition)
+            if saved:
+                print(f"[Coordinator] cached at {saved}")
             return decomposition
 
         errors = validate_fn(decomposition, repo_path)
+        errors = list(errors) + critique_issues
         if not errors:
             print(f"[Coordinator] Validation passed on attempt {attempt}")
+            saved = _cache.save(_cache_key, decomposition)
+            if saved:
+                print(f"[Coordinator] cached at {saved}")
             return decomposition
 
         print(f"[Coordinator] Validation failed with {len(errors)} errors:")

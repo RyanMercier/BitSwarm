@@ -18,12 +18,40 @@ import tempfile
 
 from validator.test_runner import run_stub_tests, run_integration_tests
 from validator.scorer import compute_scores
-from validator.repair import repair_miner, repair_integration_tests
 
 
 _REPAIR_DISABLED = os.environ.get("BITSWARM_DISABLE_REPAIR", "").strip().lower() in (
     "1", "true", "yes"
 )
+
+
+def _select_repair_backend():
+    """Pick between the SDK-based repair miners and the Claude Code
+    subprocess miners.
+
+    Resolution order:
+      1. ``REPAIR_BACKEND=claude_code`` / ``sdk`` (explicit override).
+      2. If ``MINER_BACKEND=claude_code`` and ``ANTHROPIC_API_KEY`` is
+         unset, default to ``claude_code`` so subscription-only users
+         don't crash on the SDK call.
+      3. Otherwise default to ``sdk`` (matches POC behaviour).
+    """
+    explicit = os.environ.get("REPAIR_BACKEND", "").strip().lower()
+    if explicit == "claude_code":
+        from validator.repair_cc import repair_miner, repair_integration_tests
+        return repair_miner, repair_integration_tests
+    if explicit in ("sdk", "anthropic"):
+        from validator.repair import repair_miner, repair_integration_tests
+        return repair_miner, repair_integration_tests
+    miner_backend = os.environ.get("MINER_BACKEND", "").strip().lower()
+    if miner_backend == "claude_code" and not os.environ.get("ANTHROPIC_API_KEY"):
+        from validator.repair_cc import repair_miner, repair_integration_tests
+        return repair_miner, repair_integration_tests
+    from validator.repair import repair_miner, repair_integration_tests
+    return repair_miner, repair_integration_tests
+
+
+repair_miner, repair_integration_tests = _select_repair_backend()
 
 
 def compute_tiers(subtasks):

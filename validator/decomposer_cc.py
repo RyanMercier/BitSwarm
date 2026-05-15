@@ -34,10 +34,16 @@ import tempfile
 from config import COORDINATOR_MODEL
 from validator.decomposer import (
     build_file_generation_prompt,
+    build_integration_test_prompt,
     build_user_message,
     parse_json_response,
 )
 from validator.prompts import COORDINATOR_SYSTEM_PROMPT
+
+
+_TEST_FIRST = os.environ.get("BITSWARM_TEST_FIRST", "1").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 
 
 from validator.lang_profiles import profile_for
@@ -217,12 +223,48 @@ def call_coordinator(repo_path: str, feature_spec: str,
         raise ValueError("Phase 1 returned no subtasks")
     print(f"  [Phase 1, cc] {len(subtasks)} subtask(s) planned", flush=True)
 
+    profile = profile_for(repo_path=repo_path)
+
+    # Phase 1.5 (NEW, test-first): write the integration tests BEFORE
+    # any stubs exist. Those tests become the contract Phase 2 has to
+    # satisfy. This solves the cross-file constructor / signature
+    # drift that bit us on the C++ Wordle run (Game(words, "x") in
+    # tests vs Game(string target) in game.hpp).
+    if _TEST_FIRST:
+        print("  [Phase 1.5, cc] Writing integration tests first...", flush=True)
+        integ_workdir = (os.path.join(debug_dir, "phase1_5_workspace")
+                          if debug_dir
+                          else tempfile.mkdtemp(prefix="bitswarm_phase1_5_"))
+        cleanup_integ_workdir = integ_workdir if debug_dir is None else None
+        integ_prompt = build_integration_test_prompt(
+            decomposition, repo_path, feature_spec, language=profile.name,
+        )
+        try:
+            stdout, _ = _run_claude_writing_files(integ_prompt, integ_workdir, timeout=600)
+            _save_debug(
+                stdout,
+                os.path.join(debug_dir, "phase1_5_stdout.txt") if debug_dir else None,
+            )
+            integ_files_expected = list(
+                decomposition.get("integration_test_files", {}).keys()
+            ) or [profile.integration_test_filename]
+            integ_contents = _harvest_workspace(integ_workdir, integ_files_expected)
+            if integ_contents:
+                decomposition["integration_test_files"] = integ_contents
+                print(f"  [Phase 1.5, cc] wrote {len(integ_contents)} integration "
+                      f"test file(s) as Phase 2 contract", flush=True)
+            else:
+                print("  [Phase 1.5, cc] no integration tests harvested -- "
+                      "Phase 2 will write them along with the stubs", flush=True)
+        finally:
+            if cleanup_integ_workdir is not None:
+                shutil.rmtree(cleanup_integ_workdir, ignore_errors=True)
+
     # Phase 2: file contents. Inline JSON output works for tiny
     # decompositions but silently fails on real ones (the model tries
     # to use the Write tool, finds it disabled, and exits with empty
     # stdout). Give it a workspace and the Write tool instead, then
     # harvest the files back into the decomposition dict.
-    profile = profile_for(repo_path=repo_path)
     print(f"  [Phase 2, cc] Generating stub files in tempdir "
           f"(language={profile.name})...", flush=True)
     file_prompt = build_file_generation_prompt(
@@ -268,12 +310,31 @@ def call_coordinator(repo_path: str, feature_spec: str,
 
         decomposition["stub_files"] = stub_contents
         decomposition["stub_test_files"] = test_contents
-        decomposition["integration_test_files"] = integ_contents
+        # If test-first ran Phase 1.5, those integration tests are
+        # already in decomposition["integration_test_files"] and are
+        # the contract. Only overwrite with Phase 2's version if Phase
+        # 2 produced any AND Phase 1.5 didn't (i.e. test-first off or
+        # 1.5 failed to write anything).
+        existing_integ = decomposition.get("integration_test_files", {}) or {}
+        if integ_contents and not existing_integ:
+            decomposition["integration_test_files"] = integ_contents
+        elif integ_contents and existing_integ:
+            # Phase 2 wrote integration tests anyway. Keep 1.5's
+            # version (the authoritative contract); log the discrepancy.
+            extra = set(integ_contents) - set(existing_integ)
+            if extra:
+                # Phase 2 wrote *new* integration test files not in
+                # 1.5's set -- merge those in.
+                for path in extra:
+                    decomposition["integration_test_files"][path] = integ_contents[path]
+        # else: Phase 2 produced nothing; Phase 1.5's version stays.
 
+        integ_kept = len(decomposition.get("integration_test_files", {}) or {})
         print(f"  [Phase 2, cc] harvested "
               f"{len(stub_contents)}/{len(expected_stubs)} stubs, "
               f"{len(test_contents)}/{len(expected_tests)} tests, "
-              f"{len(integ_contents)}/{len(integ_files)} integration",
+              f"{integ_kept} integration "
+              f"(from {'phase 1.5' if existing_integ else 'phase 2'})",
               flush=True)
     finally:
         if cleanup_workdir is not None:

@@ -195,6 +195,25 @@ async def run(spec_path: str, target_repo: str, out_dir: str) -> int:
         shutil.rmtree(scaffolded_snapshot)
     shutil.copytree(repo_path, scaffolded_snapshot)
 
+    # Pre-flight: confirm the scaffold compiles before spending miner
+    # time. Catches Phase 2 interface drift in 30 seconds instead of
+    # after a full mining round.
+    print("\n[pipeline] === pre-flight ===")
+    from validator.preflight import preflight
+    preflight_errors = preflight(decomp, repo_path, language=language or None)
+    if preflight_errors:
+        print(f"[pipeline] pre-flight: {len(preflight_errors)} error(s)")
+        for e in preflight_errors:
+            print(f"  ! {e}")
+        if os.environ.get("BITSWARM_STRICT_PREFLIGHT", "").strip().lower() in (
+            "1", "true", "yes"
+        ):
+            print("[pipeline] BITSWARM_STRICT_PREFLIGHT=1 set -> aborting")
+            return 2
+        print("[pipeline] continuing anyway (set BITSWARM_STRICT_PREFLIGHT=1 to abort)")
+    else:
+        print("[pipeline] pre-flight: clean")
+
     print("\n[pipeline] === miners ===")
     miner_results = await _run_miners(
         decomp,
