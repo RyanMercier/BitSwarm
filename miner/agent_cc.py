@@ -53,10 +53,15 @@ _DEFAULT_MODEL = os.environ.get("MINER_CC_MODEL", "") or "sonnet"
 _TOOLS = "Read,Edit,Write,Bash,Glob,Grep"
 
 # Optional language switch for the miner prompt + final-test command.
-# Empty / "python" -> pytest (default). "cpp" / "c++" -> a single
-# targeted Makefile test binary, so cross-subtask stubs don't poison
-# the pass/fail signal.
+# Resolves to a LanguageProfile via the registry; defaults to Python.
 _LANGUAGE = os.environ.get("MINER_LANGUAGE", "").strip().lower()
+
+
+def _profile():
+    # Imported lazily so importing miner/agent_cc.py doesn't drag in
+    # the whole parser registry.
+    from validator.lang_profiles import profile_for
+    return profile_for(language=_LANGUAGE)
 
 
 def _test_command_for(subtask: dict) -> tuple[str, list[str] | None]:
@@ -66,13 +71,33 @@ def _test_command_for(subtask: dict) -> tuple[str, list[str] | None]:
     subprocess exits. ``None`` means defer to the auto-detecting
     ``validator.test_runners.run_test``. The display string goes into
     the agent prompt so claude runs the same thing iteratively.
+
+    Build-system languages (C, C++) need targeted single-binary runs to
+    avoid cross-subtask stubs poisoning the signal when ``make test``
+    would link the whole library together. Other languages just need
+    the per-file test-runner invocation; defer to auto-detect.
     """
     sid = subtask["subtask_id"]
     test_files = subtask.get("stub_test_files", []) or []
-    if _LANGUAGE in ("cpp", "c++"):
+    profile = _profile()
+    if profile.name in ("cpp", "c"):
         bin_path = f"tests/test_{sid}"
         display = f"make {bin_path} && ./{bin_path}"
         return display, ["sh", "-c", display]
+    if profile.name == "rust":
+        display = f"cargo test {sid}"
+        return display, ["sh", "-c", display]
+    if profile.name == "typescript":
+        files = " ".join(test_files) or "<your test file>"
+        display = f"npx vitest run {files}"
+        return display, ["sh", "-c", display]
+    if profile.name == "java":
+        display = f"mvn -q -DfailIfNoTests=false test -Dtest=*{sid}*"
+        return display, ["sh", "-c", display]
+    if profile.name == "csharp":
+        display = f'dotnet test --filter "FullyQualifiedName~{sid}"'
+        return display, ["sh", "-c", display]
+    # python (and unknown): defer to the auto-detecting test runner.
     display = f"pytest {' '.join(test_files) or '<your test file>'} -x --tb=short"
     return display, None
 

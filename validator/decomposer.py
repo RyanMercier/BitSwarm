@@ -109,11 +109,19 @@ Output only the corrected JSON, starting with {{"""
     return message
 
 
-def build_file_generation_prompt(decomposition, repo_path, feature_spec):
+def build_file_generation_prompt(decomposition, repo_path, feature_spec,
+                                  language: str | None = None):
     """
     Phase 2 prompt: given the validated plan, generate all stub file contents.
-    This is a focused call — the model only needs to write Python files.
+
+    ``language`` controls which ``LanguageProfile`` drives the
+    intro / stub-body idiom / import conventions / test framework.
+    When omitted, resolves via ``COORDINATOR_LANGUAGE`` env var or
+    auto-detection from ``repo_path`` markers (Cargo.toml -> rust,
+    package.json -> typescript, etc.), defaulting to Python.
     """
+    from validator.lang_profiles import profile_for
+    profile = profile_for(language=language, repo_path=repo_path)
     subtasks = decomposition.get("subtasks", [])
     shared_files = decomposition.get("shared_files", {})
 
@@ -143,7 +151,7 @@ def build_file_generation_prompt(decomposition, repo_path, feature_spec):
     # List integration test files needed
     integration_files = list(decomposition.get("integration_test_files", {}).keys())
     if not integration_files:
-        integration_files = ["tests/test_integration.py"]
+        integration_files = [profile.integration_test_filename]
 
     stub_list = "\n".join(f"  - {f} (for subtask '{st['subtask_id']}')" for f, st in stub_files_needed)
     test_list = "\n".join(f"  - {f} (for subtask '{st['subtask_id']}')" for f, st in test_files_needed)
@@ -158,7 +166,10 @@ def build_file_generation_prompt(decomposition, repo_path, feature_spec):
                 with open(fpath) as f:
                     config_file_contents += f"\n## {fname} (use these exact field names in test data)\n```json\n{f.read()}\n```\n"
 
-    return f"""You are writing Python stub files for a parallel implementation project.
+    return f"""{profile.phase2_intro}
+
+Target language: {profile.display_name}. Miners verify their work with:
+    {profile.test_command_hint}
 
 ## Project: {feature_spec[:200]}...
 
@@ -168,83 +179,49 @@ def build_file_generation_prompt(decomposition, repo_path, feature_spec):
 
 {subtask_context}
 
-## Shared Files (already implemented — import from these)
+## Shared Files (already implemented -- import from these)
 
 {shared_context if shared_context else "(none)"}
 
 ## Files You Must Write
 
-STUB FILES (each function/method body must raise NotImplementedError):
+STUB FILES (every function/method body raises the language's "not
+implemented" idiom -- see Rules below):
 {stub_list}
 
-TEST FILES (tests must FAIL on stubs because stubs raise NotImplementedError):
+TEST FILES (tests must FAIL when run against the stubs):
 {test_list}
 
-INTEGRATION TEST FILES (test cross-subtask interaction after all stubs implemented):
+INTEGRATION TEST FILES (test cross-subtask interaction once stubs
+are implemented):
 {integ_list}
 
 ## Rules
 
 Stub files:
-- Include all class definitions and function signatures with type hints
-- Every function body: raise NotImplementedError(f"{{self.__class__.__name__}}.method_name not implemented")
-- Include docstrings explaining what each function must do
-- CRITICAL: Always use FULL package paths for imports. If files live inside a package
-  directory (e.g. 'mypackage/'), use the full dotted path:
-  CORRECT:  from mypackage.module import MyClass
-  WRONG:    from module import MyClass     (bare name, will fail at runtime)
-  WRONG:    import module                  (bare name, will fail at runtime)
-  WRONG:    from .module import MyClass    (relative import, avoid)
-- Import from shared files and standard library only (no cross-subtask imports)
-- Ensure that objects which pass data between subtasks carry all required fields.
-  If subtask A produces an object that subtask B consumes, the shared type definition
-  must include every field both subtasks need.
+{profile.stub_rules}
 
 Test files:
-- CRITICAL: Tests MUST FAIL when run against stubs. This verifies stubs are real.
-- Import from the corresponding stub module (the subtask being tested)
-- Each test calls a stub function and asserts something about the RETURN VALUE
-- DO NOT use pytest.raises(NotImplementedError) — that makes the test PASS on stubs (wrong)
-- DO NOT write tests that only import or check class existence — those PASS without calling anything
-- CORRECT pattern: "result = vec.dot(other); assert result == 6.0"
-  The stub raises NotImplementedError → pytest reports FAILED → validation passes
-- WRONG pattern: "with pytest.raises(NotImplementedError): vec.dot(other)"
-  This catches the error → test PASSES on stub → validation rejects it
-- Each subtask must have at least 3 meaningful tests that call real functions and check results
-- CRITICAL: If your tests need objects from OTHER subtasks as dependencies (e.g. a test
-  that needs an object from another miner's module), use `unittest.mock.MagicMock()` instead
-  of importing the real class. Other subtasks are stubs in isolated miner repos — importing them
-  causes tests to fail before even testing YOUR stub. Example:
-    from unittest.mock import MagicMock
-    dependency_obj = MagicMock()  # don't import from another subtask's module
-    my_obj = MyClass(dependency_obj)  # test YOUR stub
-  This ensures tests fail due to YOUR stub raising NotImplementedError, not a dependency.
+{profile.test_rules}
 
 Integration test files:
-- Test that implementations from different subtasks work together
-- Import from all relevant modules
-- Use @pytest.mark.xfail(raises=NotImplementedError, strict=False) on each test
-  so integration tests are allowed to fail during the scaffold phase
-- CRITICAL: always include explicit imports for EVERY module you use, including
-  `import numpy as np` if you use np.anything, `from PIL import Image` if you
-  use Image, etc. Never use a name without importing it first.
-- CRITICAL: if the repo contains JSON config/data files, all inline test data MUST use
-  the exact same field names as those files. Copy field names exactly — do not rename them.
+{profile.integration_rules}
 
 ## Output Format
 
-Return ONLY a JSON object with this exact structure:
+Return ONLY a JSON object with this exact structure (paths use the
+extensions appropriate to {profile.display_name}):
 {{
   "stub_files": {{
-    "path/to/file.py": "complete file content as string",
+    "<path-to-stub>": "complete file content as string",
     ...
   }},
   "stub_test_files": {{
-    "tests/test_xxx.py": "complete test file content as string",
+    "<path-to-test>": "complete test file content as string",
     ...
   }},
   "integration_test_files": {{
-    "tests/test_integration.py": "complete integration test file content as string"
+    "{profile.integration_test_filename}": "complete integration test file content as string"
   }}
 }}
 

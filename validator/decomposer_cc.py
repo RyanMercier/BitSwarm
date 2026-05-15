@@ -40,94 +40,13 @@ from validator.decomposer import (
 from validator.prompts import COORDINATOR_SYSTEM_PROMPT
 
 
+from validator.lang_profiles import profile_for
+
+
 _DEFAULT_BINARY = (os.environ.get("CC_COORDINATOR_BINARY", "")
                     or os.environ.get("MINER_CC_BINARY", "")
                     or "claude")
 _DEFAULT_MODEL = os.environ.get("CC_COORDINATOR_MODEL", "") or COORDINATOR_MODEL
-
-# Optional language override for the Phase 2 stub-generation prompt.
-# The hand-written prompt in ``validator/decomposer.py`` is Python-baked
-# ("You are writing Python stub files... raise NotImplementedError").
-# Setting ``COORDINATOR_LANGUAGE=cpp`` (or any other supported target)
-# replaces the Python-specific Rules section with one matching the
-# requested language. Spec text in ``feature_spec`` is the source of
-# truth for build system, header layout, exception type, etc. --- this
-# switch only neutralises the Python rules that would otherwise fight
-# the spec.
-_LANGUAGE = os.environ.get("COORDINATOR_LANGUAGE", "").strip().lower()
-
-
-# Language-specific stub-generation rules. Slotted in just before the
-# "## Output Format" suffix so they override the Python defaults that
-# precede them in ``build_file_generation_prompt``.
-_CPP_RULES = """
-
-## LANGUAGE OVERRIDE: C++17
-
-Disregard any preceding instructions that mention Python, NotImplementedError,
-package imports, or .py files. This decomposition targets C++17.
-
-Stub files:
-- Each stub .hpp declares the public API. Each stub .cpp defines the
-  function with a body that immediately throws:
-      throw std::logic_error("not implemented: <function_or_method_name>");
-- Use header guards (``#ifndef ... #define ... #endif``) on every .hpp.
-- Use the namespace specified in the spec (typically ``wordle`` or the
-  project-name namespace).
-- ``#include`` paths MUST be filesystem-relative from the including
-  file's own directory:
-    - From ``wordle/<x>.cpp`` or ``wordle/<x>.hpp``, include siblings
-      WITHOUT a prefix:  ``#include "types.hpp"``, ``#include "scorer.hpp"``.
-    - From ``tests/test_<x>.cpp``, use the parent-relative form:
-      ``#include "../wordle/types.hpp"``, ``#include "../wordle/scorer.hpp"``.
-    - NEVER use project-rooted paths like ``#include "wordle/types.hpp"``
-      from inside the wordle/ directory. The Makefile's -I would make
-      this work at compile time, but the validator's Phase 1.5 import
-      check is filesystem-relative and will reject it.
-
-Test files:
-- Plain C++17, ``int main()`` programs that use ``<cassert>``.
-- DO NOT use Catch2, doctest, gtest, or any other framework.
-- Each test file MUST fail when compiled against the stub bodies
-  (because the stubs throw). Do NOT wrap stub calls in try/catch ---
-  that would make the test PASS on stubs, which is wrong.
-- Each test file has at least 4 distinct assertions about real return
-  values from real function calls.
-- Tests live under ``tests/`` and compile against the full library
-  per the Makefile in shared_files.
-- EVERY subtask gets its own ``tests/test_<subtask>.cpp`` file. No
-  exceptions: even the ``cli`` subtask, even subtasks whose surface
-  is "trivial", must have their own test file. If you can't think of
-  what to test for a subtask, write a smoke test that constructs the
-  type or calls the main entry point.
-
-Constructors:
-- Each public class has exactly ONE constructor signature in the .hpp.
-  Do NOT declare overloaded constructors --- BitSwarm's Phase 1.5
-  parser registers a single constructor per class. If a class needs
-  optional behaviour (e.g. seeded vs random target), use default
-  argument values (``Game(const Words& w, std::string target = ""))``)
-  rather than two distinct overloads.
-
-Integration tests:
-- Single ``int main()`` returning 0 on success, non-zero on any
-  failure. Assertions cover end-to-end behavior (see the spec's
-  "Integration test contract" section).
-
-Build system:
-- The Makefile in shared_files is the source of truth. Stub files MUST
-  fit the layout that Makefile expects (``wordle/*.cpp`` for the
-  library, ``tests/test_*.cpp`` for tests).
-"""
-
-
-def _language_rules() -> str:
-    """Return the language-specific override block, or empty string if
-    no override is configured (i.e. Python defaults from the base
-    prompt apply)."""
-    if _LANGUAGE in ("cpp", "c++"):
-        return _CPP_RULES
-    return ""
 
 
 def _run_claude(prompt: str, system_prompt: str, timeout: int = 600) -> str:
@@ -303,16 +222,16 @@ def call_coordinator(repo_path: str, feature_spec: str,
     # to use the Write tool, finds it disabled, and exits with empty
     # stdout). Give it a workspace and the Write tool instead, then
     # harvest the files back into the decomposition dict.
+    profile = profile_for(repo_path=repo_path)
     print(f"  [Phase 2, cc] Generating stub files in tempdir "
-          f"(language={_LANGUAGE or 'python (default)'})...", flush=True)
-    file_prompt = build_file_generation_prompt(decomposition, repo_path, feature_spec)
-    # Replace the "## Output Format" suffix that asks for inline JSON
-    # with a file-writing instruction.
+          f"(language={profile.name})...", flush=True)
+    file_prompt = build_file_generation_prompt(
+        decomposition, repo_path, feature_spec, language=profile.name,
+    )
+    # Replace the inline-JSON "## Output Format" suffix (if the base
+    # prompt added one) with a file-writing instruction.
     if "## Output Format" in file_prompt:
         file_prompt = file_prompt.split("## Output Format")[0]
-    # Language override (if any) goes BEFORE the output-format block so
-    # it can countermand the Python rules baked into the base prompt.
-    file_prompt += _language_rules()
     file_prompt += (
         "## Output Format\n\n"
         "Write each file directly to disk using the Write tool. Paths are\n"
@@ -329,13 +248,7 @@ def call_coordinator(repo_path: str, feature_spec: str,
         expected_tests.extend(st.get("stub_test_files", []) or [])
     integ_files = list(decomposition.get("integration_test_files", {}).keys())
     if not integ_files:
-        # Default per language. The spec's "Integration test contract"
-        # section names a specific file, but Phase 1 sometimes leaves
-        # integration_test_files empty.
-        if _LANGUAGE in ("cpp", "c++"):
-            integ_files = ["tests/test_integration.cpp"]
-        else:
-            integ_files = ["tests/test_integration.py"]
+        integ_files = [profile.integration_test_filename]
     expected_all = expected_stubs + expected_tests + integ_files
 
     workdir = (os.path.join(debug_dir, "phase2_workspace") if debug_dir
