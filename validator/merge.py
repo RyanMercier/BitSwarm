@@ -24,6 +24,18 @@ _REPAIR_DISABLED = os.environ.get("BITSWARM_DISABLE_REPAIR", "").strip().lower()
     "1", "true", "yes"
 )
 
+# Cross-compile-failure handling mode:
+#   "patch"   - default, run the SDK/subprocess repair miner that
+#               edits the failing miner's existing code in place.
+#   "replace" - drop the failing miner's patch and re-mine the subtask
+#               with the merged tree as visible context (peer
+#               implementations are real, not stubs). Tends to produce
+#               cleaner fixes when the original miner was structurally
+#               wrong vs. just subtly mismatched.
+#   "off"     - skip recovery entirely (alias for BITSWARM_DISABLE_REPAIR=1).
+_REPAIR_MODE = (os.environ.get("BITSWARM_REPAIR_MODE", "")
+                or ("off" if _REPAIR_DISABLED else "patch")).strip().lower()
+
 
 def _select_repair_backend():
     """Pick between the SDK-based repair miners and the Claude Code
@@ -147,6 +159,49 @@ def _apply_patch(sid, result, subtask, merge_repo, merge_dir):
     return True, False
 
 
+async def _try_drop_and_replace(decomposition, subtask, miner_results,
+                                  merge_repo):
+    """Run the drop-and-replace flow for one failing subtask.
+
+    Returns ``(passed, output)`` if a clean replacement landed in the
+    merged repo, or ``None`` if the replacement couldn't be produced /
+    applied. ``None`` signals the caller to fall back to patch-style
+    repair.
+    """
+    from validator.drop_replace import (
+        apply_replacement_patch,
+        drop_and_replace_subtask,
+        find_scaffolding_hash,
+    )
+    sid = subtask["subtask_id"]
+    scaffolding_hash = find_scaffolding_hash(merge_repo)
+    if scaffolding_hash is None:
+        return None
+    new_result, status = await drop_and_replace_subtask(
+        decomposition=decomposition,
+        subtask=subtask,
+        merge_repo=merge_repo,
+    )
+    print(f"    [drop+replace {sid}] {status}")
+    if new_result is None or not getattr(new_result, "patch", ""):
+        return None
+    new_patch = new_result.patch
+    miner_results[sid] = new_result  # so scoring sees the replacement
+    if not apply_replacement_patch(
+        merge_repo, scaffolding_hash,
+        subtask.get("allowed_files", []) or [], new_patch,
+    ):
+        return None
+    # Commit so the next tier sees the replaced state, then verify.
+    subprocess.run(["git", "add", "-A"], cwd=merge_repo, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", f"replace {sid}"],
+        cwd=merge_repo, capture_output=True,
+    )
+    passed, output = run_stub_tests(subtask, merge_repo)
+    return passed, output
+
+
 async def merge_and_test(decomposition, miner_results, base_repo_path):
     """
     Tiered merge pipeline:
@@ -223,16 +278,35 @@ async def merge_and_test(decomposition, miner_results, base_repo_path):
                 print(f"    {sid} cross-compile: PASSED")
                 continue
 
-            # ── Phase 3: Repair ────────────────────────────────────────
-            if _REPAIR_DISABLED:
-                print(f"    {sid} cross-compile: FAILED (repair disabled)")
+            # ── Phase 3: Recover (repair or drop-and-replace) ──────────
+            if _REPAIR_MODE == "off":
+                print(f"    {sid} cross-compile: FAILED (recovery disabled)")
                 stub_results[sid] = False
                 repairs_made[sid] = False
                 continue
-            print(f"    {sid} cross-compile: FAILED — repairing")
-            repair_passed, repair_output = await repair_miner(
-                subtask, merge_repo, output
-            )
+
+            repair_passed = False
+            repair_output = output
+
+            if _REPAIR_MODE == "replace":
+                print(f"    {sid} cross-compile: FAILED -- drop-and-replace")
+                replaced = await _try_drop_and_replace(
+                    decomposition, subtask, miner_results, merge_repo,
+                )
+                if replaced is not None:
+                    repair_passed, repair_output = replaced
+                else:
+                    print(f"    {sid} drop-and-replace: failed to produce a "
+                          f"working patch, falling back to patch-style repair")
+
+            if not repair_passed:
+                if _REPAIR_MODE == "patch" or (
+                    _REPAIR_MODE == "replace" and replaced is None
+                ):
+                    print(f"    {sid} cross-compile: FAILED -- repairing")
+                    repair_passed, repair_output = await repair_miner(
+                        subtask, merge_repo, repair_output
+                    )
 
             stub_results[sid] = repair_passed
             repairs_made[sid] = repair_passed
