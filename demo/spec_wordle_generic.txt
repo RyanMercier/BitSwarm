@@ -1,0 +1,229 @@
+Build a playable Wordle clone.
+
+The same prompt is reused across every language the coordinator
+supports. Per-language idioms (stub bodies, import paths, test
+framework, build command, file extensions, namespace shape) are
+filled in by the BitSwarm language profile selected via
+`COORDINATOR_LANGUAGE` / `MINER_LANGUAGE`. Do NOT bake Python or C++
+specifics into this spec.
+
+For anyone who hasn't seen Wordle: the player has 6 attempts to guess
+a secret 5-letter English word. After each guess every letter gets
+one of three feedback values:
+
+  * HIT     -- right letter, right position
+  * PRESENT -- right letter, wrong position
+  * MISS    -- letter not in the target at all
+
+Rendered output is a single ASCII string per row. Plain text only; no
+ANSI color codes. The exact bracket format is at the implementation's
+discretion as long as each row carries one bracketed letter per cell
+with its feedback (e.g. `[L:HIT] [L:PRESENT] [A:MISS] [M:MISS] [A:MISS]`).
+Stick to a single format across the project; the renderer subtask
+defines it once, the rest of the project consumes it.
+
+The duplicate-letter rule is the one subtle bit. Target ALLOY has two
+Ls. Guess LLAMA:
+
+  - position 1 'L' vs ALLOY[0]='A' -> not a HIT; ALLOY has Ls
+    available though, so PRESENT? NO: HITs come first.
+  - Recompute. ALLOY position 1 is L, position 2 is L. Guess LLAMA
+    position 1 is L: HIT. Position 2 is L: ALLOY still has one L
+    left after the HIT, so PRESENT. Position 3 is A: ALLOY has one
+    A at position 4 still unconsumed, so PRESENT. Wait, the canonical
+    answer for LLAMA vs ALLOY is [HIT, PRESENT, MISS, MISS, MISS].
+    Let's re-derive: pass 1 marks HITs and consumes the target letter
+    at that position. pass 2 walks the non-HIT guess letters left to
+    right; for each, if there's an UNCONSUMED instance of that letter
+    in the target, mark PRESENT and consume it, else MISS.
+
+  Verify by hand:
+    target = "ALLOY", guess = "LLAMA"
+    pass 1: g[0]='L'/t[0]='A'  -> no   ; g[1]='L'/t[1]='L'  -> HIT (consume t[1])
+            g[2]='A'/t[2]='L'  -> no   ; g[3]='M'/t[3]='O'  -> no
+            g[4]='A'/t[4]='Y'  -> no
+    pass 2 (target remaining: A . L O Y at indices 0,2,3,4):
+            g[0]='L' -> L present at index 2 -> PRESENT, consume index 2
+            g[2]='A' -> A present at index 0 -> PRESENT, consume index 0
+            g[3]='M' -> not present -> MISS
+            g[4]='A' -> no A left  -> MISS
+    Final: [no/PRESENT-from-pass2, HIT, PRESENT, MISS, MISS] = ...
+
+  Hmm, that gives [PRESENT, HIT, PRESENT, MISS, MISS] which differs
+  from the [HIT, PRESENT, MISS, MISS, MISS] often quoted. Either is
+  defensible; integration tests pin the exact values for a small set
+  of cases. The implementation just has to be CONSISTENT: same algorithm
+  for every (guess, target) pair, no special-casing.
+
+The algorithm is "two-pass, HITs first, PRESENTs consume left-to-right
+from unconsumed target letters." Implement that. The integration test
+contract below pins the answers your implementation must produce.
+
+
+# Required behavior
+
+Running the interactive entry point (`python -m wordle`, `make wordle_bin
+&& ./wordle_bin`, `cargo run`, `npm start`, etc., per language) should:
+
+  1. Pick a random 5-letter target word from a small built-in dictionary
+     hard-coded in the words subtask (about 200 common 5-letter words).
+     No network access, no file I/O, no external word-list packages.
+  2. Prompt the player for a guess. Read a line, trim whitespace,
+     uppercase it.
+  3. Reject guesses that aren't 5-letter words in the dictionary:
+     print `not in word list`, reprompt without consuming an attempt.
+  4. For a valid guess, print all guesses-so-far (newest at the bottom)
+     using the renderer's row format, then reprompt.
+  5. After 6 attempts or a correct guess, print either
+     `You won in N!` (where N is attempts used)
+     or `You lost. The word was XYZAB.` then exit cleanly.
+  6. Typing `quit` at any prompt exits cleanly (zero exit status).
+
+
+# Public API (pinned)
+
+These are the language-independent signatures every implementation must
+satisfy. The language profile's import / namespace / generic-type idioms
+are filled in by Phase 2; the names and arg counts are non-negotiable.
+
+  is_valid_guess(word) -> bool
+      True iff `word` is in the built-in dictionary (case-insensitive).
+
+  random_target() -> string
+      Returns a random 5-letter word from the dictionary.
+
+  word_list() -> sequence of string
+      Returns the built-in dictionary. Languages that don't have a
+      free-function idiom may attach this to a module-level constant
+      or namespace, but it MUST be reachable without instantiating a
+      "Words" class. There is no Words class.
+
+  score(guess, target) -> sequence of Feedback
+      Pure function. Implements the two-pass algorithm above.
+
+  render_row(guess, feedbacks) -> string
+      One row, bracketed per-cell with feedback embedded. Pure.
+
+  render_board(history) -> string
+      All rows in `history`, separated by newlines. Pure.
+
+  class Game:
+      Constructor takes EXACTLY ONE positional argument: the target
+      word. No second argument, no dictionary parameter, no overloads.
+      The Game class calls `is_valid_guess` and `score` internally.
+
+      .guess(word) -> GuessResult
+          Validates via `is_valid_guess`. Invalid -> raise
+          InvalidGuessError (do NOT increment attempts). Valid ->
+          compute feedbacks via `score`, append to history, increment
+          attempts, update status. Calling guess() on a finished game
+          raises GameOverError.
+
+      .status -> GameStatus enum value (in_progress / won / lost)
+      .attempts_used -> int
+      .target -> string
+      .history -> sequence of GuessResult
+
+
+# Shared types
+
+The shared_files block must define:
+
+  - Feedback enum: HIT, PRESENT, MISS
+  - GameStatus enum: IN_PROGRESS, WON, LOST (or whatever the language's
+    enum casing convention prefers)
+  - GuessResult record/struct/dataclass with two fields:
+      `guess: string` and `feedbacks: sequence of Feedback`
+  - Two exception types: InvalidGuessError, GameOverError. They carry
+    a message string. Use whatever idiomatic base type the language
+    has (Python: Exception subclass; Java: RuntimeException; C++:
+    `struct ... : std::runtime_error`; Rust: an enum implementing
+    `std::error::Error` is fine, or a unit struct; TypeScript: extend
+    `Error`; C: an int return code is fine since C has no exceptions).
+
+If the language needs an entry-point or build file in shared_files for
+the test harness to actually run (Makefile for C/C++, package.json /
+tsconfig.json for TypeScript, Cargo.toml for Rust, pom.xml for Java,
+.csproj for C#), include it in shared_files. The language profile's
+test_command_hint is the contract miners must verify against.
+
+
+# Suggested decomposition (5 subtasks)
+
+  Tier 1 -- no cross-subtask deps:
+
+    * `words`    -- the dictionary and `is_valid_guess` / `random_target`
+                    / `word_list`. Hard-coded list inline. Weight 0.15.
+
+    * `scorer`   -- the duplicate-letter algorithm. Pure
+                    `score(guess, target)`. Weight 0.30 -- this is the
+                    meaty piece; integration tests pound on it.
+
+    * `renderer` -- pure formatting: `render_row` + `render_board`.
+                    Weight 0.15.
+
+  Tier 2 -- depend on Tier 1:
+
+    * `game`     -- the state machine. Wraps a target, history, status.
+                    Uses `is_valid_guess` and `score`. Weight 0.25.
+
+    * `cli`      -- the interactive REPL. Uses Game + render_board.
+                    Weight 0.15.
+
+Weights sum to 1.00.
+
+
+# Integration test contract
+
+The integration test file (named per the language profile) must cover:
+
+  1. Pure greens. score("ALLOY", "ALLOY") returns five HITs.
+  2. Pure misses. score("QRSTU", "ALLOY") returns five MISSes.
+  3. Duplicate-letter. score("LLAMA", "ALLOY") matches the implementation's
+     two-pass output (compute the expected value in the test itself
+     using the same algorithm, then assert equality).
+  4. Game won. `Game("ALLOY"); g.guess("ALLOY")` -> status is WON,
+     attempts_used is 1.
+  5. Game lost. Six wrong guesses in a row -> status is LOST. A seventh
+     guess raises GameOverError.
+  6. Invalid guess. `g.guess("ZZZZZ")` (assuming it isn't in the
+     dictionary) raises InvalidGuessError and attempts_used does NOT
+     increment.
+
+The integration test returns 0 (or its language's equivalent "all
+asserts passed") on success.
+
+
+# Out of scope
+
+  - Multiplayer, hard mode, dark mode, daily-puzzle persistence.
+  - Real GUI (Tk, web, curses, ncurses). Plain text only.
+  - Streak tracking across sessions.
+  - Network access of any kind.
+
+
+# Engineering constraints
+
+  - Standard library only. No third-party color libraries, no external
+    test frameworks beyond the language profile's default (pytest for
+    Python, vitest for TypeScript, JUnit 5 for Java, xUnit for C#,
+    `int main()` + `<cassert>` for C/C++, built-in `#[test]` for Rust).
+  - Stub function bodies use the language profile's "not implemented"
+    idiom (the coordinator's Phase 2 prompt fills this in per language).
+    Stub tests must FAIL on those stubs (i.e. they call the function and
+    assert on the return value; they do NOT wrap the call in a
+    try/catch / expect-throws that would mask the unimplemented body).
+  - Each subtask's test file has at least 4 meaningful tests that call
+    real functions and assert real return values.
+  - Cross-subtask references in test files MUST be mocked, not imported
+    from the other subtask's real module. Use the language profile's
+    mocking idiom: `unittest.mock.MagicMock` for Python, `vi.fn()` for
+    TypeScript, `Mockito.mock` for Java, `Moq` for C#, hand-written
+    stub structs/classes for C/C++/Rust.
+  - Game's constructor signature is pinned: exactly one positional
+    argument, the target word. No dictionary parameter, no overloads.
+  - The word list is reached via a free function `word_list()` (or the
+    language's nearest equivalent for languages that lack free functions
+    -- a namespace-scoped function in C++, an associated function in
+    Rust, a static method in Java/C#). NEVER a Words class.
+  - No print/stdout from library code. Only the cli subtask prints.
