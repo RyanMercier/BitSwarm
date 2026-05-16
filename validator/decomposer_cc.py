@@ -199,17 +199,29 @@ def _harvest_workspace(workdir: str, expected: list[str]) -> dict[str, str]:
 
 def call_coordinator(repo_path: str, feature_spec: str,
                       previous_errors: list[str] | None = None,
-                      debug_dir: str | None = None) -> dict:
+                      debug_dir: str | None = None,
+                      language: str | None = None) -> dict:
     """Same contract as ``validator.decomposer.call_coordinator``.
 
     Runs the two-phase decomposition under Claude Code subprocesses
     instead of the Anthropic SDK. Returns the merged decomposition
     dict (subtasks + shared_files + stub_files + stub_test_files +
     integration_test_files + requirements_additions).
+
+    ``language`` selects the target language profile so Phase 1 plans
+    the correct file extensions / project layout. When ``None`` it's
+    resolved from ``COORDINATOR_LANGUAGE`` env var / repo auto-detect.
     """
+    # Resolve the profile up front so Phase 1's user message gets the
+    # language override (otherwise the Python-heavy system prompt
+    # silently biases every plan to ``.py`` paths regardless of target).
+    profile = profile_for(language=language, repo_path=repo_path)
+
     # Phase 1: plan (small JSON, fits comfortably in text output).
     print("  [Phase 1, cc] Decomposition plan...", flush=True)
-    plan_message = build_user_message(repo_path, feature_spec, previous_errors)
+    plan_message = build_user_message(
+        repo_path, feature_spec, previous_errors, language=profile.name,
+    )
     plan_text = _run_claude(plan_message, COORDINATOR_SYSTEM_PROMPT)
     _save_debug(plan_text, os.path.join(debug_dir, "phase1_plan.txt") if debug_dir else None)
 
@@ -222,8 +234,6 @@ def call_coordinator(repo_path: str, feature_spec: str,
     if not subtasks:
         raise ValueError("Phase 1 returned no subtasks")
     print(f"  [Phase 1, cc] {len(subtasks)} subtask(s) planned", flush=True)
-
-    profile = profile_for(repo_path=repo_path)
 
     # Phase 1.5 (NEW, test-first): write the integration tests BEFORE
     # any stubs exist. Those tests become the contract Phase 2 has to

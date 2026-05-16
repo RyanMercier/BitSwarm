@@ -52,11 +52,18 @@ def collect_repo_files(repo_path):
     return files
 
 
-def build_user_message(repo_path, feature_spec, previous_errors=None):
+def build_user_message(repo_path, feature_spec, previous_errors=None,
+                        language: str | None = None):
     """
     Phase 1 prompt: asks for the decomposition PLAN only.
     File contents are generated separately in Phase 2 so the model
     can focus on each task without the JSON growing too large.
+
+    ``language`` selects the target language profile. When set, an
+    explicit "language override" block is prepended so the model uses
+    the correct file extensions and directory layout in the plan
+    (otherwise the Python-heavy system prompt biases every plan to
+    ``.py`` paths regardless of the actual target).
     """
     file_tree = get_file_tree(repo_path)
     repo_files = collect_repo_files(repo_path)
@@ -64,7 +71,41 @@ def build_user_message(repo_path, feature_spec, previous_errors=None):
     for path, content in repo_files.items():
         file_contents += f"\n=== {path} ===\n{content}\n"
 
-    message = f"""IMPORTANT: All repository context is pre-loaded below. You do NOT have tools available in this invocation. Do NOT attempt to use file_read, bash, or any other tools. Skip Step 1 of your instructions (tool exploration). The full repo is already here — proceed directly to decomposition.
+    # Resolve the language profile (honors COORDINATOR_LANGUAGE env var
+    # if ``language`` is None). Inject a strong override that the system
+    # prompt's Python-heavy examples cannot drown out.
+    from validator.lang_profiles import profile_for
+    profile = profile_for(language=language, repo_path=repo_path)
+    language_block = (
+        "## CRITICAL LANGUAGE OVERRIDE -- READ FIRST\n\n"
+        f"The target language for this project is **{profile.display_name}**.\n\n"
+        "The system prompt and decomposition examples reference PYTHON\n"
+        "conventions (.py file extensions, NotImplementedError, pytest,\n"
+        "pip packages, package/__init__.py layout). IGNORE those examples\n"
+        f"and use the corresponding {profile.display_name} idioms:\n\n"
+        f"- Source file extensions: {', '.join(profile.extensions)}\n"
+        f"- Default integration test filename: {profile.integration_test_filename}\n"
+        f"- Miners verify with: {profile.test_command_hint}\n"
+        "- For language-appropriate project layout, follow the conventions\n"
+        f"  of {profile.display_name} (e.g. ``src/main/java/<pkg>/<Type>.java``\n"
+        "  for Java, ``src/<module>.rs`` for Rust, ``wordle/words.ts`` for\n"
+        "  TypeScript, ``wordle/words.cpp`` + ``wordle/words.hpp`` for C++,\n"
+        f"  etc.). Use {profile.display_name}'s native module / namespace /\n"
+        "  package directory shape.\n"
+        '- ``requirements_additions`` should list dependencies in the\n'
+        f"  format appropriate for {profile.display_name} (npm package\n"
+        '  names for TypeScript, Maven coordinates for Java, Cargo crate\n'
+        '  names for Rust, NuGet packages for C#, etc.), NOT pip packages,\n'
+        f"  unless the target IS Python.\n\n"
+        "EVERY ``stub_files`` and ``stub_test_files`` path in your plan\n"
+        f"MUST use a {profile.display_name}-appropriate extension and\n"
+        f"directory layout. The Phase 2 step will write the actual file\n"
+        "contents using these exact paths -- if the paths are wrong, the\n"
+        "downstream harvester drops everything and the run fails.\n\n"
+        "---\n\n"
+    )
+
+    message = language_block + f"""IMPORTANT: All repository context is pre-loaded below. You do NOT have tools available in this invocation. Do NOT attempt to use file_read, bash, or any other tools. Skip Step 1 of your instructions (tool exploration). The full repo is already here -- proceed directly to decomposition.
 
 ## Target Repository
 
@@ -428,23 +469,36 @@ def parse_json_response(text):
     raise ValueError("No JSON object found in response")
 
 
-def call_coordinator(repo_path, feature_spec, previous_errors=None, debug_dir=None):
+def call_coordinator(repo_path, feature_spec, previous_errors=None,
+                      debug_dir=None, language: str | None = None):
     """
     Two-phase coordinator call:
-      Phase 1 — get decomposition plan (subtask structure, no file contents)
-      Phase 2 — generate all stub file contents given the plan
+      Phase 1 - get decomposition plan (subtask structure, no file contents)
+      Phase 2 - generate all stub file contents given the plan
 
     This split is necessary because the model reliably produces the plan
     but consistently truncates file contents when both are in one response.
+
+    ``language`` selects the target language profile. Passed through to
+    both Phase 1 (so the planned ``stub_files`` paths get the right
+    extensions) and Phase 2 (so the file generator uses the matching
+    language idioms). When ``None``, resolves via the
+    ``COORDINATOR_LANGUAGE`` env var / repo auto-detect, defaulting to
+    Python.
     """
     client = anthropic.Anthropic(
         api_key=ANTHROPIC_API_KEY,
         base_url=ANTHROPIC_BASE_URL,  # None = SDK default
     )
 
-    # ── Phase 1: decomposition plan ─────────────────────────────────────────
+    from validator.lang_profiles import profile_for
+    profile = profile_for(language=language, repo_path=repo_path)
+
+    # Phase 1: decomposition plan
     print("  [Phase 1] Decomposition plan...", end="", flush=True)
-    plan_message = build_user_message(repo_path, feature_spec, previous_errors)
+    plan_message = build_user_message(
+        repo_path, feature_spec, previous_errors, language=profile.name,
+    )
     plan_debug = os.path.join(debug_dir, "phase1_plan.txt") if debug_dir else None
 
     plan_text = stream_json(
@@ -467,14 +521,19 @@ def call_coordinator(repo_path, feature_spec, previous_errors=None, debug_dir=No
     if not subtasks:
         raise ValueError("Phase 1 returned no subtasks")
 
-    # ── Phase 2: generate file contents ─────────────────────────────────────
+    # Phase 2: generate file contents
     print("  [Phase 2] Generating stub files...", end="", flush=True)
-    file_prompt = build_file_generation_prompt(decomposition, repo_path, feature_spec)
+    file_prompt = build_file_generation_prompt(
+        decomposition, repo_path, feature_spec, language=profile.name,
+    )
     files_debug = os.path.join(debug_dir, "phase2_files.txt") if debug_dir else None
 
     files_text = stream_json(
         client, COORDINATOR_MODEL,
-        system="You are a Python code generator. Output only valid JSON. No prose. Start with {.",
+        system=(
+            f"You are a {profile.display_name} code generator. "
+            "Output only valid JSON. No prose. Start with {."
+        ),
         messages=[
             {"role": "user", "content": file_prompt},
             {"role": "assistant", "content": "{"},
@@ -565,6 +624,7 @@ def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
                 repo_path, feature_spec,
                 previous_errors=previous_errors if previous_errors else None,
                 debug_dir=attempt_debug_dir,
+                language=_profile.name,
             )
         except (json.JSONDecodeError, ValueError) as e:
             print(f"\n[Coordinator] Error: {e}")
