@@ -1,4 +1,5 @@
 anthropic
+openai
 flask
 flask-sqlalchemy
 pytest

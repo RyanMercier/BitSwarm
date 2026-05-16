@@ -34,13 +34,24 @@ MINER_ID = os.environ.get("MINER_ID") or f"miner-{uuid.uuid4().hex[:8]}"
 def _select_backend():
     """Resolve ``MINER_BACKEND`` to an ``execute_subtask`` callable.
 
-    Imported lazily so a miner running on the Anthropic SDK doesn't
-    need to import ``miner.agent_cc`` (and its ``validator.test_runners``
-    dependency) at module load, and vice versa.
+    Backends are imported lazily so a miner picks up only the deps it
+    needs (no openai package required for SDK runs; no anthropic SDK
+    required for subprocess runs, etc.).
+
+    Recognised values:
+      - "sdk" / "anthropic" (default): metered Anthropic API call loop
+      - "claude_code":                 ``claude`` CLI subprocess (subscription auth)
+      - "openai":                      any OpenAI-compatible Chat Completions endpoint
     """
     if MINER_BACKEND == "claude_code":
         from miner.agent_cc import execute_subtask as _impl
         print(f"[Miner {MINER_ID}] backend=claude_code (subprocess, no API spend)")
+        return _impl
+    if MINER_BACKEND == "openai":
+        from miner.agent_openai import execute_subtask as _impl
+        from config import OPENAI_BASE_URL, OPENAI_MODEL
+        print(f"[Miner {MINER_ID}] backend=openai "
+              f"(provider={OPENAI_BASE_URL or 'api.openai.com'}, model={OPENAI_MODEL})")
         return _impl
     if MINER_BACKEND in ("", "sdk", "anthropic"):
         from miner.agent import execute_subtask as _impl
@@ -48,7 +59,7 @@ def _select_backend():
         return _impl
     raise RuntimeError(
         f"Unknown MINER_BACKEND={MINER_BACKEND!r}. "
-        f"Set to 'sdk' (default) or 'claude_code'."
+        f"Set to 'sdk' (default), 'claude_code', or 'openai'."
     )
 
 

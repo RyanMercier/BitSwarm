@@ -16,7 +16,7 @@ not built. Skim the [TL;DR](#tldr) for the headline; scroll the
 
 BitSwarm decomposes a feature spec into parallel subtasks, ships each
 to a miner agent that produces a patch, then merges and scores. It
-works today in two end-to-end demo configurations and 234 unit /
+works today in two end-to-end demo configurations and 242 unit /
 integration tests cover the contracts.
 
 **What works live (verified end-to-end):**
@@ -37,12 +37,17 @@ integration tests cover the contracts.
 - Mixed backend modes (SDK coordinator + subprocess miner).
 - Five of seven languages (Java, C#, TypeScript, C, Rust)
   end-to-end.
+- **OpenAI-compatible miner backend** (`MINER_BACKEND=openai`).
+  Tool-schema translation + dispatcher are unit-tested; first
+  pipeline run on a non-Anthropic provider (DeepSeek, OpenRouter,
+  local vLLM, etc.) is the next polish task.
 
 **What's not built yet:**
 - Bittensor protocol layer (Axon / Dendrite / weight-setting /
   metagraph). Currently HTTP-only.
-- Multi-provider model support. Only Anthropic models work today,
-  via either the Anthropic SDK or the Claude Code CLI.
+- Native Gemini backend (function-declaration shape is different
+  enough to warrant its own adapter; OpenAI-compat covers most other
+  providers).
 - Real sandboxing (Docker exists but miners have full Bash).
 - Cryptographic verification (anti-collusion mining).
 - Test-first decomposition's live validation against a real run
@@ -55,7 +60,7 @@ integration tests cover the contracts.
 
 ### Test footprint
 
-234 tests passing across 12 test files. Coverage by area:
+242 tests passing across 13 test files. Coverage by area:
 
 | Area | Tests |
 |---|---|
@@ -69,6 +74,7 @@ integration tests cover the contracts.
 | Test-first decomposition wiring | 6 |
 | Bug-fix regressions | 13 |
 | End-to-end multilang validation | 13 |
+| Multi-LLM backend dispatch + tool translation | 8 |
 
 Run with `pytest tests/` from the repo root. Full suite completes
 in ~5 seconds.
@@ -109,25 +115,28 @@ across runs due to scorer artifacts since fixed.
 
 ### Branches
 
-```
-main                  - SDK-only path, no subprocess code. 195 tests.
-                        Safe to ship to anyone with an API key.
-
-claude-code-backend   - Adds subprocess backends + all the recent
-                        coordinator quality work. 234 tests.
-                        For Max/Pro/Team subscription users + the
-                        path forward for multi-provider.
-```
-
-Six commits on the branch beyond `main`:
+The previous two-branch split (`main` for SDK-only, `claude-code-backend`
+for subprocess) has been consolidated. `claude-code-backend` is merged
+into `main` so a single branch carries the full feature set: SDK,
+Claude Code subprocess, AND a generic OpenAI-compatible backend that
+covers DeepSeek / OpenRouter / vLLM / Ollama / Groq / Together / etc.
 
 ```
-9b66dff  #17 Drop-and-replace at merge time
-84dbaae  Five coordinator quality + speed wins (#7, #8, #11, #12, #15)
-8ec60c4  Multi-language coordinator: per-language profile registry
-d39ec9f  C++ Wordle spec: pin Game ctor + MINER_TIMEOUT_SECONDS knob
-4400a54  Multi-language Claude Code pipeline: C++ support + full e2e runner
-7c19220  Claude Code subprocess backend for miner + coordinator
+main   - SDK + Claude Code subprocess + OpenAI-compatible backends.
+         242 tests. Miner picks one of three (sdk / claude_code /
+         openai) via MINER_BACKEND. Coordinator picks one of two
+         (sdk / claude_code) via COORDINATOR_BACKEND; openai-coord
+         is on the roadmap.
+```
+
+Recent commits relevant to the merge + multi-LLM work:
+
+```
+(merge) Bring claude-code-backend onto main: subprocess miner,
+        subprocess coordinator, drop-and-replace, critique, preflight,
+        cache, multi-language profile registry.
+(new)   Multi-LLM miner: agent_openai.py + MINER_BACKEND=openai
+        dispatch + MINER_OPENAI_* config + test_backends.py.
 ```
 
 
@@ -246,11 +255,16 @@ Numbers in parens are approximate line counts.
 
 ### Coordinator stack
 
-`config.py` (45 lines)
-: Env var resolution. `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`,
-  `COORDINATOR_MODEL`, `MINER_MODEL`, `MAX_COORDINATOR_RETRIES`,
-  `SUBTASK_TIMEOUT_SECONDS`, `SUPPORTED_LANGUAGES`,
-  `MINER_BACKEND`, `COORDINATOR_BACKEND`.
+`config.py` (~85 lines)
+: Env var resolution. Anthropic block: `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_BASE_URL`, `COORDINATOR_MODEL`, `MINER_MODEL`,
+  `MAX_COORDINATOR_RETRIES`, `SUBTASK_TIMEOUT_SECONDS`,
+  `SUPPORTED_LANGUAGES`. Backend selection: `MINER_BACKEND`,
+  `COORDINATOR_BACKEND` (each `sdk` / `claude_code` / `openai`).
+  OpenAI-compatible block (only used when `MINER_BACKEND=openai`):
+  `MINER_OPENAI_API_KEY` (or `OPENAI_API_KEY`),
+  `MINER_OPENAI_BASE_URL` (or `OPENAI_BASE_URL`),
+  `MINER_OPENAI_MODEL` (or `OPENAI_MODEL`, default `gpt-4o-mini`).
 
 `validator/lang_profiles.py` (330 lines)
 : Per-language metadata registry. Seven `LanguageProfile`s with
@@ -383,6 +397,18 @@ Numbers in parens are approximate line counts.
   WebFetch. Per-language test command via the lang_profiles registry.
   Same `MinerResult` output shape.
 
+`miner/agent_openai.py` (~240 lines)
+: Generic OpenAI-compatible miner. Drives any provider that exposes
+  the OpenAI Chat Completions API (OpenAI, DeepSeek, OpenRouter,
+  Together, Groq, Fireworks, vLLM, Ollama, llama.cpp). Translates
+  Anthropic-style `TOOL_DEFINITIONS` (`input_schema`) into OpenAI
+  function-calling shape (`function.parameters`), then runs the same
+  tool-use loop as `agent.py` and returns the same `MinerResult`.
+  Configured via `MINER_OPENAI_API_KEY` / `MINER_OPENAI_BASE_URL` /
+  `MINER_OPENAI_MODEL`. Inherits `MinerResult` and `_generate_patch`
+  from `miner.agent` (so the anthropic package is still pulled in;
+  acceptable since it's a small dependency).
+
 `miner/tools.py`
 : Tool definitions for the SDK agent (file_read, file_write, bash).
   Workspace-scoped via `contextvars` to avoid race conditions when
@@ -401,12 +427,13 @@ Numbers in parens are approximate line counts.
 : System prompt for the SDK miner agent. Not used by the subprocess
   miner (claude-code has its own).
 
-`miner/server.py` (140 lines)
+`miner/server.py` (~150 lines)
 : FastAPI server. `POST /task`, `GET/POST /status`. Backend selection
-  via `_select_backend()`: `MINER_BACKEND=sdk|claude_code`. Lazy
-  import (so the SDK miner doesn't drag in subprocess code and vice
-  versa). Single-task gate via non-blocking `asyncio.Lock.acquire()`
-  → 409 if busy.
+  via `_select_backend()`: `MINER_BACKEND=sdk|claude_code|openai`.
+  Lazy import (so the SDK miner doesn't drag in subprocess code, the
+  subprocess miner doesn't drag in openai, etc.). Single-task gate
+  via non-blocking `asyncio.Lock.acquire()` → 409 if busy. Unknown
+  backend values raise a clear `RuntimeError` at startup.
 
 ### Validator stack
 
@@ -482,9 +509,14 @@ Numbers in parens are approximate line counts.
 | `MINER_CC_BINARY` | Subprocess miner | `claude` | Path to the `claude` CLI |
 | `CC_COORDINATOR_BINARY` | Subprocess coordinator | falls back to `MINER_CC_BINARY` | |
 | `REPAIR_CC_BINARY` | Subprocess repair | falls back to `MINER_CC_BINARY` | |
-| `MINER_BACKEND` | `miner/server.py` | `sdk` | `sdk` or `claude_code` |
-| `COORDINATOR_BACKEND` | `validator/decomposer.py` | `sdk` | Same |
+| `MINER_BACKEND` | `miner/server.py` | `sdk` | `sdk`, `claude_code`, or `openai` |
+| `COORDINATOR_BACKEND` | `validator/decomposer.py` | `sdk` | `sdk` or `claude_code` (openai coord is roadmap) |
 | `REPAIR_BACKEND` | `validator/merge.py` | auto | Explicit override of repair backend |
+| `MINER_OPENAI_API_KEY` / `OPENAI_API_KEY` | `miner/agent_openai.py` | (none) | Required when `MINER_BACKEND=openai` |
+| `MINER_OPENAI_BASE_URL` / `OPENAI_BASE_URL` | `miner/agent_openai.py` | OpenAI default | Point at any OpenAI-compatible provider |
+| `MINER_OPENAI_MODEL` / `OPENAI_MODEL` | `miner/agent_openai.py` | `gpt-4o-mini` | Provider's model id |
+| `MINER_OPENAI_MAX_TOKENS` | `miner/agent_openai.py` | 4096 | Per-completion output cap |
+| `MINER_OPENAI_MAX_API_CALLS` | `miner/agent_openai.py` | 40 | Hard cap on tool-loop turns |
 | `COORDINATOR_LANGUAGE` | Coordinator profile resolver | autodetect | One of: python, typescript, java, csharp, c, cpp, rust |
 | `MINER_LANGUAGE` | `agent_cc.py` test command + `test_runner.py` | autodetect via `COORDINATOR_LANGUAGE` | Per-language test verification |
 | `MAX_COORDINATOR_RETRIES` | `decompose()` | 3 | |
@@ -504,26 +536,32 @@ Numbers in parens are approximate line counts.
 
 ## Backend coverage
 
-| Component | Default | SDK path | Subprocess path | Switch |
-|---|---|---|---|---|
-| Coordinator (Phase 1, 1.5, 2) | SDK | `validator/decomposer.py` | `validator/decomposer_cc.py` | `COORDINATOR_BACKEND` |
-| Miner (subtask agent loop) | SDK | `miner/agent.py` | `miner/agent_cc.py` | `MINER_BACKEND` |
-| Repair miner | auto | `validator/repair.py` | `validator/repair_cc.py` | `REPAIR_BACKEND` |
-| Self-critique | follows coord | yes | yes | follows `COORDINATOR_BACKEND` |
-| Drop-and-replace | follows miner | yes | yes | follows `MINER_BACKEND` |
-| Cache | n/a | n/a | n/a | no LLM |
-| Pre-flight | n/a | n/a | n/a | no LLM |
-| Profile registry | n/a | n/a | n/a | no LLM |
+| Component | Default | SDK (`sdk`) | Subprocess (`claude_code`) | OpenAI-compat (`openai`) | Switch |
+|---|---|---|---|---|---|
+| Coordinator (Phase 1, 1.5, 2) | SDK | `validator/decomposer.py` | `validator/decomposer_cc.py` | not yet | `COORDINATOR_BACKEND` |
+| Miner (subtask agent loop) | SDK | `miner/agent.py` | `miner/agent_cc.py` | `miner/agent_openai.py` | `MINER_BACKEND` |
+| Repair miner | auto | `validator/repair.py` | `validator/repair_cc.py` | not yet | `REPAIR_BACKEND` |
+| Self-critique | follows coord | yes | yes | n/a | follows `COORDINATOR_BACKEND` |
+| Drop-and-replace | follows miner | yes | yes | yes (via agent_openai) | follows `MINER_BACKEND` |
+| Cache | n/a | n/a | n/a | n/a | no LLM |
+| Pre-flight | n/a | n/a | n/a | n/a | no LLM |
+| Profile registry | n/a | n/a | n/a | n/a | no LLM |
 
 Common combos:
 
-- **All SDK** (`main` branch): bills API tokens. Set `ANTHROPIC_API_KEY`.
-- **All subprocess** (`claude-code-backend` branch with backend env
-  vars set): zero API spend, uses the user's Claude subscription
-  via OAuth in `~/.claude/.credentials.json`.
-- **Mixed**: e.g. `COORDINATOR_BACKEND=sdk` for plan quality +
-  `MINER_BACKEND=claude_code` for cheap parallel mining. Supported,
-  not live-tested.
+- **All SDK**: bills Anthropic API tokens. Set `ANTHROPIC_API_KEY`.
+  This was the `main` branch pre-merge.
+- **All subprocess**: zero API spend, uses the user's Claude
+  subscription via OAuth in `~/.claude/.credentials.json`. Set
+  `COORDINATOR_BACKEND=claude_code MINER_BACKEND=claude_code`.
+- **Generic OpenAI miner** (production miners' choice): point
+  `MINER_OPENAI_BASE_URL` at any OpenAI-compatible endpoint and set
+  `MINER_OPENAI_API_KEY` + `MINER_OPENAI_MODEL`. Coordinator stays on
+  SDK or subprocess.
+- **Mixed**: e.g. `COORDINATOR_BACKEND=sdk` (strongest planner) +
+  `MINER_BACKEND=openai` with DeepSeek for cheap parallel mining.
+  Supported by dispatch + tool layer; first end-to-end live run is
+  the next polish task.
 
 
 ## Multi-language support
@@ -653,51 +691,53 @@ Ordered by leverage. Items in `()` are rough complexity estimates.
 
 ### Multi-provider model support
 
-This is the work that unlocks "any model": Anthropic, OpenAI, Gemini,
-DeepSeek, Chutes-served models, locally-hosted LLMs via vLLM/Ollama,
-etc.
+Goal: any model. Anthropic, OpenAI, Gemini, DeepSeek, Chutes-served
+models, locally-hosted LLMs via vLLM/Ollama, etc.
 
-4. **Provider abstraction layer** (~2 weeks)
-   - Define a `LLMBackend` protocol: `complete(messages, tools,
-     model, max_tokens) -> CompletionResult`. Same shape for all
-     providers.
-   - Implementations:
-     - `backends/anthropic_sdk.py` — existing SDK code, wrapped
-     - `backends/anthropic_cli.py` — existing claude-code subprocess
-     - `backends/openai_compat.py` — covers OpenAI, DeepSeek, vLLM,
-       Chutes (their OpenAI-shaped HTTP endpoint), Together,
-       Fireworks, Groq, Anthropic-via-Vertex-when-using-OpenAI-shape
-     - `backends/gemini.py` — native Gemini SDK (tool use shape is
-       different enough to warrant its own backend)
-     - `backends/litellm_proxy.py` — one ring to bind them all;
-       slower than native but lets you point at any model with a URL
-   - Routing: `LLM_BACKEND=openai:deepseek-reasoner` or
-     `LLM_BACKEND=gemini:gemini-2.0-flash` resolves to backend +
-     model. Per-component overrides (coordinator vs miner) via
-     existing env vars.
+**Done (in this branch):**
 
-5. **Tool-use abstraction** (~1 week)
-   - Anthropic tool_use format ≠ OpenAI function calling format ≠
-     Gemini function declarations. Normalize via the backend layer
-     so `miner/agent.py` doesn't care which provider it's talking
-     to.
-   - Test against at least three providers (Anthropic + OpenAI +
-     Gemini) with the same Wordle spec.
+- **OpenAI-compatible miner backend.** `miner/agent_openai.py` drives
+  any Chat-Completions-shaped provider. Tool translation (Anthropic
+  `input_schema` -> OpenAI `function.parameters`) is unit-tested.
+  Dispatch via `MINER_BACKEND=openai`. Covers DeepSeek, OpenRouter,
+  Together, Fireworks, Groq, vLLM, llama.cpp, Ollama, Anthropic
+  via OpenAI-compat, etc.
 
-6. **Prompt caching strategy per provider** (~1 week)
+**Remaining:**
+
+4. **Live-test the openai backend end-to-end** (small)
+   - Run the Python Wordle pipeline with `MINER_BACKEND=openai`
+     against DeepSeek-Coder and a local vLLM, capture score deltas.
+   - Surface and fix the inevitable small things (tool_choice
+     quirks per provider, token-limit defaults, retry markers).
+
+5. **Coordinator on the openai backend** (~half week)
+   - Today coordinator is SDK-only or claude-code-only. Add
+     `validator/decomposer_oai.py` so a fully-self-hosted setup
+     (vLLM coord + vLLM miners) is possible.
+   - Same shape as `decomposer_cc.py`; the heavy lifting is sharing
+     the Phase 1 / 1.5 / 2 prompt set across backends without
+     copy-paste drift.
+
+6. **Native Gemini backend** (~1 week)
+   - Gemini's function-declaration shape is different enough from
+     OpenAI's that an OpenAI-compat wrapper is awkward. Adapter
+     under `miner/agent_gemini.py` (or via Vertex's OpenAI-compat
+     endpoint if that's good enough on tool use).
+
+7. **Prompt caching strategy per provider** (~1 week)
    - Anthropic: explicit `cache_control` markers (current behavior).
-   - OpenAI: prompt caching is automatic on supported models;
-     enable transparently.
+   - OpenAI / DeepSeek: automatic prefix caching on supported models;
+     just keep the warm-start message at the front. Already true.
    - Gemini: implicit caching via the SDK; needs different message
      ordering.
-   - DeepSeek / Chutes / vLLM: provider-specific or none.
-   - Coordinator's repeated prompts (Phase 1 prompts share the repo
-     dump; cache that) — meaningful $-cost reduction once it works
-     across providers.
+   - The coordinator's repeated prompts (Phase 1 shares the repo
+     dump) are the biggest dollar lever once it works across all
+     providers.
 
-7. **Streaming output for non-Anthropic** (~half week)
-   - Currently `decomposer.py:stream_json` is Anthropic-streaming.
-     Generalize via the backend layer's `stream_complete()`.
+8. **Streaming output for non-Anthropic** (~half week)
+   - `decomposer.py:stream_json` is Anthropic-streaming. Generalize
+     for the openai coordinator when (5) lands.
 
 ### Bittensor subnet (Phase 5)
 
@@ -829,18 +869,26 @@ For someone picking up the repo for the first time.
 ```bash
 git clone https://github.com/RyanMercier/BitSwarm.git
 cd BitSwarm
-git checkout claude-code-backend          # full feature set
 pip install -r requirements.txt
+python -m pytest tests/                    # 242 tests, ~5s
 
-# Option A: with an Anthropic API key
+# Option A: Anthropic API
 export ANTHROPIC_API_KEY=sk-ant-...
-python -m pytest tests/                    # 234 tests, ~5s
 python demo/run_pipeline.py --spec demo/spec_wordle.txt --out out/run1
 
-# Option B: with a Claude subscription (Max/Pro/Team), no API spend
+# Option B: Claude subscription (Max/Pro/Team), zero API spend
 npm install -g @anthropic-ai/claude-code
 claude auth login
 export MINER_BACKEND=claude_code COORDINATOR_BACKEND=claude_code
+python demo/run_pipeline.py --spec demo/spec_wordle.txt --out out/run1
+
+# Option C: any OpenAI-compatible provider (DeepSeek, OpenRouter,
+#           Together, Groq, vLLM, Ollama, ...). Coordinator stays on
+#           SDK or claude_code; only the miner switches.
+export MINER_BACKEND=openai
+export MINER_OPENAI_API_KEY=sk-...
+export MINER_OPENAI_BASE_URL=https://api.deepseek.com
+export MINER_OPENAI_MODEL=deepseek-chat
 python demo/run_pipeline.py --spec demo/spec_wordle.txt --out out/run1
 
 # Then poke at the result:
@@ -885,9 +933,10 @@ BitSwarm/
 │
 ├── miner/
 │   ├── server.py               FastAPI server + backend selection
-│   ├── agent.py                SDK miner (tool-use loop)
+│   ├── agent.py                SDK miner (Anthropic tool-use loop)
 │   ├── agent_cc.py             subprocess miner (claude -p)
-│   ├── tools.py                tool definitions for SDK miner
+│   ├── agent_openai.py         OpenAI-compatible miner (any provider)
+│   ├── tools.py                tool definitions for SDK + openai miners
 │   ├── recovery.py             retry / hard-reset state machine
 │   ├── warm_start.py           cached warm-start prompt builder
 │   └── prompts.py              SDK miner system prompt
@@ -935,7 +984,7 @@ BitSwarm/
 │   ├── spec_minidb.txt         stretch demo
 │   └── target_repo/            empty starter repo
 │
-├── tests/                      234 tests
+├── tests/                      242 tests
 │   ├── test_protocol.py
 │   ├── test_transport.py
 │   ├── test_dispatch.py
@@ -943,11 +992,12 @@ BitSwarm/
 │   ├── test_validator_checks_python.py
 │   ├── test_validator_multilang.py
 │   ├── test_lang_profiles.py
-│   ├── test_parsers_python.py  (and 6 more per-language)
+│   ├── test_parsers_c.py       (and 5 more: cpp, csharp, java, rust, typescript)
 │   ├── test_cache.py
 │   ├── test_critique_preflight.py
 │   ├── test_test_first.py
-│   └── test_drop_replace.py
+│   ├── test_drop_replace.py
+│   └── test_backends.py        backend dispatch + tool translation
 │
 └── docs/
     └── STATUS.md               this file
