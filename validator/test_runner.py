@@ -11,14 +11,58 @@ _LANGUAGE = (os.environ.get("MINER_LANGUAGE", "")
 def _argv_for(test_file: str) -> list[str]:
     """Build the shell-invocable test command for a single test file.
 
-    For C++ runs (``MINER_LANGUAGE=cpp`` or ``COORDINATOR_LANGUAGE=cpp``),
-    derive the Makefile target from the file name: ``tests/test_x.cpp``
-    -> ``make tests/test_x && ./tests/test_x``. For everything else,
-    invoke pytest on the file directly.
+    Mirrors ``miner/agent_cc.py:_test_command_for`` so the merge-time
+    cross-compile runs the same command the miner used to verify its
+    own work. Without this dispatch every non-Python / non-C++ language
+    fell through to ``pytest`` and immediately failed (running e.g.
+    ``pytest tests/test_words.c`` is nonsense).
+
+    Returns the argv list passed to ``subprocess.run``. The shell
+    wrappers (`sh -c`) are kept so build-then-run pipelines like
+    ``make X && ./X`` stay atomic.
     """
-    if _LANGUAGE in ("cpp", "c++") and test_file.endswith(".cpp"):
-        bin_path = test_file[:-4]  # drop ".cpp"
+    base = os.path.basename(test_file)
+    stem, ext = os.path.splitext(base)
+
+    # C / C++: build the matching test binary via the project Makefile
+    # then run it. ``tests/test_words.c`` -> ``make tests/test_words &&
+    # ./tests/test_words``.
+    if _LANGUAGE in ("c",) and ext == ".c":
+        bin_path = test_file[: -len(ext)]
         return ["sh", "-c", f"make {bin_path} && ./{bin_path}"]
+    if _LANGUAGE in ("cpp", "c++") and ext in (".cpp", ".cc", ".cxx"):
+        bin_path = test_file[: -len(ext)]
+        return ["sh", "-c", f"make {bin_path} && ./{bin_path}"]
+
+    # TypeScript: vitest runs the file directly.
+    if _LANGUAGE in ("typescript", "ts", "javascript", "js") and ext in (
+        ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
+    ):
+        return ["sh", "-c", f"npx vitest run {test_file}"]
+
+    # Java: ``mvn test -Dtest=ClassName``. Path is something like
+    # ``src/test/java/wordle/WordsTest.java`` -> filter by ``WordsTest``.
+    if _LANGUAGE == "java" and ext == ".java":
+        return [
+            "sh", "-c",
+            f"mvn -q -DfailIfNoTests=false test -Dtest={stem}",
+        ]
+
+    # C#: ``dotnet test --filter FullyQualifiedName~ClassName``. Path
+    # ``tests/WordsServiceTests.cs`` -> filter by ``WordsServiceTests``.
+    if _LANGUAGE in ("csharp", "cs", "dotnet") and ext == ".cs":
+        return [
+            "sh", "-c",
+            f'dotnet test --filter "FullyQualifiedName~{stem}"',
+        ]
+
+    # Rust: ``cargo test --test <stem>`` runs the matching file under
+    # ``tests/`` as an integration test target. ``tests/test_words.rs``
+    # -> ``cargo test --test test_words``.
+    if _LANGUAGE in ("rust", "rs") and ext == ".rs":
+        return ["sh", "-c", f"cargo test --test {stem}"]
+
+    # Default: pytest (Python and anything unset).
     return [sys.executable, "-m", "pytest", test_file, "-v", "--tb=short"]
 
 
