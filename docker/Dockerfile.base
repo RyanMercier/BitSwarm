@@ -1,0 +1,104 @@
+# BitSwarm base image: every per-language toolchain the validator and
+# miner might need to run / build / test code in the 7 supported
+# languages (python, typescript, java, csharp, c, cpp, rust), plus the
+# ``claude`` CLI for the claude_code backend.
+#
+# This image is heavy (~2.5 GB). It exists so the miner and validator
+# images can FROM it and stay light. Build it once, then docker layer
+# caching reuses every toolchain layer across rebuilds of the slim
+# images.
+#
+# Build:
+#   docker build -f docker/Dockerfile.base -t bitswarm-base:latest .
+#
+# Use:
+#   FROM bitswarm-base:latest
+#   COPY validator/ ./validator/
+#   ...
+#
+# Bake date: 2026-05. Toolchain versions roughly track debian-bookworm
+# stable + the upstream LTS / current of each language.
+
+FROM python:3.11-slim-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# -- Native build tools + git ---------------------------------------------
+# build-essential covers gcc / g++ / make for the C/C++ pipelines.
+# ca-certificates + curl + gnupg are needed to fetch the .NET and
+# Node apt repos.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        lsb-release \
+        pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# -- Node 20 + npm + claude CLI (TypeScript stack and claude_code backend) -
+# nodesource_setup adds the NodeSource apt repo and installs node 20.
+# The ``claude`` CLI ships as ``@anthropic-ai/claude-code`` on npm.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g \
+        @anthropic-ai/claude-code \
+        typescript \
+        vitest \
+    && npm cache clean --force \
+    && rm -rf /var/lib/apt/lists/*
+
+# -- JDK 17 + Maven (Java stack) ------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openjdk-17-jdk-headless \
+        maven \
+    && rm -rf /var/lib/apt/lists/*
+
+# -- .NET 8 SDK (C# stack) ------------------------------------------------
+# Microsoft's debian-12 package puts dotnet at /usr/bin/dotnet.
+RUN curl -fsSL https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
+        -o /tmp/ms.deb \
+    && dpkg -i /tmp/ms.deb \
+    && rm /tmp/ms.deb \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends dotnet-sdk-8.0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# -- Rust + Cargo (Rust stack) --------------------------------------------
+# Debian's rustc + cargo packages are simpler and ~600 MB lighter than a
+# full rustup install. They're a bit behind upstream but plenty for the
+# stub + test workloads BitSwarm runs.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        rustc \
+        cargo \
+    && rm -rf /var/lib/apt/lists/*
+
+# -- Python runtime deps --------------------------------------------------
+# Pre-install the shared requirements so miner / validator images don't
+# re-run pip on every build. Layer order matters: keep this near the end
+# so changes to requirements.txt don't invalidate the toolchain layers.
+WORKDIR /app
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# -- Smoke check (fails the build if any toolchain didn't land) -----------
+# Each tool is invoked with a flag that's guaranteed not to ask for
+# input or hit the network. Output piped through ``head`` so multi-line
+# version banners don't blow up the build log.
+RUN set -eux \
+    && python --version \
+    && pip --version > /dev/null \
+    && node --version \
+    && npm --version \
+    && command -v claude > /dev/null && echo "claude CLI: $(command -v claude)" \
+    && gcc --version | head -1 \
+    && g++ --version | head -1 \
+    && make --version | head -1 \
+    && java -version 2>&1 | head -1 \
+    && mvn --version | head -1 \
+    && dotnet --version \
+    && rustc --version \
+    && cargo --version

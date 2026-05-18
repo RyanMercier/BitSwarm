@@ -1,12 +1,21 @@
-FROM python:3.11-slim
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+# Validator image: all toolchains (validator runs cross-compile +
+# integration tests + repair miners, so needs every language toolchain
+# the miners do).
+#
+# Pre-build the base once:
+#   docker build -f docker/Dockerfile.base -t bitswarm-base:latest .
+FROM bitswarm-base:latest
+
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
 COPY validator/ ./validator/
 COPY miner/ ./miner/
 COPY protocol/ ./protocol/
 COPY config.py .
-ENV VALIDATOR_HOST=0.0.0.0 VALIDATOR_PORT=8080
+
+ENV VALIDATOR_HOST=0.0.0.0 \
+    VALIDATOR_PORT=8080 \
+    COORDINATOR_BACKEND=claude_code
+
 EXPOSE 8080
 CMD ["python", "-m", "validator.server"]

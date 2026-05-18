@@ -1,79 +1,144 @@
-# Local dev stack: 1 validator + 3 miners on a shared bridge network.
+# Local BitSwarm dev stack: 1 validator + 3 miners on a shared bridge
+# network. Both images include all 7 language toolchains (Python,
+# TypeScript, Java, C#, C, C++, Rust) plus the ``claude`` CLI.
 #
-# Usage:
-#   cd docker/
-#   docker compose --env-file ../.env up --build
+# Quick start:
+#   1. Pre-build the shared base image (heavy, run once):
+#        docker build -f docker/Dockerfile.base -t bitswarm-base:latest .
 #
-# Then submit a job to the validator:
-#   curl -X POST http://localhost:8080/submit \
-#     -H 'Content-Type: application/json' \
-#     -d '{
-#       "spec": "...",
-#       "target_repo_path": "/work/target_repo",
-#       "miner_urls": ["http://miner-1:8081", "http://miner-2:8081", "http://miner-3:8081"]
-#     }'
+#   2. Author or symlink a ``.env`` at the project root with the keys
+#      relevant to your backend choice (see "Backend options" below).
+#
+#   3. From the docker/ directory:
+#        docker compose --env-file ../.env up --build
+#
+#   4. Submit a job to the validator:
+#        curl -X POST http://localhost:8080/submit \
+#          -H 'Content-Type: application/json' \
+#          -d '{
+#            "spec": "...",
+#            "target_repo_path": "/work/demo/target_repo",
+#            "miner_urls": ["http://miner-1:8081", "http://miner-2:8081", "http://miner-3:8081"]
+#          }'
+#
+# Backend options (set via .env, all three are independent for miner
+# vs coordinator):
+#
+#   "sdk" (default)
+#     Anthropic API. Required: ANTHROPIC_API_KEY.
+#
+#   "claude_code"
+#     ``claude`` CLI subprocess on a Max / Pro / Team subscription.
+#     Required: mount your host credentials into each container.
+#     Uncomment the ``volumes:`` line referencing ~/.claude in each
+#     service below (or in compose.override.yml).
+#
+#   "openai"
+#     Any OpenAI-compatible provider (DeepSeek, OpenRouter, vLLM,
+#     Ollama, etc.). Miner-only today. Required:
+#     MINER_OPENAI_API_KEY, MINER_OPENAI_BASE_URL, MINER_OPENAI_MODEL.
+
+x-shared-env: &shared_env
+  # Backend selection. Override in .env.
+  MINER_BACKEND: "${MINER_BACKEND:-sdk}"
+  COORDINATOR_BACKEND: "${COORDINATOR_BACKEND:-sdk}"
+
+  # Anthropic SDK path. Empty when running ``claude_code`` / ``openai``.
+  ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+  ANTHROPIC_BASE_URL: "${ANTHROPIC_BASE_URL:-}"
+
+  # OpenAI-compatible path. Pick whichever provider gives the best
+  # score-per-dollar; the same env vars work for all of them.
+  MINER_OPENAI_API_KEY: "${MINER_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}"
+  MINER_OPENAI_BASE_URL: "${MINER_OPENAI_BASE_URL:-${OPENAI_BASE_URL:-}}"
+  MINER_OPENAI_MODEL: "${MINER_OPENAI_MODEL:-${OPENAI_MODEL:-gpt-4o-mini}}"
+
+  # Language hint (Python = default). Influences the coordinator's
+  # Phase 1 plan and the merge-time test runner.
+  COORDINATOR_LANGUAGE: "${COORDINATOR_LANGUAGE:-python}"
+  MINER_LANGUAGE: "${MINER_LANGUAGE:-${COORDINATOR_LANGUAGE:-python}}"
 
 services:
   validator:
     build:
       context: ..
       dockerfile: docker/Dockerfile.validator
+    image: bitswarm-validator:latest
     container_name: bitswarm-validator
     ports:
       - "8080:8080"
     environment:
+      <<: *shared_env
       VALIDATOR_HOST: "0.0.0.0"
       VALIDATOR_PORT: "8080"
       VALIDATOR_ID: "validator-local"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
     networks:
       - bitswarm
     depends_on:
       - miner-1
       - miner-2
       - miner-3
-    # Validator needs the target repo on its filesystem. Bind-mount the
-    # parent project directory so submitted target_repo_path values can
-    # point at /work/<your-target>.
     volumes:
+      # Project tree mounted read-only so the validator can resolve
+      # `target_repo_path: /work/demo/target_repo` etc.
       - ..:/work:ro
+      # Uncomment for the claude_code backend so the CLI inherits your
+      # host OAuth (Max / Pro / Team subscription, no API spend):
+      # - ~/.claude:/root/.claude:ro
+      # BitSwarm decomposition cache. Persists across container rebuilds.
+      - bitswarm-cache:/root/.bitswarm
 
   miner-1:
     build:
       context: ..
       dockerfile: docker/Dockerfile.miner
+    image: bitswarm-miner:latest
     container_name: bitswarm-miner-1
     environment: &miner_env
+      <<: *shared_env
       MINER_HOST: "0.0.0.0"
       MINER_PORT: "8081"
       MINER_ID: "miner-1"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
-    # No published ports: miners are reached via the internal bridge only.
     networks:
       - bitswarm
+    volumes:
+      # Uncomment for claude_code:
+      # - ~/.claude:/root/.claude:ro
+      - bitswarm-cache:/root/.bitswarm
 
   miner-2:
     build:
       context: ..
       dockerfile: docker/Dockerfile.miner
+    image: bitswarm-miner:latest
     container_name: bitswarm-miner-2
     environment:
       <<: *miner_env
       MINER_ID: "miner-2"
     networks:
       - bitswarm
+    volumes:
+      # - ~/.claude:/root/.claude:ro
+      - bitswarm-cache:/root/.bitswarm
 
   miner-3:
     build:
       context: ..
       dockerfile: docker/Dockerfile.miner
+    image: bitswarm-miner:latest
     container_name: bitswarm-miner-3
     environment:
       <<: *miner_env
       MINER_ID: "miner-3"
     networks:
       - bitswarm
+    volumes:
+      # - ~/.claude:/root/.claude:ro
+      - bitswarm-cache:/root/.bitswarm
 
 networks:
   bitswarm:
     driver: bridge
+
+volumes:
+  bitswarm-cache:

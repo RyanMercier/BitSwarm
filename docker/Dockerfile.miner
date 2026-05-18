@@ -1,11 +1,25 @@
-FROM python:3.11-slim
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+# Miner image: every language toolchain + the agent.
+#
+# Pre-build the base once:
+#   docker build -f docker/Dockerfile.base -t bitswarm-base:latest .
+#
+# Then docker-compose / docker build picks up this thin layer.
+FROM bitswarm-base:latest
+
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Source code goes in last so iterating on miner code reuses every
+# toolchain layer.
 COPY miner/ ./miner/
 COPY protocol/ ./protocol/
+COPY validator/ ./validator/
 COPY config.py .
-ENV MINER_HOST=0.0.0.0 MINER_PORT=8081
+
+# Default backend: claude_code (works with mounted ~/.claude/.credentials.json).
+# Override per-miner via docker-compose env to pick "sdk", "openai", etc.
+ENV MINER_HOST=0.0.0.0 \
+    MINER_PORT=8081 \
+    MINER_BACKEND=claude_code
+
 EXPOSE 8081
 CMD ["python", "-m", "miner.server"]
