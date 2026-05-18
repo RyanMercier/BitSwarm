@@ -631,27 +631,35 @@ def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
             previous_errors = [f"Your response was not valid JSON. Error: {e}"]
             continue
 
-        # Self-critique pass (cheap relative to mining). Catches the
+        # Self-critique pass (cheap relative to mining). Catches
         # cross-file interface drift that Phase 1.5 can't reach for
-        # non-Python languages. Treated as advisory errors when found.
+        # non-Python languages.
+        #
+        # Advisory only: critique findings are LOGGED and stashed on
+        # the decomposition dict for downstream visibility, but they
+        # do NOT trigger a retry on their own. A full re-decomposition
+        # costs 1-3 minutes of claude work and usually loses good
+        # stubs; that's the wrong trade for paper-cut issues like
+        # "pom.xml missing mockito-core". When ``validate_fn`` flags
+        # real errors and we're retrying anyway, the critique items
+        # are appended to the retry feedback so the next attempt sees
+        # them too.
         from validator.critique import critique as _critique
         critique_issues = _critique(decomposition)
         if critique_issues:
-            print(f"[Coordinator] critique flagged {len(critique_issues)} issue(s):")
+            print(f"[Coordinator] critique flagged {len(critique_issues)} issue(s) "
+                  "(advisory; not triggering a retry):")
             for issue in critique_issues:
                 print(f"  ! {issue}")
+            decomposition["_critique_notes"] = list(critique_issues)
 
         if validate_fn is None:
-            if critique_issues:
-                previous_errors = critique_issues
-                continue
             saved = _cache.save(_cache_key, decomposition)
             if saved:
                 print(f"[Coordinator] cached at {saved}")
             return decomposition
 
         errors = validate_fn(decomposition, repo_path)
-        errors = list(errors) + critique_issues
         if not errors:
             print(f"[Coordinator] Validation passed on attempt {attempt}")
             saved = _cache.save(_cache_key, decomposition)
@@ -659,6 +667,10 @@ def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
                 print(f"[Coordinator] cached at {saved}")
             return decomposition
 
+        # validate_fn surfaced real errors. Fold the critique items
+        # into the retry feedback so the next attempt sees them too;
+        # critique alone never gets us here.
+        errors = list(errors) + critique_issues
         print(f"[Coordinator] Validation failed with {len(errors)} errors:")
         for err in errors:
             print(f"  - {err}")

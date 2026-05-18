@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 from config import COORDINATOR_MODEL
 from validator.decomposer import (
@@ -55,11 +56,28 @@ _DEFAULT_BINARY = (os.environ.get("CC_COORDINATOR_BINARY", "")
 _DEFAULT_MODEL = os.environ.get("CC_COORDINATOR_MODEL", "") or COORDINATOR_MODEL
 
 
+_EMPTY_STDOUT_RETRIES = int(
+    os.environ.get("BITSWARM_CC_EMPTY_RETRIES", "3")
+)
+_EMPTY_STDOUT_BACKOFF_SECONDS = float(
+    os.environ.get("BITSWARM_CC_EMPTY_BACKOFF", "6")
+)
+
+
 def _run_claude(prompt: str, system_prompt: str, timeout: int = 600) -> str:
     """Invoke ``claude -p`` and return the response text.
 
     Raises ``RuntimeError`` if the subprocess fails or claude isn't on
     the path. ``ValueError`` if the output isn't JSON-parseable.
+
+    Handles a known ``claude -p`` transient where the CLI exits 0 with
+    empty stdout. When that happens we retry internally a few times
+    (default 3) with a short backoff before bubbling up to the outer
+    coordinator retry budget. The transient almost always clears in a
+    single re-attempt; the prior behaviour of burning a whole top-level
+    coordinator attempt for it was throwing away viable work whenever
+    the flake compounded with the critique-triggered retry loop. Tune
+    with ``BITSWARM_CC_EMPTY_RETRIES`` / ``BITSWARM_CC_EMPTY_BACKOFF``.
     """
     if shutil.which(_DEFAULT_BINARY) is None and not os.path.isfile(_DEFAULT_BINARY):
         raise RuntimeError(
@@ -91,32 +109,50 @@ def _run_claude(prompt: str, system_prompt: str, timeout: int = 600) -> str:
         "--disable-slash-commands",
     ]
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"coordinator subprocess timed out after {timeout}s"
-        ) from exc
+    last_err: str | None = None
+    for attempt in range(1, _EMPTY_STDOUT_RETRIES + 1):
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # Timeouts mean real work was happening; surface immediately
+            # rather than retrying. The outer retry can decide.
+            raise RuntimeError(
+                f"coordinator subprocess timed out after {timeout}s"
+            ) from exc
 
-    if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or "")[-800:]
-        raise RuntimeError(
-            f"coordinator subprocess rc={proc.returncode}\n{tail}"
-        )
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or "")[-800:]
+            raise RuntimeError(
+                f"coordinator subprocess rc={proc.returncode}\n{tail}"
+            )
 
-    raw = (proc.stdout or "").strip()
-    if not raw:
-        raise ValueError(
-            f"coordinator subprocess returned empty stdout; "
-            f"stderr tail: {(proc.stderr or '')[-400:]}"
-        )
-    return raw
+        raw = (proc.stdout or "").strip()
+        if raw:
+            return raw
+
+        # Empty-stdout transient. Retry quietly a few times before
+        # giving up. Log every attempt so the cause is visible without
+        # forcing the user to grep the debug dir.
+        last_err = (proc.stderr or "")[-400:]
+        if attempt < _EMPTY_STDOUT_RETRIES:
+            print(
+                f"  [Phase, cc] empty stdout from claude -p "
+                f"(attempt {attempt}/{_EMPTY_STDOUT_RETRIES}); "
+                f"retrying in {_EMPTY_STDOUT_BACKOFF_SECONDS}s",
+                flush=True,
+            )
+            time.sleep(_EMPTY_STDOUT_BACKOFF_SECONDS)
+
+    raise ValueError(
+        f"coordinator subprocess returned empty stdout after "
+        f"{_EMPTY_STDOUT_RETRIES} attempts; stderr tail: {last_err or ''}"
+    )
 
 
 def _save_debug(text: str, debug_path: str | None) -> None:
