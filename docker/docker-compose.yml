@@ -83,8 +83,10 @@ services:
       # `target_repo_path: /work/demo/target_repo` etc.
       - ..:/work:ro
       # Uncomment for the claude_code backend so the CLI inherits your
-      # host OAuth (Max / Pro / Team subscription, no API spend):
-      # - ~/.claude:/root/.claude:ro
+      # host OAuth (Max / Pro / Team subscription, no API spend). NOT
+      # read-only: the CLI rewrites .credentials.json when the OAuth
+      # token refreshes. See docker/README.md for the permissions trap.
+      # - ~/.claude:/root/.claude
       # BitSwarm decomposition cache. Persists across container rebuilds.
       - bitswarm-cache:/root/.bitswarm
 
@@ -102,8 +104,11 @@ services:
     networks:
       - bitswarm
     volumes:
-      # Uncomment for claude_code:
-      # - ~/.claude:/root/.claude:ro
+      # Uncomment for claude_code backend so the CLI inherits your host
+      # OAuth. NOT read-only: the CLI rewrites .credentials.json when
+      # the OAuth token refreshes (every few hours). Mounting :ro will
+      # fail silently on the first refresh.
+      # - ~/.claude:/root/.claude
       - bitswarm-cache:/root/.bitswarm
 
   miner-2:

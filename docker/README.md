@@ -66,19 +66,85 @@ MINER_OPENAI_MODEL=deepseek-chat
 
 ## Claude Code auth in containers
 
-The CLI reads `~/.claude/.credentials.json` for OAuth. For the
-`claude_code` backend in containers, mount your host's credentials in
-read-only and the CLI inside the container will pick them up:
+The CLI reads `~/.claude/.credentials.json` for OAuth. To make your
+host login work inside the containers, bind-mount your host's
+`~/.claude` directory at `/root/.claude`:
 
 ```yaml
 # in each service block in docker-compose.yml
 volumes:
-  - ~/.claude:/root/.claude:ro
+  - ~/.claude:/root/.claude
 ```
 
-The compose file ships with these lines commented; uncomment them when
-you set `*_BACKEND=claude_code`. (Don't mount them otherwise; the bind
-adds nothing for the SDK / openai paths and clutters the logs.)
+The compose file ships with these lines commented; uncomment them in
+every service (validator + each miner) when you set
+`*_BACKEND=claude_code`. Leave them commented for the `sdk` /
+`openai` paths.
+
+### Why not `:ro`
+
+The OAuth token in `.credentials.json` refreshes every few hours. The
+CLI writes the new token back to the file; with `:ro` that write
+fails and the very next call sees an expired token. Mount
+read-write.
+
+### One-time host setup
+
+Inside WSL / Linux:
+
+```bash
+# Install the CLI on the host once
+npm install -g @anthropic-ai/claude-code
+
+# Authenticate (opens a browser-style flow)
+claude auth login
+
+# Verify the credentials file exists
+ls -la ~/.claude/.credentials.json
+```
+
+After that, the bind mount makes the same auth visible to every
+container that mounts it.
+
+### File ownership trap (root inside the container)
+
+The default container user is `root` (UID 0). When the CLI rewrites
+`.credentials.json` from inside the container, the file ends up owned
+by root on the host filesystem. `.credentials.json` is mode 0600 so
+your host user (typically UID 1000) loses access after the first
+in-container refresh. To recover:
+
+```bash
+sudo chown $USER:$USER ~/.claude/.credentials.json
+```
+
+To avoid this entirely, run the containers as your host UID by adding
+the following to each service:
+
+```yaml
+user: "${UID:-1000}:${GID:-1000}"
+```
+
+The toolchain images don't require root at runtime (only at build
+time), so this works. Trade-off: HOME inside the container must point
+somewhere writeable by your UID. The simplest fix is to also set
+`HOME=/work` (or any other writable bind mount) so the CLI's session
+state has a home to land in. Out of scope for the default compose;
+flagged here so it doesn't surprise you when you go to production.
+
+### Disposable alternative
+
+If you don't want to share host credentials at all, exec into a
+running container and authenticate inside it:
+
+```bash
+docker exec -it bitswarm-miner-1 bash
+claude auth login          # follow the prompts
+exit
+```
+
+The auth lives inside that container's filesystem and dies with it.
+Good for one-off experiments; tedious for the multi-miner stack.
 
 
 ## Submitting jobs
