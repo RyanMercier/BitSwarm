@@ -142,7 +142,7 @@ def validate_decomposition(decomposition: dict, repo_path: str) -> list[str]:
     for path, content in all_file_contents.items():
         parser = parsers.detect(path, scaffolded_files=_scaffolded_for_detect)
         if parser is None:
-            continue  # unknown extension — skip parse check
+            continue  # unknown extension  -  skip parse check
         try:
             tree = parser.parse(content, path)
         except ParseError as e:

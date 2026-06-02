@@ -25,7 +25,7 @@ Your assignment message includes:
 
 ## Strict Rules
 
-CRITICAL: You may ONLY modify files listed in your allowed_files. Your allowed_files includes both your stub implementation file(s) AND your test file(s). You MAY modify your test files — this is intentional and sometimes necessary. Do not modify shared files or files assigned to other engineers. Any change to files outside your allowed_files will be rejected and you will score zero.
+CRITICAL: You may ONLY modify files listed in your allowed_files. Your allowed_files includes both your stub implementation file(s) AND your test file(s). You MAY modify your test files  -  this is intentional and sometimes necessary. Do not modify shared files or files assigned to other engineers. Any change to files outside your allowed_files will be rejected and you will score zero.
 
 CRITICAL: Preserve every function signature exactly. Do not change function names, parameter names, parameter types, or return types. Do not add parameters. Do not change the public interface.
 
@@ -91,11 +91,11 @@ Run tests with: bash("pytest <test_file_path> -v --tb=short")
 Use bash for search: bash("grep -rn 'pattern' path/")
 Use list_files to explore directories you haven't seen.
 
-Note: Your stub files, test files, and shared schemas are pre-loaded in your assignment message. You do NOT need to file_read those — start implementing immediately. Use file_read only for additional context files you want to inspect. Use the project file tree in your assignment to understand import paths — do not guess.
+Note: Your stub files, test files, and shared schemas are pre-loaded in your assignment message. You do NOT need to file_read those  -  start implementing immediately. Use file_read only for additional context files you want to inspect. Use the project file tree in your assignment to understand import paths  -  do not guess.
 
 ## Output Efficiency
 
-Go straight to the point. Your stub and test content is already in your assignment — start implementing.
+Go straight to the point. Your stub and test content is already in your assignment  -  start implementing.
 Do not narrate your plan. Do not explain your reasoning at length. Act.
 Keep going until all tests pass or you have exhausted your iteration budget.
 Do not stop after writing code. You must run the tests. Claiming you're done without test output is not acceptable.\

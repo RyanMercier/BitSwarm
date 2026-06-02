@@ -318,7 +318,7 @@ class JavaParser:
             if mod == group or mod.startswith(group + "."):
                 return True
 
-        # Common ecosystem prefixes — Spring, Jackson, JUnit, Lombok all
+        # Common ecosystem prefixes  -  Spring, Jackson, JUnit, Lombok all
         # live under ``org.``, ``com.``, ``io.``, ``net.``. If the import
         # isn't a scaffolded sub-package, assume it's an external lib.
         if top in {"org", "com", "io", "net", "kotlin", "scala", "groovy", "lombok"}:
@@ -347,7 +347,7 @@ def _params_from_formal(formal_params_node) -> tuple[list[ParamInfo], bool]:
                     name=_node_text(name_node), has_default=False
                 ))
         elif c.type == "spread_parameter":
-            # `String... rest` — varargs, doesn't count toward required params.
+            # `String... rest`  -  varargs, doesn't count toward required params.
             has_varargs = True
     return params, has_varargs
 

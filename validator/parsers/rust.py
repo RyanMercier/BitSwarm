@@ -161,7 +161,7 @@ class RustParser:
             if c.type == "scoped_use_list":
                 return self._import_from_use_list(c, node)
             if c.type == "use_list":
-                # ``use {a, b};`` — bare top-level grouped use (rare).
+                # ``use {a, b};``  -  bare top-level grouped use (rare).
                 names = [_node_text(x) for x in c.children if x.type == "identifier"]
                 return [ImportInfo(
                     module="", imported_names=names,
@@ -216,7 +216,7 @@ class RustParser:
                 if first_ident is not None:
                     names.append(_node_text(first_ident))
             elif c.type == "scoped_identifier":
-                # nested: ``use crate::x::{a::b}`` — flatten as best-effort
+                # nested: ``use crate::x::{a::b}``  -  flatten as best-effort
                 inner_full = _node_text(c)
                 inner_parts = inner_full.split("::")
                 names.append(inner_parts[-1])
@@ -294,7 +294,7 @@ class RustParser:
                 )
             return
         if node.type == "mod_item":
-            # ``mod foo { ... }`` — recurse into the body. ``mod foo;``
+            # ``mod foo { ... }``  -  recurse into the body. ``mod foo;``
             # without a body declares a sibling file, handled by walking
             # the scaffolded path set separately.
             body = _find_first(node, "declaration_list")
@@ -417,7 +417,7 @@ class RustParser:
 
         existing = out.get(target_name)
         # If the type lives in another file (cross-file impl), we just
-        # silently drop the methods — the registry lookup happens by
+        # silently drop the methods  -  the registry lookup happens by
         # module name, and impls are commonly siblings of the type
         # anyway.
         if existing is None or existing.kind != "class":
@@ -489,7 +489,7 @@ class RustParser:
                 if len(c.children) and c.children[0].type == "identifier" \
                         and len(children_idents) == 2:
                     return _node_text(children_idents[0])
-                # leaf — last identifier
+                # leaf  -  last identifier
                 for sub in reversed(c.children):
                     if sub.type == "identifier":
                         return _node_text(sub)

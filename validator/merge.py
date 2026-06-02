@@ -2,13 +2,13 @@
 Tiered merge pipeline.
 
 Instead of applying all patches at once and hoping integration tests pass,
-we merge in DAG order — one tier at a time. After each tier's patches land,
+we merge in DAG order  -  one tier at a time. After each tier's patches land,
 we cross-compile (re-run that tier's tests on the merged repo). If tests fail
 because of interface mismatches, a repair miner fixes them before the next
 tier's patches are applied.
 
 This means tier 2 code (e.g. scene_loader) lands on a repo with REAL, VERIFIED
-tier 1 code (e.g. geometry, materials, camera) — not stubs.
+tier 1 code (e.g. geometry, materials, camera)  -  not stubs.
 """
 
 import os
@@ -91,7 +91,7 @@ def compute_tiers(subtasks):
         ]
 
         if not tier:
-            # Remaining have unresolvable deps — dump them in the last tier
+            # Remaining have unresolvable deps  -  dump them in the last tier
             tier = sorted(subtask_ids - assigned)
 
         tier.sort()  # deterministic
@@ -131,7 +131,7 @@ def _apply_patch(sid, result, subtask, merge_repo, merge_dir):
     # Scope check
     unauthorized = validate_patch_scope(result.patch, subtask["allowed_files"])
     if unauthorized:
-        print(f"    {sid}: SCOPE VIOLATION — touched {unauthorized}")
+        print(f"    {sid}: SCOPE VIOLATION  -  touched {unauthorized}")
         result.merge_conflict = True
         return False, True
 
@@ -146,7 +146,7 @@ def _apply_patch(sid, result, subtask, merge_repo, merge_dir):
         cwd=merge_repo, capture_output=True, text=True,
     )
     if check.returncode != 0:
-        print(f"    {sid}: CONFLICT — {check.stderr.strip()}")
+        print(f"    {sid}: CONFLICT  -  {check.stderr.strip()}")
         result.merge_conflict = True
         return False, True
 
@@ -264,7 +264,7 @@ async def merge_and_test(decomposition, miner_results, base_repo_path):
             cwd=merge_repo, capture_output=True,
         )
 
-        # ── Phase 2: Cross-compile — run each miner's tests on merged repo ─
+        # ── Phase 2: Cross-compile  -  run each miner's tests on merged repo ─
         for sid in tier_sids:
             if not patch_applied.get(sid):
                 stub_results[sid] = False
@@ -336,7 +336,7 @@ async def merge_and_test(decomposition, miner_results, base_repo_path):
         repairs_made["_integration"] = False
     else:
         pct = int(integration_ratio * 100)
-        print(f"  Integration tests: FAILED ({pct}% passed) — repairing")
+        print(f"  Integration tests: FAILED ({pct}% passed)  -  repairing")
 
         # ── Phase 4b: Repair integration tests ────────────────────────
         integration_passed, integration_output, integration_ratio = \

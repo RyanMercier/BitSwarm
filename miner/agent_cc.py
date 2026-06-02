@@ -5,8 +5,8 @@ This is an alternative to ``miner/agent.py`` (which drives the Anthropic
 Python SDK directly). When the miner is configured with
 ``MINER_BACKEND=claude_code`` it shells out to the ``claude`` CLI in
 print mode (``-p``) inside the per-task workspace. The CLI handles the
-entire agent loop internally — tool use, file edits, test runs,
-conversation state — and exits when it considers the work done.
+entire agent loop internally  -  tool use, file edits, test runs,
+conversation state  -  and exits when it considers the work done.
 
 Why this exists:
 
@@ -14,7 +14,7 @@ Why this exists:
     the bundled subscription inference, NOT metered API tokens. The
     same logical agent loop runs without per-call billing.
   - The CLI already implements prompt caching, retry, tool execution,
-    permission management, etc. — there is no benefit to re-doing it in
+    permission management, etc.  -  there is no benefit to re-doing it in
     Python.
   - For end-to-end smoke tests we get the real agent producing real
     patches without spending any money.
@@ -49,7 +49,7 @@ from validator.test_runners import run_test
 _DEFAULT_BINARY = os.environ.get("MINER_CC_BINARY", "") or "claude"
 _DEFAULT_MODEL = os.environ.get("MINER_CC_MODEL", "") or "sonnet"
 
-# Tool allowlist for the subprocess. Local-only — no network, no MCP.
+# Tool allowlist for the subprocess. Local-only  -  no network, no MCP.
 _TOOLS = "Read,Edit,Write,Bash,Glob,Grep"
 
 # Optional language switch for the miner prompt + final-test command.
@@ -154,7 +154,7 @@ def _build_prompt(subtask: dict,
 
     if other_subtasks:
         out += [
-            "## Other subtasks (being implemented in parallel — do NOT touch their files)",
+            "## Other subtasks (being implemented in parallel  -  do NOT touch their files)",
             *other_subtasks,
             "",
         ]
@@ -287,7 +287,7 @@ def _run_final_tests(subtask: dict, repo_path: str) -> tuple[bool, str]:
         combined.append(f"--- {test_file} ---\n{output}\n")
         # pytest exit codes: 0=ok, 1=tests failed, 2=interrupted, 3=internal,
         # 4=usage error, 5=no tests collected. The last one fires for empty
-        # ``__init__.py`` files etc. — not a real failure.
+        # ``__init__.py`` files etc.  -  not a real failure.
         if result.returncode not in (0, 5):
             all_passed = False
     return all_passed, "\n".join(combined)

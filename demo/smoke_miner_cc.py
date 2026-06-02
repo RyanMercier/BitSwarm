@@ -10,7 +10,7 @@ What this covers:
   - We assert the tests pass and the generated patch is non-empty.
 
 What this does NOT cover:
-  - The coordinator decomposition step (skipped on purpose — that would
+  - The coordinator decomposition step (skipped on purpose  -  that would
     cost API tokens).
   - The HTTP miner/validator servers (a follow-up smoke once this
     direct path works).
@@ -18,7 +18,7 @@ What this does NOT cover:
 Run:
     MINER_BACKEND=claude_code python demo/smoke_miner_cc.py
 
-Cost: $0 — the Claude Code subprocess uses your Claude subscription's
+Cost: $0  -  the Claude Code subprocess uses your Claude subscription's
 bundled inference, not metered API tokens. (The first run may also
 trigger a one-time auth flow if you haven't logged in via
 ``claude auth login`` yet.)
@@ -101,7 +101,7 @@ def _build_scaffolded_repo(repo_path: str) -> None:
         os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
         with open(full, "w") as f:
             f.write(content)
-    # requirements.txt — pytest only.
+    # requirements.txt  -  pytest only.
     with open(os.path.join(repo_path, "requirements.txt"), "w") as f:
         f.write("pytest\n")
     subprocess.run(["git", "init", "-q"], cwd=repo_path, check=True)
@@ -125,7 +125,7 @@ async def main() -> int:
             cwd=repo_path, capture_output=True, text=True,
         )
         if baseline.returncode == 0:
-            print("[smoke] BASELINE TESTS PASSED — stub is a no-op; aborting.")
+            print("[smoke] BASELINE TESTS PASSED  -  stub is a no-op; aborting.")
             return 2
         print(f"[smoke] baseline rc={baseline.returncode} (expected non-zero) -- OK")
 

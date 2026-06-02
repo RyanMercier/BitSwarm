@@ -45,7 +45,7 @@ Step 3: For each boundary, determine the interface contract. What functions does
 
 Step 4: Extract every shared type AND foundational utility. Any type that appears in more than one subtask's signatures MUST be in a shared file. Err on the side of MORE shared types, not fewer. A miner who needs a type that doesn't exist in shared files will fail.
 
-CRITICAL: If a module is depended on by most or all subtasks as a foundational building block (e.g. a core data type, a base model class, a shared utility library), put its COMPLETE WORKING IMPLEMENTATION in shared_files — do NOT make it a stub subtask. Miners working in isolated repos cannot use other miners' stub implementations. If nearly every miner needs a module to function, that module must be fully implemented in shared_files, not assigned to a single miner. Only assign a module as a subtask if it has few dependents or its dependents can meaningfully mock it.
+CRITICAL: If a module is depended on by most or all subtasks as a foundational building block (e.g. a core data type, a base model class, a shared utility library), put its COMPLETE WORKING IMPLEMENTATION in shared_files  -  do NOT make it a stub subtask. Miners working in isolated repos cannot use other miners' stub implementations. If nearly every miner needs a module to function, that module must be fully implemented in shared_files, not assigned to a single miner. Only assign a module as a subtask if it has few dependents or its dependents can meaningfully mock it.
 
 Step 5: Write stub tests FIRST, then write stubs that match the tests. This ensures your tests actually test the contract. Each stub test should:
 - Test happy path behavior (function returns expected type with expected values)
@@ -63,7 +63,7 @@ Step 6: Write integration tests that test the boundaries between subtasks. These
 - File paths must NEVER overlap between subtasks. Each file belongs to exactly one subtask.
 - Complexity weights must sum to 1.0 and reflect actual implementation difficulty, not line count.
 
-## Anti-Patterns — Do NOT Do These
+## Anti-Patterns  -  Do NOT Do These
 
 - Do NOT write vague docstrings like "Process the data and return results." Specify WHAT data, HOW to process, and WHAT the results look like.
 - Do NOT create stub functions that are impossible to implement without information not in the docstring or type hints.

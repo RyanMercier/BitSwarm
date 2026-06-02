@@ -84,7 +84,7 @@ Makefile               (in shared_files, see above)
 ```
 
 
-# Shared types (in `wordle/types.hpp` — put this in shared_files)
+# Shared types (in `wordle/types.hpp`  -  put this in shared_files)
 
 ```cpp
 #ifndef WORDLE_TYPES_HPP

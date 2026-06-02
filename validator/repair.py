@@ -2,8 +2,8 @@
 Repair miner: fixes cross-compilation failures in the merged repo.
 
 After patches are applied for a tier, we re-run each miner's tests against
-the merged repo (cross-compilation). If tests fail — e.g. because the miner
-used a workaround type instead of the real dependency — the repair miner gets
+the merged repo (cross-compilation). If tests fail  -  e.g. because the miner
+used a workaround type instead of the real dependency  -  the repair miner gets
 the specific error traceback plus only the dependency files that appear in that
 traceback. This keeps context small regardless of overall project size.
 """
@@ -38,10 +38,10 @@ Your job: make the MINIMAL fix to resolve the incompatibility. Common issues:
 
 Rules:
 - Only modify files in your allowed_files list
-- Do NOT rewrite from scratch — make targeted fixes
+- Do NOT rewrite from scratch  -  make targeted fixes
 - Run tests after each fix to verify
-- The dependency files shown below are READ-ONLY — study them to understand the real interface
-- The error traceback tells you exactly where the mismatch is — start there\
+- The dependency files shown below are READ-ONLY  -  study them to understand the real interface
+- The error traceback tells you exactly where the mismatch is  -  start there\
 """
 
 
@@ -114,7 +114,7 @@ async def repair_miner(subtask, merge_repo, test_output):
             with open(full_path) as f:
                 file_contents += f"\n=== {path} (your file, EDITABLE) ===\n{f.read()}\n"
 
-    # Extract dependency files from the traceback — only these, not the whole repo
+    # Extract dependency files from the traceback  -  only these, not the whole repo
     all_own_files = set(allowed_files) | set(test_files)
     dep_files = extract_traceback_files(test_output, merge_repo, all_own_files)
 
@@ -126,7 +126,7 @@ async def repair_miner(subtask, merge_repo, test_output):
                 dep_contents += f"\n=== {path} (dependency, READ-ONLY) ===\n{f.read()}\n"
 
     if dep_contents:
-        dep_section = f"\n## Dependency files from traceback (READ-ONLY — do not modify):\n{dep_contents}"
+        dep_section = f"\n## Dependency files from traceback (READ-ONLY  -  do not modify):\n{dep_contents}"
     else:
         dep_section = ""
 
@@ -200,7 +200,7 @@ written before the implementations existed and make incorrect assumptions about 
 method signatures, constructor arguments, return types, or mock strategies.
 
 You will see:
-- The integration test file (EDITABLE — this is what you fix)
+- The integration test file (EDITABLE  -  this is what you fix)
 - The real implementation files referenced in the error tracebacks (READ-ONLY)
 - The test failure output
 
@@ -213,8 +213,8 @@ the code calls img.save() on a fromarray return value)
 - Test expects an attribute that has a different name in the real implementation
 
 Rules:
-- Only modify the integration test file — never change implementation files
-- Keep tests meaningful — don't delete tests or make them trivially pass
+- Only modify the integration test file  -  never change implementation files
+- Keep tests meaningful  -  don't delete tests or make them trivially pass
 - Read the real implementation to understand the actual API before fixing the test
 - Run tests after each fix to verify\
 """
@@ -255,7 +255,7 @@ async def repair_integration_tests(integration_files, merge_repo, test_output):
     # Extract implementation files from traceback + imports in the test file
     dep_files = extract_traceback_files(test_output, merge_repo, set(integration_files))
 
-    # Also extract from the test file's imports — the traceback may be sparse
+    # Also extract from the test file's imports  -  the traceback may be sparse
     # (e.g. just "assert None is not None") but the test file imports the modules
     import_pattern = re.compile(r'from\s+([\w.]+)\s+import')
     for path in integration_files:
@@ -299,7 +299,7 @@ Files you may modify: {integration_files}
 
 Study the real implementation files above to understand the actual APIs, then fix \
 the integration tests to use the correct method names, constructor arguments, and \
-mock strategies. Do NOT delete or gut tests — fix them to test the real behavior.
+mock strategies. Do NOT delete or gut tests  -  fix them to test the real behavior.
 
 Run tests with: pytest {test_file_list} -v --tb=short"""
 

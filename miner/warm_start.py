@@ -129,7 +129,7 @@ Tests to pass: {test_files}
 ## IMPORTANT: Cross-Subtask Dependencies
 
 Other engineers' modules (marked "[assigned to another engineer]" above) are stubs
-in your repo — their functions raise NotImplementedError. If your tests import and
+in your repo  -  their functions raise NotImplementedError. If your tests import and
 use objects from those modules, those tests will fail with NotImplementedError BEFORE
 testing your stub.
 
@@ -138,7 +138,7 @@ When this happens, edit your test file to use `unittest.mock.MagicMock()` instea
   dep = MagicMock()  # replaces any object from another subtask's module
   my_obj = MyClass(dep)  # now tests YOUR stub
 
-Your test files ARE in your allowed_files — you may and should edit them.
+Your test files ARE in your allowed_files  -  you may and should edit them.
 
 If DEPENDENCY STUB files are shown above, they define the EXACT function signatures
 of modules you depend on. When calling functions from those modules, match the

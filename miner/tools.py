@@ -5,7 +5,7 @@ import subprocess
 
 
 # --- Configuration (set at runtime from subtask assignment) ---
-# Uses contextvars for async safety — each concurrent miner gets its own config.
+# Uses contextvars for async safety  -  each concurrent miner gets its own config.
 
 _repo_root_var = contextvars.ContextVar("repo_root", default="")
 _allowed_files_var = contextvars.ContextVar("allowed_files", default=[])
@@ -60,7 +60,7 @@ TOOL_DEFINITIONS = [
         "name": "file_write",
         "description": (
             "Write content to a file. ONLY works for files in your allowed_files list. "
-            "Writes the COMPLETE file content — this is a full replace, not a patch. "
+            "Writes the COMPLETE file content  -  this is a full replace, not a patch. "
             "The file must already exist (you are replacing NotImplementedError stubs). "
             "Fails if the path is not in allowed_files."
         ),

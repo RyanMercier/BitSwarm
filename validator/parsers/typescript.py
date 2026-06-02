@@ -496,7 +496,7 @@ def _count_args(arguments_node) -> int:
     for c in arguments_node.children:
         if c.type in ("(", ")", ","):
             continue
-        # Spread arg counts as one — we can't statically know how many it expands to.
+        # Spread arg counts as one  -  we can't statically know how many it expands to.
         count += 1
     return count
 

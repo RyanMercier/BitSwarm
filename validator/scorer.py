@@ -40,7 +40,7 @@ def compute_scores(subtasks, miner_results, stub_results, integration_passed,
             scores[sid] = 0.0
             continue
 
-        # Stub tests passed — apply integration multiplier
+        # Stub tests passed  -  apply integration multiplier
         weight = subtask.get("complexity_weight", 0.25)
         scores[sid] = weight * integration_mult
 

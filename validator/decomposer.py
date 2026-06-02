@@ -121,11 +121,11 @@ File tree:
 
 bitswarm-prototype-001
 
-## Output Requirements — READ CAREFULLY
+## Output Requirements  -  READ CAREFULLY
 
 Output a single JSON object. Start your response with the opening {{ brace. No prose before the JSON.
 
-PHASE 1 — PLAN ONLY: For this call, output the decomposition structure: subtasks array, shared_files dict, requirements_additions list. You do NOT need to include stub_files, stub_test_files, or integration_test_files content — leave those as empty dicts {{}}.
+PHASE 1  -  PLAN ONLY: For this call, output the decomposition structure: subtasks array, shared_files dict, requirements_additions list. You do NOT need to include stub_files, stub_test_files, or integration_test_files content  -  leave those as empty dicts {{}}.
 
 The file contents will be generated in a separate Phase 2 call. Focus on getting the plan right:
 - subtasks: complete array with subtask_id, description, stub_files list, stub_test_files list, dependencies, complexity_weight
@@ -424,7 +424,7 @@ def parse_json_response(text):
     """Extract and parse JSON from the model response, tolerating surrounding prose."""
     text = text.strip()
 
-    # Direct parse (ideal case — model returned only JSON)
+    # Direct parse (ideal case  -  model returned only JSON)
     try:
         return json.loads(text)
     except json.JSONDecodeError:

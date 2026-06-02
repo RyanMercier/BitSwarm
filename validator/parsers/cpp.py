@@ -12,7 +12,7 @@ Shares ``#include`` extraction and the function-declarator walk with
     methods. Methods come from ``function_definition`` (inline) and
     ``declaration`` / ``field_declaration`` (signature-only) inside the
     ``field_declaration_list``. Access specifiers (``public:`` /
-    ``private:``) are not enforced — anything visible in the body is
+    ``private:``) are not enforced  -  anything visible in the body is
     counted, because cross-file privacy checks aren't the point of
     Phase 1.5.
   - ``alias_declaration``: ``using MyInt = int;``.
@@ -104,7 +104,7 @@ class CppParser:
                 self._collect(c, out)
             return
         if node.type == "namespace_definition":
-            # Recurse into the body — types declared inside are visible
+            # Recurse into the body  -  types declared inside are visible
             # at the file level for our purposes.
             body = _find_first(node, "declaration_list")
             if body is not None:
@@ -115,7 +115,7 @@ class CppParser:
             self._collect_class(node, out, kind="class")
             return
         if node.type == "struct_specifier":
-            # A bare struct (not inside a typedef) — register as a class.
+            # A bare struct (not inside a typedef)  -  register as a class.
             name_node = _find_first(node, "type_identifier")
             if name_node is None:
                 return
@@ -151,7 +151,7 @@ class CppParser:
                 )
             return
         if node.type == "type_definition":
-            # ``typedef struct {...} Name;`` — fall back to C-style logic.
+            # ``typedef struct {...} Name;``  -  fall back to C-style logic.
             self._collect_typedef(node, out)
             return
         if node.type == "alias_declaration":
@@ -173,7 +173,7 @@ class CppParser:
                 self._collect_function_from_declarator(node, decl, out)
             return
         if node.type == "template_declaration":
-            # Recurse — the templated entity is one of the children.
+            # Recurse  -  the templated entity is one of the children.
             for c in node.children:
                 self._collect(c, out)
 
@@ -302,7 +302,7 @@ class CppParser:
                         line=node.start_point[0] + 1,
                     ))
             elif node.type == "new_expression":
-                # ``new ns::Widget(args)`` — pull the rightmost type.
+                # ``new ns::Widget(args)``  -  pull the rightmost type.
                 type_node = _new_target_type(node)
                 args = _find_first(node, "argument_list")
                 if type_node:

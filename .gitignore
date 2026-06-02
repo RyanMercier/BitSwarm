@@ -8,4 +8,20 @@ out/
 .venv/
 venv/
 *.Zone.Identifier
-.claude/scheduled_tasks.lock
+
+# Local dev environment, never tracked
+.claude/
+.claude.json
+CLAUDE.md
+
+# Pitch / internal prep docs, not part of the public repo
+docs/YUMA_*.md
+
+# Toolchain caches that leak in from in-container runs under host UID
+.bitswarm/
+.cache/
+.cargo/
+.dotnet/
+.local/
+.npm/
+.nuget/

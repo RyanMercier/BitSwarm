@@ -34,7 +34,7 @@ async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
     """
     Run the miner agent for a single subtask.
 
-    1. Build warm-start context (cached — same on every iteration)
+    1. Build warm-start context (cached  -  same on every iteration)
     2. Initialize RetryState
     3. Call Claude API with tools in a loop
     4. Track test runs, handle recovery
@@ -69,7 +69,7 @@ async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
     )
 
     # Prompt caching: mark the system prompt and warm-start as cacheable.
-    # These are identical on every API call for this miner — without caching,
+    # These are identical on every API call for this miner  -  without caching,
     # their tokens are billed at full price on every turn. With the cache marker,
     # subsequent calls pay ~10% of the normal input rate for these tokens.
     #
@@ -246,7 +246,7 @@ def _generate_patch(repo_path, allowed_files):
         if os.path.exists(lock_file):
             os.remove(lock_file)
 
-        # Find the scaffolding commit — it's the one with that specific message
+        # Find the scaffolding commit  -  it's the one with that specific message
         log_result = subprocess.run(
             ["git", "log", "--all", "--format=%H %s"],
             capture_output=True, text=True, cwd=repo_path,

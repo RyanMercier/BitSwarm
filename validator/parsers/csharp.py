@@ -297,7 +297,7 @@ class CSharpParser:
         while stack:
             node = stack.pop()
             if node.type == "object_creation_expression":
-                # `new Widget(args)` — type is identifier or qualified_name.
+                # `new Widget(args)`  -  type is identifier or qualified_name.
                 type_node = (_find_first(node, "identifier")
                              or _find_first(node, "qualified_name"))
                 args = _find_first(node, "argument_list")
@@ -412,7 +412,7 @@ def _params_from_list(param_list_node) -> tuple[list[ParamInfo], bool]:
                 ))
             pending_params_keyword = False
         elif c.type == "identifier" and pending_params_keyword:
-            # `params <Type>[] <name>` — flat siblings after `params`.
+            # `params <Type>[] <name>`  -  flat siblings after `params`.
             has_varargs = True
             pending_params_keyword = False
     return params, has_varargs

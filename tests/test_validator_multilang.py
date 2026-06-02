@@ -622,7 +622,7 @@ def test_cpp_decomposition_clean(tmp_path):
 
 
 def test_cpp_constructor_arity_mismatch(tmp_path):
-    """Widget(std::string, int); user calls Widget(\"hi\") — one missing arg."""
+    """Widget(std::string, int); user calls Widget(\"hi\")  -  one missing arg."""
     decomp = _cpp_decomposition()
     decomp["stub_files"]["src/user.cpp"] = (
         "#include \"widget.hpp\"\n"

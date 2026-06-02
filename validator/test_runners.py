@@ -187,7 +187,7 @@ def run_test(test_file: str, repo_root: str,
 
 def run_pytest(test_file: str, repo_root: str,
                timeout: int = 60) -> subprocess.CompletedProcess:
-    """Direct pytest invocation — used by callers that already know the repo
+    """Direct pytest invocation  -  used by callers that already know the repo
     is Python-only. New callers should prefer :func:`run_test`."""
     return subprocess.run(
         [sys.executable, "-m", "pytest", test_file, "-x", "--tb=short", "-q"],

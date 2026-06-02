@@ -11,11 +11,11 @@ to the functions here.
 
 Two checks live here:
 
-1. ``check_interface_contracts`` — every cross-file import references a
+1. ``check_interface_contracts``  -  every cross-file import references a
    name that the target module actually defines, and class instantiation
    call sites match the constructor's arity.
 
-2. ``check_no_circular_deps`` — the subtask dependency graph is a DAG.
+2. ``check_no_circular_deps``  -  the subtask dependency graph is a DAG.
 
 A dependency-fan-out helper is included as ``check_fanout_warning`` for
 soft warnings; the dispatcher decides whether to surface or ignore them.
@@ -122,7 +122,7 @@ def check_interface_contracts(facts: list[FileFacts]) -> list[str]:
                     _admit(mod, name, info)
             if not imp.imported_names:
                 # C# ``using X;``, Java implicit same-package, C
-                # ``#include "h"`` — bring every exported symbol into
+                # ``#include "h"``  -  bring every exported symbol into
                 # scope.
                 for n, info in registry[mod].items():
                     if info.is_exported:

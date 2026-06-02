@@ -183,7 +183,7 @@ class PythonParser:
     ) -> bool:
         module = imp.module
         if not module or module.startswith("."):
-            # Relative import — assume scaffolded files cover this.
+            # Relative import  -  assume scaffolded files cover this.
             return True
 
         top_level = module.split(".")[0]

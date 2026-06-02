@@ -39,7 +39,7 @@ def fake_decomposition():
 
 
 def test_dispatch_round_robins_and_maps_responses(monkeypatch, fake_decomposition):
-    # Skip the real git-bundle call — repo doesn't exist in tests
+    # Skip the real git-bundle call  -  repo doesn't exist in tests
     monkeypatch.setattr(validator_server, "bundle_repo", lambda path: "bundle-b64")
 
     calls: list[tuple[str, str]] = []  # (miner_url, subtask_id)

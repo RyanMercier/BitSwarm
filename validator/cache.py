@@ -14,7 +14,7 @@ Key inputs that go into the hash:
     same spec get separate cache entries)
   - coordinator model name (so an Opus and a Sonnet decomposition
     don't collide)
-  - coordinator backend (sdk vs claude_code — different model
+  - coordinator backend (sdk vs claude_code  -  different model
     behaviour produces different output)
 
 If the validator rejects the cached decomposition (Phase 1.5 errors,

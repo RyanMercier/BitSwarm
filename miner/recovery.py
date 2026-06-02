@@ -133,7 +133,7 @@ def format_test_feedback(test_output, iteration):
         f"{test_output}\n"
         f"--- END TEST RESULTS ---\n"
         f"{hint}\n"
-        f"Fix the failing tests. Do not rewrite from scratch — identify the specific "
+        f"Fix the failing tests. Do not rewrite from scratch  -  identify the specific "
         f"error, fix the specific issue, and re-run."
     )
 

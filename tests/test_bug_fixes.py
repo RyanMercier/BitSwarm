@@ -88,7 +88,7 @@ def test_python_class_with_method_named_new_does_not_get_arity_checked_as_ctor()
     )
     user_src = (
         "from pkg.widget import Widget\n"
-        "w = Widget()\n"  # 0 args — would mismatch `new` if the check fired
+        "w = Widget()\n"  # 0 args  -  would mismatch `new` if the check fired
     )
 
     def facts(path, src):
@@ -265,7 +265,7 @@ def test_miner_lock_does_not_deadlock_when_repeatedly_busy():
         await state.lock.acquire()
         try:
             # A new request that tries to acquire non-blockingly should
-            # fail fast — exactly what the fixed endpoint does.
+            # fail fast  -  exactly what the fixed endpoint does.
             try:
                 await asyncio.wait_for(state.lock.acquire(), timeout=0)
                 acquired = True

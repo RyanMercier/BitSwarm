@@ -10,7 +10,7 @@ anyway so the common contract checker keeps working:
   - ``#include "widget.h"`` from ``src/main.c`` is normalized to
     ``module="src/widget.h"``, ``imported_names=[]``, ``is_relative=True``.
   - ``#include <stdio.h>`` is ``module="stdio.h"``, ``imported_names=[]``,
-    ``is_relative=False`` — always resolves.
+    ``is_relative=False``  -  always resolves.
 
 A header doesn't list which names are imported by an ``#include``
 (everything declared in the header is in scope after inclusion). The
@@ -103,7 +103,7 @@ def _params_from_parameter_list(param_list) -> tuple[list[ParamInfo], bool]:
     missing (declaration like ``void f(int);``) we leave the slot
     unnamed (empty string) so the count is still right.
 
-    ``(void)`` is special-cased to mean "zero params" — the C convention
+    ``(void)`` is special-cased to mean "zero params"  -  the C convention
     for an empty parameter list.
     """
     params: list[ParamInfo] = []
@@ -165,7 +165,7 @@ def _resolve_relative_include(target: str, importer_path: str) -> str:
 
 
 def extract_c_like_includes(tree, importer_path: str) -> list[ImportInfo]:
-    """Shared with ``cpp.py`` — preprocessor includes work the same in both."""
+    """Shared with ``cpp.py``  -  preprocessor includes work the same in both."""
     imports: list[ImportInfo] = []
     for child in tree.root_node.children:
         if child.type != "preproc_include":
@@ -284,7 +284,7 @@ class CParser:
             # A forward declaration like ``int foo(int x);`` shows up as a
             # ``declaration`` containing a ``function_declarator``. Treat it
             # as the function's canonical signature if no definition has
-            # been seen yet — header files only carry declarations.
+            # been seen yet  -  header files only carry declarations.
             decl = _find_first(node, "function_declarator")
             if decl is not None:
                 self._collect_function_from_declarator(node, decl, out)
@@ -428,7 +428,7 @@ def _callee_text(node) -> str | None:
     if node.type == "identifier":
         return _node_text(node)
     if node.type == "field_expression":
-        # `obj.method` or `obj->method` — return the rightmost field_identifier
+        # `obj.method` or `obj->method`  -  return the rightmost field_identifier
         for c in reversed(node.children):
             if c.type == "field_identifier":
                 return _node_text(c)
