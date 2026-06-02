@@ -236,7 +236,8 @@ def _harvest_workspace(workdir: str, expected: list[str]) -> dict[str, str]:
 def call_coordinator(repo_path: str, feature_spec: str,
                       previous_errors: list[str] | None = None,
                       debug_dir: str | None = None,
-                      language: str | None = None) -> dict:
+                      language: str | None = None,
+                      mode: str = "scaffold") -> dict:
     """Same contract as ``validator.decomposer.call_coordinator``.
 
     Runs the two-phase decomposition under Claude Code subprocesses
@@ -247,11 +248,20 @@ def call_coordinator(repo_path: str, feature_spec: str,
     ``language`` selects the target language profile so Phase 1 plans
     the correct file extensions / project layout. When ``None`` it's
     resolved from ``COORDINATOR_LANGUAGE`` env var / repo auto-detect.
+
+    ``mode`` is ``"scaffold"`` (default) or ``"diff"``. Diff mode runs
+    ``_call_coordinator_cc_diff`` which uses the diff-mode prompts and
+    harvests target_stubs + new_test_files instead of stub_files.
     """
     # Resolve the profile up front so Phase 1's user message gets the
     # language override (otherwise the Python-heavy system prompt
     # silently biases every plan to ``.py`` paths regardless of target).
     profile = profile_for(language=language, repo_path=repo_path)
+
+    if mode == "diff":
+        return _call_coordinator_cc_diff(
+            profile, repo_path, feature_spec, previous_errors, debug_dir,
+        )
 
     # Phase 1: plan (small JSON, fits comfortably in text output).
     print("  [Phase 1, cc] Decomposition plan...", flush=True)
@@ -388,5 +398,127 @@ def call_coordinator(repo_path: str, feature_spec: str,
 
     if not decomposition["stub_files"]:
         raise ValueError("Phase 2 produced no stub_files")
+
+    return decomposition
+
+
+def _call_coordinator_cc_diff(profile, repo_path: str, change_spec: str,
+                                previous_errors: list[str] | None,
+                                debug_dir: str | None) -> dict:
+    """Subprocess-backed diff-mode coordinator. Same two-phase shape
+    as the scaffold-mode subprocess coordinator, but uses the
+    diff-mode prompts and produces a diff-mode decomposition.
+
+    Phase 1: plan-only (small JSON, fits in text output).
+    Phase 2: target_stubs + new_test_files harvested from a workspace
+    where claude wrote files directly. Per-stub paths use the
+    `.target_stub` suffix to keep them separate from the original
+    file on disk.
+    """
+    from validator.diff_prompts import (
+        DIFF_COORDINATOR_SYSTEM_PROMPT,
+        build_diff_phase1_prompt,
+        build_diff_phase2_prompt,
+    )
+
+    # Phase 1
+    print("  [Phase 1, cc-diff] Modification plan...", flush=True)
+    plan_prompt = build_diff_phase1_prompt(
+        repo_path, change_spec, previous_errors, language=profile.name,
+    )
+    plan_text = _run_claude(plan_prompt, DIFF_COORDINATOR_SYSTEM_PROMPT)
+    _save_debug(plan_text,
+                os.path.join(debug_dir, "phase1_plan.txt") if debug_dir else None)
+
+    try:
+        decomposition = parse_json_response(plan_text)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Phase 1 (diff) JSON parse error: {exc}") from exc
+
+    if decomposition.get("mode") != "diff":
+        decomposition["mode"] = "diff"
+
+    subtasks = decomposition.get("subtasks", []) or []
+    if not subtasks:
+        raise ValueError("Phase 1 (diff) returned no subtasks")
+    print(f"  [Phase 1, cc-diff] {len(subtasks)} modification subtask(s) planned",
+          flush=True)
+
+    # Phase 2: write target_stubs + new_test_files to a workspace, harvest.
+    print(f"  [Phase 2, cc-diff] Generating target stubs + new tests "
+          f"(language={profile.name})...", flush=True)
+    file_prompt = build_diff_phase2_prompt(
+        decomposition, repo_path, change_spec, language=profile.name,
+    )
+
+    # Expected output paths. Target stubs land at `<path>.target_stub`
+    # so they don't clobber the unchanged-baseline view of the original
+    # file (the harvester reads them by that suffix).
+    target_stub_paths_orig: list[str] = []
+    for st in subtasks:
+        for f in st.get("modify_files", []) or []:
+            if f not in target_stub_paths_orig:
+                target_stub_paths_orig.append(f)
+    target_stub_paths_on_disk = [f + ".target_stub" for f in target_stub_paths_orig]
+
+    new_test_paths: list[str] = []
+    for st in subtasks:
+        for p in st.get("new_test_files", []) or []:
+            if p not in new_test_paths:
+                new_test_paths.append(p)
+
+    integ_paths = list(decomposition.get("integration_test_files", {}).keys() or [])
+    shared_add_paths = list(decomposition.get("shared_additions", {}).keys() or [])
+    expected_all = (target_stub_paths_on_disk + new_test_paths
+                    + integ_paths + shared_add_paths)
+
+    workdir = (os.path.join(debug_dir, "phase2_workspace") if debug_dir
+               else tempfile.mkdtemp(prefix="bitswarm_diff_phase2_"))
+    cleanup_workdir = workdir if debug_dir is None else None
+
+    try:
+        stdout, _stderr = _run_claude_writing_files(file_prompt, workdir, timeout=900)
+        _save_debug(stdout,
+                    os.path.join(debug_dir, "phase2_stdout.txt") if debug_dir else None)
+
+        # Harvest target stubs (strip the .target_stub suffix when
+        # re-keying into the decomposition).
+        target_stubs: dict[str, str] = {}
+        for orig, on_disk in zip(target_stub_paths_orig, target_stub_paths_on_disk):
+            full = os.path.join(workdir, on_disk)
+            if os.path.isfile(full):
+                try:
+                    with open(full, encoding="utf-8", errors="replace") as f:
+                        target_stubs[orig] = f.read()
+                except OSError:
+                    pass
+
+        # Harvest new test files (and integration / shared if any).
+        new_tests = _harvest_workspace(workdir, new_test_paths)
+        integ = _harvest_workspace(workdir, integ_paths) if integ_paths else {}
+        shared_add_new = (_harvest_workspace(workdir, shared_add_paths)
+                          if shared_add_paths else {})
+
+        decomposition["target_stubs"] = target_stubs
+        decomposition["new_test_files"] = new_tests
+        if integ:
+            decomposition["integration_test_files"] = integ
+        if shared_add_new:
+            existing = decomposition.get("shared_additions", {}) or {}
+            existing.update(shared_add_new)
+            decomposition["shared_additions"] = existing
+
+        print(f"  [Phase 2, cc-diff] harvested "
+              f"{len(target_stubs)}/{len(target_stub_paths_orig)} target stubs, "
+              f"{len(new_tests)}/{len(new_test_paths)} new tests, "
+              f"{len(integ)} integration, "
+              f"{len(shared_add_new)} shared additions",
+              flush=True)
+    finally:
+        if cleanup_workdir is not None:
+            shutil.rmtree(cleanup_workdir, ignore_errors=True)
+
+    if not decomposition.get("target_stubs"):
+        raise ValueError("Phase 2 (diff) produced no target_stubs")
 
     return decomposition

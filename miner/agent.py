@@ -13,7 +13,7 @@ from miner.recovery import (
     extract_error_signature, format_test_feedback, build_retry_context,
     update_state,
 )
-from miner.warm_start import build_warm_start_message
+from miner.warm_start import build_warm_start_message, build_diff_warm_start_message
 
 
 @dataclass
@@ -30,7 +30,9 @@ class MinerResult:
 
 async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
                           shared_files_content, stub_files_content, test_files_content,
-                          all_subtasks=None):
+                          all_subtasks=None, mode: str = "scaffold",
+                          target_stubs=None, new_test_files_content=None,
+                          shared_additions_content=None):
     """
     Run the miner agent for a single subtask.
 
@@ -39,16 +41,30 @@ async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
     3. Call Claude API with tools in a loop
     4. Track test runs, handle recovery
     5. Return patch when done
+
+    ``mode`` selects scaffold-mode (default; existing behavior) or
+    diff-mode. In diff mode the warm-start references the original
+    file content + target stub instead of stub files, and the tools'
+    interface-stability check compares against the target stub.
     """
     subtask_id = subtask["subtask_id"]
     allowed_files = subtask["allowed_files"]
-    test_files = subtask["stub_test_files"]
 
-    print(f"  [Miner {subtask_id}] Starting")
+    if mode == "diff":
+        test_files = subtask.get("new_test_files", []) or []
+    else:
+        test_files = subtask["stub_test_files"]
 
-    configure_tools(repo_path, allowed_files, test_files)
+    print(f"  [Miner {subtask_id}] Starting (mode={mode})")
 
-    # Save original stub contents for hard reset
+    configure_tools(
+        repo_path, allowed_files, test_files,
+        mode=mode, target_stubs=target_stubs or {},
+    )
+
+    # Save original file contents for hard reset (works the same way
+    # in both modes: snapshot what's on disk at the start so we can
+    # revert if the miner thrashes).
     original_stubs = {}
     for path in allowed_files:
         full_path = os.path.join(repo_path, path)
@@ -56,17 +72,27 @@ async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
             with open(full_path, "r") as f:
                 original_stubs[path] = f.read()
 
-    # Build warm-start message text
-    warm_start_text = build_warm_start_message(
-        subtask=subtask,
-        repo_root=repo_path,
-        shared_files_content=shared_files_content,
-        stub_files_content=stub_files_content,
-        test_files_content=test_files_content,
-        all_subtask_files=all_subtask_files,
-        shared_file_paths=list(shared_files.keys()) if isinstance(shared_files, dict) else shared_files,
-        all_subtasks=all_subtasks,
-    )
+    # Build warm-start message text (mode-dependent).
+    if mode == "diff":
+        warm_start_text = build_diff_warm_start_message(
+            subtask=subtask,
+            repo_root=repo_path,
+            target_stubs=target_stubs or {},
+            new_test_files_content=new_test_files_content or {},
+            shared_additions_content=shared_additions_content or {},
+            all_subtasks=all_subtasks,
+        )
+    else:
+        warm_start_text = build_warm_start_message(
+            subtask=subtask,
+            repo_root=repo_path,
+            shared_files_content=shared_files_content,
+            stub_files_content=stub_files_content,
+            test_files_content=test_files_content,
+            all_subtask_files=all_subtask_files,
+            shared_file_paths=list(shared_files.keys()) if isinstance(shared_files, dict) else shared_files,
+            all_subtasks=all_subtasks,
+        )
 
     # Prompt caching: mark the system prompt and warm-start as cacheable.
     # These are identical on every API call for this miner  -  without caching,
