@@ -6,6 +6,21 @@ This document merges the high-level system architecture with concrete implementa
 
 ---
 
+## 0. Document Status
+
+This is the v2 revision of the spec. The core architecture (coordinator decomposition, scaffolding commit, isolated miners, tiered merge, score-based weights) is unchanged from v1. Several items in v1 have since shipped or generalized; the document has been spot-updated to match the current state without rewriting the foundational sections. Sections most affected:
+
+- **System Overview (S1) and Coordinator (S3.2)**: language references generalized. The scaffolding commit and validation pipeline now support seven target languages (Python, TypeScript, Java, C#, C, C++, Rust) via a per-language profile registry plus a tree-sitter parser layer. v1's Python-only examples remain illustrative.
+- **Miner Runtime (S3.3)**: three independent inference backends shipped. Miners select via `MINER_BACKEND` env: `sdk` (Anthropic Python SDK, metered), `claude_code` (Claude CLI subprocess on a Max/Pro/Team subscription, no per-token spend), or `openai` (any OpenAI-compatible Chat Completions endpoint, including DeepSeek, OpenRouter, Together, Chutes, local vLLM/Ollama).
+- **Repository Structure (S11)**: replaced with the current on-disk layout.
+- **Prototype Plan (S12)**: marked complete. The single-machine Python prototype shipped, then generalized to the multi-language Docker stack used today.
+- **Open Research Questions (S13)**: Q6 (language generalization) is answered inline.
+- **Configuration (S15)**: env vars and defaults updated to match `config.py` and the language profile registry.
+
+For the lighter-weight, presentation-oriented summary of current state, see `docs/STATUS.md`.
+
+---
+
 ## 1. System Overview
 
 BitSwarm is a Bittensor subnet where miners are autonomous coding agents that collaborate on different parts of a software feature. Unlike Ridges (SN62) where miners compete to produce the best patch for the same problem, BitSwarm miners each build a different component of a larger system. The validator coordinates decomposition, assigns subtasks, merges results, and scores based on whether the integrated build passes.
@@ -14,9 +29,9 @@ The digital commodity this subnet produces is **working, multi-component softwar
 
 ### Key Design Decision: Scaffolding Commit
 
-The central architectural insight is that the coordinator does not produce natural language descriptions of interfaces. It produces **actual code**: real Python files with real function signatures, real type definitions, real imports, and `raise NotImplementedError` as every function body. This scaffolding is committed to the repository before any miner starts work. Each miner's job is then to replace the `NotImplementedError` in their assigned files with a working implementation.
+The central architectural insight is that the coordinator does not produce natural language descriptions of interfaces. It produces **actual code**: real source files in the target language with real function signatures, real type definitions, real imports, and the language's idiomatic "not implemented" body in every function (`raise NotImplementedError` in Python, `throw std::logic_error(...)` in C++, `unimplemented!()` in Rust, `throw new Error(...)` in TypeScript, and so on, driven by a per-language profile registry). This scaffolding is committed to the repository before any miner starts work. Each miner's job is to replace the placeholder body in their assigned files with a working implementation.
 
-This eliminates the primary failure mode of multi-agent coordination: ambiguity. When the contract is executable code rather than a description, there is nothing to misinterpret. A function signature of `def get_user(user_id: int) -> User: raise NotImplementedError` leaves no room for one miner to return a dict while another expects a Pydantic model.
+This eliminates the primary failure mode of multi-agent coordination: ambiguity. When the contract is executable code rather than a description, there is nothing to misinterpret. A function signature of `def get_user(user_id: int) -> User: raise NotImplementedError` leaves no room for one miner to return a dict while another expects a Pydantic model. The same applies to the analogous declarations in every supported language.
 
 ### Core Loop
 
@@ -125,15 +140,15 @@ The coordinator is the most critical component. It runs on the validator side an
 **Outputs: A scaffolding commit containing:**
 
 #### Shared Files (complete implementations)
-Real Python files committed to the repo containing types, schemas, constants, and configurations used by multiple subtasks. These are NOT stubs. They are complete, working code. Miners import from them but do not modify them.
+Real source files (in the target language) committed to the repo containing types, schemas, constants, and configurations used by multiple subtasks. These are NOT stubs. They are complete, working code. Miners import from them but do not modify them. The Python examples below illustrate the shape; the same scaffolding mechanism produces analogous shared files in TypeScript, Java, C#, C, C++, and Rust, driven by the language profile registry.
 
 Examples:
 - `auth/schemas.py` containing `class OAuthToken(BaseModel)`, `class OAuthUserInfo(BaseModel)`
 - `auth/exceptions.py` containing `class AuthenticationError(Exception)`
 - `auth/config.py` containing `GOOGLE_CLIENT_ID`, `GOOGLE_REDIRECT_URI`
 
-#### Stub Files (NotImplementedError bodies)
-Real Python files with correct imports, correct function signatures, correct type hints, complete docstrings, and `raise NotImplementedError` as every function body. Each stub file belongs to exactly one subtask. No file path overlap between subtasks.
+#### Stub Files (placeholder bodies)
+Real source files (in the target language) with correct imports, correct function signatures, correct type annotations, complete docstrings, and the language's idiomatic "not implemented" body in every function. Each stub file belongs to exactly one subtask. No file path overlap between subtasks. For Python the body is `raise NotImplementedError`; for C++ it is `throw std::logic_error(...)`; the per-language profile carries the exact idiom.
 
 Example:
 ```python
@@ -271,13 +286,13 @@ A JSON file mapping each subtask to its files, tests, and metadata:
 After the coordinator returns the decomposition, the validator validates it programmatically before committing the scaffolding:
 
 1. All stub file paths are unique across subtasks (no overlaps)
-2. All stub files parse as valid Python (`ast.parse()`)
-3. All shared files parse as valid Python
+2. All stub files parse via the language's parser (Python `ast`, or the appropriate tree-sitter grammar for TypeScript / Java / C# / C / C++ / Rust)
+3. All shared files parse the same way
 4. Complexity weights sum to 1.0
 5. No circular dependencies in the dependency graph
-6. All imports in stub files reference existing repo files, shared files, or standard library
+6. All imports in stub files reference existing repo files, shared files, or the language's standard library
 7. Each subtask has at least one stub test file
-8. Stub tests actually fail when run against the scaffolding (confirming stubs raise NotImplementedError)
+8. Stub tests actually fail when run against the scaffolding (confirming stubs use the language's "not implemented" idiom rather than no-op'ing)
 
 If validation fails, retry the coordinator with the specific errors appended to the prompt.
 
@@ -351,7 +366,7 @@ Step 6: Write integration tests that test the boundaries between subtasks. These
 - File paths must NEVER overlap between subtasks. Each file belongs to exactly one subtask.
 - Complexity weights must sum to 1.0 and reflect actual implementation difficulty, not line count.
 
-## Anti-Patterns — Do NOT Do These
+## Anti-Patterns  -  Do NOT Do These
 
 - Do NOT write vague docstrings like "Process the data and return results." Specify WHAT data, HOW to process, and WHAT the results look like.
 - Do NOT create stub functions that are impossible to implement without information not in the docstring or type hints.
@@ -448,7 +463,7 @@ def verify_and_retry_coordinator(
             for module in extract_imports(content):
                 if not resolves(module, repo_root, decomposition["shared_files"]):
                     errors.append(
-                        f"Unresolved import in {path}: '{module}' — "
+                        f"Unresolved import in {path}: '{module}'  -  "
                         f"define it in a shared file or fix the import path"
                     )
 
@@ -457,7 +472,7 @@ def verify_and_retry_coordinator(
             for module in extract_imports(content):
                 if not resolves(module, repo_root, decomposition["shared_files"]):
                     errors.append(
-                        f"Unresolved import in test {path}: '{module}' — "
+                        f"Unresolved import in test {path}: '{module}'  -  "
                         f"tests import types too; ensure they exist in shared files"
                     )
 
@@ -481,7 +496,7 @@ def verify_and_retry_coordinator(
         if abs(total_weight - 1.0) > 0.01:
             errors.append(f"Complexity weights sum to {total_weight}, expected 1.0")
 
-        # Check 7: Write files to disk and run stub tests — verify they FAIL
+        # Check 7: Write files to disk and run stub tests  -  verify they FAIL
         # (confirming stubs actually raise NotImplementedError)
         write_scaffolding_to_disk(decomposition, repo_root)
         for st in decomposition["subtasks"]:
@@ -489,7 +504,7 @@ def verify_and_retry_coordinator(
                 result = run_pytest(test_file, repo_root)
                 if result.returncode == 0:
                     errors.append(
-                        f"Stub test {test_file} PASSED on scaffolding — "
+                        f"Stub test {test_file} PASSED on scaffolding  -  "
                         f"tests should FAIL on NotImplementedError stubs. "
                         f"The test is probably a no-op or doesn't call the stub."
                     )
@@ -860,11 +875,11 @@ Run tests with: bash("pytest <test_file_path> -v --tb=short")
 Use bash for search: bash("grep -rn 'pattern' path/")
 Use list_files to explore directories you haven't seen.
 
-Note: Your stub files, test files, and shared schemas are pre-loaded in your assignment message. You do NOT need to file_read those — start implementing immediately. Use file_read only for additional context files you want to inspect. Use the project file tree in your assignment to understand import paths — do not guess.
+Note: Your stub files, test files, and shared schemas are pre-loaded in your assignment message. You do NOT need to file_read those  -  start implementing immediately. Use file_read only for additional context files you want to inspect. Use the project file tree in your assignment to understand import paths  -  do not guess.
 
 ## Output Efficiency
 
-Go straight to the point. Your stub and test content is already in your assignment — start implementing.
+Go straight to the point. Your stub and test content is already in your assignment  -  start implementing.
 Do not narrate your plan. Do not explain your reasoning at length. Act.
 Keep going until all tests pass or you have exhausted your iteration budget.
 Do not stop after writing code. You must run the tests. Claiming you're done without test output is not acceptable.
@@ -1008,7 +1023,7 @@ TOOL_DEFINITIONS = [
         "name": "file_write",
         "description": (
             "Write content to a file. ONLY works for files in your allowed_files list. "
-            "Writes the COMPLETE file content — this is a full replace, not a patch. "
+            "Writes the COMPLETE file content  -  this is a full replace, not a patch. "
             "The file must already exist (you are replacing NotImplementedError stubs). "
             "Fails if the path is not in allowed_files."
         ),
@@ -1123,7 +1138,7 @@ def validate_file_write(params: dict[str, Any]) -> tuple[bool, str]:
     if not abs_path.startswith(os.path.normpath(REPO_ROOT)):
         return False, f"Path traversal denied: {path}"
 
-    # Scope check — the primary security boundary
+    # Scope check  -  the primary security boundary
     normalized_allowed = [
         os.path.normpath(os.path.join(REPO_ROOT, f)) for f in ALLOWED_FILES
     ]
@@ -1138,7 +1153,7 @@ def validate_file_write(params: dict[str, Any]) -> tuple[bool, str]:
     if len(content.encode("utf-8")) > MAX_FILE_WRITE_BYTES:
         return False, f"Content too large: limit is {MAX_FILE_WRITE_BYTES} bytes."
 
-    # Syntax check — the file must be valid Python
+    # Syntax check  -  the file must be valid Python
     try:
         import ast
         ast.parse(content)
@@ -1148,7 +1163,7 @@ def validate_file_write(params: dict[str, Any]) -> tuple[bool, str]:
             f"Fix the syntax before writing. Line {e.lineno}: {e.text}"
         )
 
-    # Public interface check — miner must not add new public symbols
+    # Public interface check  -  miner must not add new public symbols
     # Parse the original stub and compare public names
     try:
         original_path = abs_path  # file already exists (it's a stub)
@@ -1465,7 +1480,7 @@ def extract_per_test_errors(test_output: str) -> dict[str, str]:
     """
     Extract a mapping of test_name -> error_type for thrashing detection.
     If the same test fails 3x with a DIFFERENT error each time, the miner
-    is patching patches — it should hard reset and start fresh.
+    is patching patches  -  it should hard reset and start fresh.
     """
     per_test = {}
     current_test = None
@@ -1557,7 +1572,7 @@ def format_test_feedback(test_output: str, iteration: int) -> str:
         f"{test_output}\n"
         f"--- END TEST RESULTS ---\n"
         f"{hint}\n"
-        f"Fix the failing tests. Do not rewrite from scratch — identify the specific "
+        f"Fix the failing tests. Do not rewrite from scratch  -  identify the specific "
         f"error, fix the specific issue, and re-run."
     )
 
@@ -1581,7 +1596,7 @@ def build_retry_context(state: RetryState) -> str:
     
     This follows the "incremental fix" pattern from claw-code by default,
     switching to "hard context reset" (OmX's Ralph pattern) only when the
-    agent is demonstrably thrashing — patching patches instead of converging.
+    agent is demonstrably thrashing  -  patching patches instead of converging.
     """
     if not state.history:
         return ""
@@ -1594,7 +1609,7 @@ def build_retry_context(state: RetryState) -> str:
     for record in state.history:
         status = "PASSED" if record.tests_passed else "FAILED"
         lines.append(
-            f"  Iteration {record.iteration}: {status} — {record.error_summary or 'N/A'}"
+            f"  Iteration {record.iteration}: {status}  -  {record.error_summary or 'N/A'}"
         )
 
     if state.hard_reset_triggered:
@@ -2032,7 +2047,7 @@ Claude Code uses `CRITICAL:`, `IMPORTANT:`, `Note:` hierarchy to signal instruct
 
 #### 6.2 Adopt: Negative Example Teaching (from Claude Code + OmX)
 
-Both systems pair "do this" with explicit "don't do this" plus specific failure modes. The OmX critic role is especially good at this — "Vague rejections: 'The plan needs more detail.' Instead: 'Task 3 references auth.ts but doesn't specify which function...'"
+Both systems pair "do this" with explicit "don't do this" plus specific failure modes. The OmX critic role is especially good at this  -  "Vague rejections: 'The plan needs more detail.' Instead: 'Task 3 references auth.ts but doesn't specify which function...'"
 
 **Implementation**: The coordinator prompt's "Anti-Patterns" section uses this. Add more failure mode examples as you observe them in production. Maintain a living document of observed miner failure modes and add the top ones to the miner prompt.
 
@@ -2052,7 +2067,7 @@ Claude Code's FileEditTool errors if you haven't read the file first: "This tool
 
 OmX's most effective pattern: "No evidence = not complete." Every role requires tool-backed evidence of completion.
 
-**Implementation**: For miners, this is natural — stub tests are the evidence. But add to the miner prompt: "Do not stop after writing code. You must run the tests. Claiming you're done without test output is not acceptable."
+**Implementation**: For miners, this is natural  -  stub tests are the evidence. But add to the miner prompt: "Do not stop after writing code. You must run the tests. Claiming you're done without test output is not acceptable."
 
 #### 6.6 Adopt: The Scope Guard Pattern (from OmX)
 
@@ -2074,7 +2089,7 @@ Claw-code validates structured output with retry. The coordinator should validat
 
 #### 6.9 Adopt: Computed System Prompts (from claw-code + Claude Code)
 
-Both systems build prompts dynamically from runtime state. The miner prompt should include the actual file list, actual test file names, and actual shared file contents — not generic instructions.
+Both systems build prompts dynamically from runtime state. The miner prompt should include the actual file list, actual test file names, and actual shared file contents  -  not generic instructions.
 
 **Implementation**: The user message sent to the miner (not the system prompt) should be dynamically assembled using the warm-start pattern (Idea 2). It includes:
 - An annotated project file tree showing the full repo structure with markers for "YOUR ASSIGNMENT", "YOUR TESTS", "[shared - do not modify]", and "[assigned to another engineer]"
@@ -2091,9 +2106,9 @@ OmX stops after 3 identical failed approaches. This prevents burning tokens on a
 
 #### 6.11 Adopt: Adversarial Verification Agent (from Claude Code, adapted)
 
-Claude Code's Verification Agent (Section 4.9) is deliberately adversarial — it tries to break things at the seams. It documents its own failure modes and requires tool-backed proof for every claim. The coordinator writes integration tests, but may write shallow ones. An adversarial agent that probes the component boundaries catches what the tests missed.
+Claude Code's Verification Agent (Section 4.9) is deliberately adversarial  -  it tries to break things at the seams. It documents its own failure modes and requires tool-backed proof for every claim. The coordinator writes integration tests, but may write shallow ones. An adversarial agent that probes the component boundaries catches what the tests missed.
 
-**Implementation**: Advisory only — does NOT affect miner scores (that would break deterministic scoring / Yuma Consensus). Runs post-merge, produces a quality report, and feeds patterns back into the coordinator prompt for the next task. This creates a learning loop: shallow test coverage on task N gets fixed in the coordinator's prompt for task N+1. See Idea 9 for the full implementation including the verifier prompt, seam identification logic, and coordinator feedback injection.
+**Implementation**: Advisory only  -  does NOT affect miner scores (that would break deterministic scoring / Yuma Consensus). Runs post-merge, produces a quality report, and feeds patterns back into the coordinator prompt for the next task. This creates a learning loop: shallow test coverage on task N gets fixed in the coordinator's prompt for task N+1. See Idea 9 for the full implementation including the verifier prompt, seam identification logic, and coordinator feedback injection.
 
 **When to build**: After the prototype is stable with 10+ completed tasks. Not a launch blocker.
 
@@ -2105,19 +2120,19 @@ Claude Code's Verification Agent (Section 4.9) is deliberately adversarial — i
 
 Both systems propose shared memory stores, blackboard patterns, and event buses for inter-agent communication. OmX has mailboxes, discovery boards, and shared scratchpads.
 
-**Why not for BitSwarm**: Miners are adversarial and isolated by design. Shared memory between miners would enable collusion, free-riding, and gaming. The scaffolding commit IS the shared memory — it's frozen before miners start and provides all the shared context they need.
+**Why not for BitSwarm**: Miners are adversarial and isolated by design. Shared memory between miners would enable collusion, free-riding, and gaming. The scaffolding commit IS the shared memory  -  it's frozen before miners start and provides all the shared context they need.
 
 #### 6.13 Reject: Bidirectional Communication During Execution (from claw-code)
 
 Claw-code's `SendMessageTool` enables multi-turn subagent conversations. OmX's leader can send mailbox messages to workers mid-execution.
 
-**Why not for BitSwarm**: The validator cannot adjust tasks mid-execution. This is intentional — it makes scoring deterministic and prevents a validator from helping favored miners. The miner must be self-sufficient from the assignment alone.
+**Why not for BitSwarm**: The validator cannot adjust tasks mid-execution. This is intentional  -  it makes scoring deterministic and prevents a validator from helping favored miners. The miner must be self-sufficient from the assignment alone.
 
 #### 6.14 Reject: Work Stealing (from Claude Code improvements)
 
 Claude Code proposes that agents finishing early pick up work from overloaded siblings.
 
-**Why not for BitSwarm**: Miners don't know about each other's work. A miner that finishes early simply returns early. In production, a miner could accept a new subtask from a different task — but never from the same task (to prevent information leakage).
+**Why not for BitSwarm**: Miners don't know about each other's work. A miner that finishes early simply returns early. In production, a miner could accept a new subtask from a different task  -  but never from the same task (to prevent information leakage).
 
 #### 6.15 Reject: Dynamic Tool Discovery (from Claude Code's ToolSearch)
 
@@ -2153,10 +2168,10 @@ OmX runs a mandatory code cleanup pass after implementation.
 
 **Build Priority Order** (ship in this sequence):
 
-1. **Coordinator Self-Verification Loop** (Idea 1) — if scaffolding is broken, nothing works
-2. **Scaffolding Quality Metrics** (Idea 6) — you need to know your decomposition success rate immediately because that tells you whether the whole system is viable. If your coordinator produces broken scaffolding 70% of the time, the warm-start optimization doesn't matter yet.
-3. **Miner Warm-Start Context Block** (Idea 2) — biggest easy win for miner performance once scaffolding is reliable
-4. **Fallback Partial Credit** (Idea 5) — changes incentives to improve network participation
+1. **Coordinator Self-Verification Loop** (Idea 1)  -  if scaffolding is broken, nothing works
+2. **Scaffolding Quality Metrics** (Idea 6)  -  you need to know your decomposition success rate immediately because that tells you whether the whole system is viable. If your coordinator produces broken scaffolding 70% of the time, the warm-start optimization doesn't matter yet.
+3. **Miner Warm-Start Context Block** (Idea 2)  -  biggest easy win for miner performance once scaffolding is reliable
+4. **Fallback Partial Credit** (Idea 5)  -  changes incentives to improve network participation
 
 ---
 
@@ -2209,7 +2224,7 @@ def verify_and_retry_coordinator(
             for module in extract_imports(content):
                 if not resolves(module, repo_root, decomposition["shared_files"]):
                     errors.append(
-                        f"Unresolved import in {path}: '{module}' — "
+                        f"Unresolved import in {path}: '{module}'  -  "
                         f"define it in a shared file or fix the import path"
                     )
 
@@ -2218,7 +2233,7 @@ def verify_and_retry_coordinator(
             for module in extract_imports(content):
                 if not resolves(module, repo_root, decomposition["shared_files"]):
                     errors.append(
-                        f"Unresolved import in test {path}: '{module}' — "
+                        f"Unresolved import in test {path}: '{module}'  -  "
                         f"tests import types too; ensure they exist in shared files"
                     )
 
@@ -2242,7 +2257,7 @@ def verify_and_retry_coordinator(
         if abs(total_weight - 1.0) > 0.01:
             errors.append(f"Complexity weights sum to {total_weight}, expected 1.0")
 
-        # Check 7: Write files to disk and run stub tests — verify they FAIL
+        # Check 7: Write files to disk and run stub tests  -  verify they FAIL
         # (confirming stubs actually raise NotImplementedError)
         write_scaffolding_to_disk(decomposition, repo_root)
         for st in decomposition["subtasks"]:
@@ -2250,7 +2265,7 @@ def verify_and_retry_coordinator(
                 result = run_pytest(test_file, repo_root)
                 if result.returncode == 0:
                     errors.append(
-                        f"Stub test {test_file} PASSED on scaffolding — "
+                        f"Stub test {test_file} PASSED on scaffolding  -  "
                         f"tests should FAIL on NotImplementedError stubs. "
                         f"The test is probably a no-op or doesn't call the stub."
                     )
@@ -2267,7 +2282,7 @@ def verify_and_retry_coordinator(
     return None  # Release task back to queue
 ```
 
-This is the "verification loop" pattern from OmX applied to the coordinator. "No evidence = not complete" applies to scaffolding too. The critical additions over naive validation: (a) test file imports are checked, not just stub imports — tests reference types too, and a mismatch between test assertions and shared file field names is the single most common coordinator bug; (b) stub tests are actually run against scaffolding to confirm they fail; (c) each retry gets the SPECIFIC errors, not a generic "try again."
+This is the "verification loop" pattern from OmX applied to the coordinator. "No evidence = not complete" applies to scaffolding too. The critical additions over naive validation: (a) test file imports are checked, not just stub imports  -  tests reference types too, and a mismatch between test assertions and shared file field names is the single most common coordinator bug; (b) stub tests are actually run against scaffolding to confirm they fail; (c) each retry gets the SPECIFIC errors, not a generic "try again."
 
 #### Idea 2: Miner Warm-Start Context Block
 
@@ -2435,11 +2450,11 @@ This won't show meaningful coverage (stubs raise NotImplementedError), but it WI
 
 Idea 9: Adversarial Seam Verifier (Post-Merge, Advisory Only)
 
-The coordinator writes integration tests, but the coordinator might write shallow ones. After all patches merge and scoring completes, run an adversarial verification agent that tries to *break* the merged result at the component boundaries — the exact seams between subtasks.
+The coordinator writes integration tests, but the coordinator might write shallow ones. After all patches merge and scoring completes, run an adversarial verification agent that tries to *break* the merged result at the component boundaries  -  the exact seams between subtasks.
 
-This is adapted from Claude Code's Verification Agent pattern (Section 4.9 of the Claude analysis). That agent is deliberately adversarial, documents its own failure modes ("avoidance — checking easy things, ignoring hard ones" and "seduction by 80% — stopping when mostly works"), and requires tool-backed evidence for every claim.
+This is adapted from Claude Code's Verification Agent pattern (Section 4.9 of the Claude analysis). That agent is deliberately adversarial, documents its own failure modes ("avoidance  -  checking easy things, ignoring hard ones" and "seduction by 80%  -  stopping when mostly works"), and requires tool-backed evidence for every claim.
 
-**Why advisory-only, not a scoring signal:** If the verifier's judgment affects miner scores, it must be deterministic — two validators running the same verifier must agree. An LLM-based verifier is non-deterministic. Different validators would produce different scores, breaking Yuma Consensus. So: the verifier does NOT affect scores. It produces a quality report and feeds findings back into the coordinator.
+**Why advisory-only, not a scoring signal:** If the verifier's judgment affects miner scores, it must be deterministic  -  two validators running the same verifier must agree. An LLM-based verifier is non-deterministic. Different validators would produce different scores, breaking Yuma Consensus. So: the verifier does NOT affect scores. It produces a quality report and feeds findings back into the coordinator.
 
 ```python
 """
@@ -2470,11 +2485,11 @@ integration tests MISSED.
    the session store is full AND the request has no cookies?)
 
 2. Seduction by 80%: Finding that "most paths work" and stopping. You must
-   test the adversarial paths — the ones a developer would forget.
+   test the adversarial paths  -  the ones a developer would forget.
 
 ## What to Probe
 
-Focus on the SEAMS — the exact points where one component calls another:
+Focus on the SEAMS  -  the exact points where one component calls another:
 
 - Type mismatches that pass at the happy path but fail at edges
   (None vs empty string, 0 vs False, empty list vs None)
@@ -2506,7 +2521,7 @@ For each finding:
   TEST: {pytest code that reproduces the issue}
 
 If no seam weaknesses found after thorough probing, output:
-  RESULT: CLEAN — all seams verified with adversarial probes.
+  RESULT: CLEAN  -  all seams verified with adversarial probes.
   PROBES_RUN: {list of scenarios tested}
 """
 
@@ -2531,7 +2546,7 @@ class SeamVerifierReport:
 def run_seam_verifier(
     merged_repo_root: str,
     subtask_manifest: dict,
-    model: str = "sonnet",  # Doesn't need frontier — adversarial probing is bounded
+    model: str = "sonnet",  # Doesn't need frontier  -  adversarial probing is bounded
 ) -> SeamVerifierReport:
     """
     Run after scoring is complete. Does not block or affect scores.
@@ -2635,7 +2650,7 @@ def feed_back_to_coordinator(
     )
 ```
 
-**When to build this:** After the prototype is stable and you have 10+ completed tasks to analyze. The seam verifier's value compounds — each task's findings improve the coordinator's test generation for future tasks. It's a quality flywheel, not a launch blocker.
+**When to build this:** After the prototype is stable and you have 10+ completed tasks to analyze. The seam verifier's value compounds  -  each task's findings improve the coordinator's test generation for future tasks. It's a quality flywheel, not a launch blocker.
 
 ---
 
@@ -2643,90 +2658,138 @@ def feed_back_to_coordinator(
 
 ## 11. Repository Structure
 
+The current on-disk layout. The v1 spec proposed a `neurons/` + nested `bitswarm/` package; the implementation flattened it as the work matured.
+
 ```
-bitswarm/
-├── neurons/
-│   ├── validator.py              # Main validator loop
-│   └── miner.py                  # Main miner loop
-├── bitswarm/
-│   ├── __init__.py
-│   ├── protocol.py               # Synapse definitions
-│   ├── coordinator/
-│   │   ├── __init__.py
-│   │   ├── decomposer.py         # Calls frontier model, returns structured decomposition
-│   │   ├── scaffolder.py         # Writes decomposition output as actual files to repo
-│   │   ├── validator_checks.py   # Programmatic validation of decomposition
-│   │   ├── prompts.py            # Coordinator system/user prompts
-│   │   └── schemas.py            # Pydantic models for decomposition JSON
-│   ├── miner/
-│   │   ├── __init__.py
-│   │   ├── runtime.py            # Sandboxed execution environment
-│   │   ├── agent.py              # Reference agent: reads stubs, implements, runs tests
-│   │   ├── prompts.py            # Miner agent system/user prompts
-│   │   └── patch.py              # Git diff generation and scope validation
-│   ├── validator/
-│   │   ├── __init__.py
-│   │   ├── task_queue.py         # Task queue management
-│   │   ├── assignment.py         # Miner selection and subtask distribution
-│   │   ├── merger.py             # Patch apply, stub test, integration test pipeline
-│   │   ├── scorer.py             # Per-miner score computation
-│   │   ├── verifier.py           # Cross-validator verification
-│   │   └── weights.py            # Weight computation and on-chain submission
-│   ├── sandbox/
-│   │   ├── __init__.py
-│   │   ├── docker.py             # Container lifecycle management
-│   │   ├── git_ops.py            # Clone, branch, merge, diff, apply
-│   │   └── test_runner.py        # Execute pytest inside sandbox
-│   └── utils/
-│       ├── __init__.py
-│       ├── config.py             # Subnet hyperparameters
-│       └── logging.py
-├── tests/
-│   ├── test_decomposer.py
-│   ├── test_scaffolder.py
-│   ├── test_merger.py
-│   ├── test_scorer.py
-│   └── test_protocol.py
-├── scripts/
-│   ├── submit_task.py            # CLI for submitting tasks
-│   └── monitor.py                # Dashboard for task status
+BitSwarm/
+├── README.md                          Multi-LLM entry point, quick start
+├── BITSWARM_SPEC.md                   This document
+├── BITSWARM_ARCHITECTURE.md           v1 architecture brief (preserved)
+├── config.py                          Env-var resolution: backends, models, OpenAI provider
 ├── requirements.txt
-├── Dockerfile.miner
-├── Dockerfile.validator
-├── docker-compose.yml
-└── README.md
+│
+├── protocol/
+│   ├── schemas.py                     Pydantic models: TaskAssignment, MinerResponse, etc.
+│   └── transport.py                   git bundle <-> base64 (repo state transport)
+│
+├── miner/
+│   ├── server.py                      FastAPI server + backend selection
+│   ├── agent.py                       Anthropic SDK miner (tool-use loop)
+│   ├── agent_cc.py                    Claude CLI subprocess miner
+│   ├── agent_openai.py                OpenAI-compatible miner (any provider)
+│   ├── tools.py                       Tool definitions (file_read/write, bash, list_files)
+│   ├── recovery.py                    Retry / hard-reset state machine
+│   ├── warm_start.py                  Pre-loaded context for the first turn
+│   └── prompts.py                     SDK miner system prompt
+│
+├── validator/
+│   ├── server.py                      Orchestration server
+│   ├── lang_profiles.py               Per-language metadata registry (7 languages)
+│   ├── decomposer.py                  SDK coordinator (Phase 1, 1.5, 2)
+│   ├── decomposer_cc.py               Subprocess coordinator
+│   ├── critique.py                    Self-critique pass (advisory)
+│   ├── preflight.py                   Scaffold compile-check before mining
+│   ├── cache.py                       Decomposition cache
+│   ├── scaffolder.py                  Write stubs + git commit baseline
+│   ├── validator_checks.py            Phase 1.5 dispatcher
+│   ├── validator_checks_common.py     Language-agnostic contract checks
+│   ├── parsers/
+│   │   ├── python.py                  stdlib ast
+│   │   ├── typescript.py              tree-sitter-typescript
+│   │   ├── java.py                    tree-sitter-java
+│   │   ├── csharp.py                  tree-sitter-c-sharp
+│   │   ├── c.py                       tree-sitter-c
+│   │   ├── cpp.py                     tree-sitter-cpp
+│   │   └── rust.py                    tree-sitter-rust
+│   ├── test_runners.py                Build-system dispatch (pytest, vitest, mvn, dotnet, cargo, make)
+│   ├── test_runner.py                 Merge-time test runner
+│   ├── merge.py                       Tiered merge + recovery
+│   ├── drop_replace.py                Drop-and-replace recovery
+│   ├── repair.py                      SDK repair miner
+│   ├── repair_cc.py                   Subprocess repair miner
+│   ├── scorer.py                      Per-subtask scoring
+│   └── prompts.py                     Coordinator system prompt
+│
+├── docker/
+│   ├── Dockerfile.base                All seven language toolchains + Claude CLI
+│   ├── Dockerfile.miner               Thin layer on base
+│   ├── Dockerfile.validator           Thin layer on base
+│   ├── docker-compose.yml
+│   └── README.md                      claude_code auth setup, permissions trap
+│
+├── demo/
+│   ├── run_pipeline.py                In-process end-to-end runner
+│   ├── run_all_languages.py           Multi-language driver across 7 profiles
+│   ├── smoke_miner_cc.py              Single-miner subprocess smoke
+│   ├── smoke_coordinator_cc.py        Single-coordinator subprocess smoke
+│   ├── spec_wordle.txt                Python demo
+│   ├── spec_wordle_cpp.txt            C++ demo
+│   ├── spec_wordle_generic.txt        Language-agnostic demo
+│   ├── spec_minidb.txt                Stretch demo
+│   └── target_repo/                   Empty starter repo for the demos
+│
+├── tests/                             ~250 tests, ~5s suite
+│   ├── test_protocol.py
+│   ├── test_transport.py
+│   ├── test_dispatch.py
+│   ├── test_backends.py               Multi-LLM backend dispatch
+│   ├── test_validator_checks_python.py
+│   ├── test_validator_multilang.py
+│   ├── test_parsers_c.py              (and parsers_cpp / csharp / java / rust / typescript)
+│   ├── test_lang_profiles.py
+│   ├── test_cache.py
+│   ├── test_critique_preflight.py
+│   ├── test_test_first.py
+│   ├── test_drop_replace.py
+│   └── test_bug_fixes.py
+│
+└── docs/
+    └── STATUS.md                      Engineering state + roadmap (lighter than this spec)
 ```
+
+The Bittensor protocol layer (Synapse subclasses + Axon/Dendrite integration) is the next layer to land. The current `protocol/schemas.py` defines the data contracts; the HTTP transport in `validator/server.py` and `miner/server.py` is what the Synapse subclasses will replace.
 
 ---
 
 ## 12. Prototype Plan
 
-The prototype proves the core thesis on a single machine with no Bittensor integration.
+The original single-machine Python prototype has shipped. It has since generalized into the multi-language Docker stack that is the current system. This section is retained for historical context and to track the path to mainnet.
 
-### Scope
-- One validator process (coordinator + merger)
-- N miner processes (separate Python processes communicating via local HTTP)
-- Single target repo: a minimal Flask app
-- Single task: "Add Google OAuth login with session management, /me endpoint, /logout endpoint"
-- Coordinator decomposes into ~4 subtasks
-- Each miner uses Claude API via Anthropic SDK
-- Validator merges patches and runs pytest
+### Original Scope (completed)
+- One validator process (coordinator + merger) - shipped
+- N miner processes communicating over local HTTP - shipped
+- Single target repo: a minimal Flask app - shipped
+- Single task: Google OAuth feature - shipped, scored 1.000
+- Coordinator decomposition into ~4 subtasks - shipped
+- Each miner uses Claude API via Anthropic SDK - shipped, plus two additional backends since (Claude CLI subprocess, OpenAI-compatible)
+- Validator merges patches and runs pytest - shipped, generalized to per-language test runners
 
-### Success Criteria
-1. Coordinator produces valid scaffolding (all validation checks pass)
-2. Stub tests fail on scaffolding (confirming stubs are real)
-3. At least 3 of 4 miners pass their stub tests within 5 iterations
-4. All patches apply cleanly (no git conflicts)
-5. Integration tests pass on the merged codebase
-6. The Flask app actually runs and the auth flow works (manual verification)
+### Original Success Criteria (all met)
+1. Coordinator produces valid scaffolding - met (Phase 1 + 1.5 + 2 validation gates all pass)
+2. Stub tests fail on scaffolding - met (confirmed in `tests/test_validator_checks_python.py`)
+3. At least 3 of 4 miners pass their stub tests within 5 iterations - exceeded (5 of 5 routinely)
+4. All patches apply cleanly - met
+5. Integration tests pass on the merged codebase - met (Wordle multi-language sweep: 7/7 languages at 1.000)
+6. Flask OAuth app runs end-to-end - met (raytracer demo and Wordle demos play interactively)
+
+### Generalizations Since v1
+- Multi-language support across seven targets (Python, TypeScript, Java, C#, C, C++, Rust)
+- Three independent inference backends with miner-side selection
+- Single Docker base image with all seven toolchains baked in
+- Phase 1.5 test-first decomposition: integration tests written before stubs so they pin the public API
+- Tiered merge with cross-compile + drop-and-replace + repair miner
+- Decomposition cache + critique pass + preflight compile-check
+- Per-language profile registry driving the Phase 2 prompt and the test runner
 
 ### Prototype to Production Path
-1. Replace local HTTP with Bittensor Axon/Dendrite/Synapse
-2. Add Docker sandboxing for miner execution
-3. Implement weight-setting logic
+1. Replace local HTTP transport with Bittensor Axon / Dendrite / Synapse (next)
+2. Add stricter Docker sandboxing for miner execution (network egress lockdown during code execution)
+3. Implement weight-setting logic (EMA over 20-task window, on-chain submission at tempo boundary)
 4. Register on testnet, run with real miners
-5. Iterate on coordinator prompts based on failure modes
+5. Iterate on coordinator prompts and language profiles based on failure modes
 6. Launch on mainnet
+
+Items 2 onward are tracked in `docs/STATUS.md` under the roadmap section.
 
 ---
 
@@ -2742,7 +2805,7 @@ The prototype proves the core thesis on a single machine with no Bittensor integ
 
 5. **Test quality**: The coordinator generates both stub tests and integration tests. If the tests are too shallow (only test happy path), bad implementations pass. If they're too thorough (test every edge case), they over-constrain the implementation. What test coverage level produces the best miner success rate?
 
-6. **Language generalization**: The scaffolding approach works well for Python with type hints. How well does it translate to JavaScript/TypeScript, Go, Rust, or dynamically typed Python without annotations?
+6. **Language generalization** (largely answered): The scaffolding approach generalizes well to statically-typed languages with explicit signatures. Seven targets are live-tested: Python, TypeScript, Java, C#, C, C++, Rust. The cross-language Wordle sweep on 2026-05-19 scored 1.000 / 1.000 on all seven from a single language-agnostic spec. Per-language differences live in the profile registry (stub-body idiom, import conventions, test framework, build command); the orchestration layer is language-agnostic. Open sub-question: dynamically-typed languages without annotations (Ruby, untyped Python, plain JS) where the public interface is implicit. The pinned-signature approach should still work but produces less defensive scaffolding.
 
 7. **Requester spec quality**: Vague specs produce vague scaffolding. Should the coordinator have a "clarification" step where it asks the requester to refine the spec before decomposing? Or should it just do its best and let the success rate reflect the spec quality?
 
@@ -2773,19 +2836,43 @@ The key architectural insight: centralized multi-agent systems optimize for flex
 
 ## 15. Configuration and Hyperparameters
 
+The v1 design parameters (left as-is below) describe the protocol-level knobs the subnet will need. The implementation also exposes runtime env vars that gate backend selection and language; those are listed separately.
+
+### Protocol-level (design)
+
 | Parameter | Default | Description |
 |---|---|---|
 | `max_subtasks_per_task` | 6 | Maximum decomposition breadth |
 | `subtask_timeout_seconds` | 600 | Per-subtask execution deadline |
 | `task_timeout_seconds` | 1800 | Total task deadline including retries |
 | `max_retries_per_subtask` | 1 | Reassignment attempts for failed subtasks |
-| `max_miner_iterations` | 5 | Agent retry loops per miner before giving up |
-| `scoring_window_tasks` | 20 | Rolling window for weight calculation |
+| `max_miner_iterations` | 10 | Agent retry loops per miner before giving up |
+| `scoring_window_tasks` | 20 | Rolling EMA window for weight calculation |
 | `partial_credit_ratio` | 0.5 | Credit multiplier when stubs pass but integration fails |
-| `coordinator_model` | sonnet | Model for decomposition (use best available) |
+| `coordinator_model` | claude-sonnet-4-20250514 | Model for decomposition |
 | `quality_scoring_enabled` | false | Enable frontier model code quality scoring |
 | `min_stub_tests_per_subtask` | 2 | Minimum stub tests per subtask |
 | `patch_max_size_bytes` | 1048576 | Maximum patch size (1MB) |
 | `sandbox_memory_limit` | 2g | Docker memory limit per miner sandbox |
 | `sandbox_cpu_limit` | 2.0 | Docker CPU limit per miner sandbox |
+
+### Runtime env vars (implementation)
+
+The full list lives in `docs/STATUS.md` and the inline comments in `config.py`. The most operationally important:
+
+| Env var | Default | Description |
+|---|---|---|
+| `MINER_BACKEND` | `sdk` | `sdk`, `claude_code`, or `openai` |
+| `COORDINATOR_BACKEND` | `sdk` | `sdk` or `claude_code` (openai-coord is roadmap) |
+| `COORDINATOR_LANGUAGE` / `MINER_LANGUAGE` | autodetect | Target language profile (one of: python, typescript, java, csharp, c, cpp, rust). Auto-detected from repo markers when unset. |
+| `ANTHROPIC_API_KEY` | (none) | Required for `sdk` backends |
+| `MINER_OPENAI_API_KEY` / `OPENAI_API_KEY` | (none) | Required when `MINER_BACKEND=openai` |
+| `MINER_OPENAI_BASE_URL` / `OPENAI_BASE_URL` | OpenAI | Provider endpoint (DeepSeek, OpenRouter, Chutes, local vLLM, etc.) |
+| `MINER_OPENAI_MODEL` / `OPENAI_MODEL` | `gpt-4o-mini` | Provider's model id |
+| `BITSWARM_REPAIR_MODE` | `patch` | `patch`, `replace`, or `off` |
+| `BITSWARM_CC_EMPTY_RETRIES` | 3 | Internal retry budget for the `claude -p` empty-stdout transient |
+| `BITSWARM_NO_CACHE` | unset | `1` disables decomposition cache |
+| `BITSWARM_SKIP_PREFLIGHT` | unset | `1` skips the scaffold compile-check |
+| `BITSWARM_SKIP_CRITIQUE` | unset | `1` skips the self-critique pass |
+| `MINER_TIMEOUT_SECONDS` | 1200 | Per-miner subprocess timeout in the demo runner |
 | `sandbox_network` | none | Network access during code execution |
