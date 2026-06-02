@@ -268,9 +268,14 @@ def _run_final_tests(subtask: dict, repo_path: str) -> tuple[bool, str]:
         passed = result.returncode == 0
         return passed, f"--- {display} ---\n{output}\n"
 
+    # In diff mode, the per-subtask test gate is new_test_files. In
+    # scaffold mode it is stub_test_files. Fall back to either if one
+    # is empty, so this works regardless of mode for any subtask shape.
+    test_files = (subtask.get("new_test_files") or subtask.get("stub_test_files") or [])
+
     combined: list[str] = []
     all_passed = True
-    for test_file in subtask.get("stub_test_files", []):
+    for test_file in test_files:
         try:
             result = run_test(test_file, repo_path, timeout=120)
         except subprocess.TimeoutExpired:
@@ -293,15 +298,161 @@ def _run_final_tests(subtask: dict, repo_path: str) -> tuple[bool, str]:
     return all_passed, "\n".join(combined)
 
 
+def _build_diff_prompt(subtask: dict,
+                        target_stubs: dict,
+                        new_test_files_content: dict,
+                        shared_additions_content: dict,
+                        all_subtasks: list | None,
+                        repo_path: str) -> str:
+    """Compose the user prompt for a diff-mode Claude Code session.
+
+    Mirrors _build_prompt but for the modification flow: lists files
+    to MODIFY, embeds the CURRENT content + TARGET STUB for each,
+    lists the new tests that must pass, and tells the agent how the
+    diff-mode contract works.
+    """
+    sid = subtask["subtask_id"]
+    description = subtask.get("description", "")
+    behavior_spec = subtask.get("behavior_spec", "")
+    modify_files = subtask.get("modify_files", []) or []
+    new_test_files = subtask.get("new_test_files", []) or []
+    allowed_files = subtask.get("allowed_files", []) or (
+        modify_files + new_test_files
+    )
+
+    other_subtasks = []
+    if all_subtasks:
+        for st in all_subtasks:
+            if st.get("subtask_id") == sid:
+                continue
+            other_subtasks.append(
+                f"  - {st.get('subtask_id')}: {st.get('description', '')[:120]}"
+            )
+
+    out = [
+        f"# BitSwarm DIFF subtask: {sid}",
+        "",
+        description.strip(),
+        "",
+        "## Behavior spec",
+        behavior_spec.strip(),
+        "",
+        "## Files you must modify (read-write)",
+        *[f"  - {p}" for p in modify_files],
+        "",
+        "## New tests that must pass when you are done",
+        *[f"  - {p}" for p in new_test_files],
+        "",
+        "## Files you may edit (and ONLY these)",
+        *[f"  - {p}" for p in allowed_files],
+        "",
+    ]
+
+    # Embed CURRENT content of every modify_file so the agent does
+    # not need a file_read round-trip for each.
+    for path in modify_files:
+        full = os.path.join(repo_path, path)
+        current = ""
+        if os.path.isfile(full):
+            try:
+                with open(full, "r", encoding="utf-8", errors="replace") as f:
+                    current = f.read()
+            except OSError:
+                pass
+        out += [
+            f"## CURRENT (unmodified) content of {path}",
+            "```",
+            current,
+            "```",
+            "",
+        ]
+
+    # Embed TARGET STUB for every modify_file
+    for path in modify_files:
+        stub = target_stubs.get(path, "")
+        out += [
+            f"## TARGET STUB for {path} (post-edit public API)",
+            "```",
+            stub or "(no stub; preserve current public API + add what behavior_spec requires)",
+            "```",
+            "",
+        ]
+
+    # Embed NEW TEST FILE content
+    for path in new_test_files:
+        content = new_test_files_content.get(path, "")
+        if not content:
+            full = os.path.join(repo_path, path)
+            if os.path.isfile(full):
+                try:
+                    with open(full, "r", encoding="utf-8", errors="replace") as f:
+                        content = f.read()
+                except OSError:
+                    pass
+        out += [
+            f"## NEW TEST FILE: {path}",
+            "```",
+            content,
+            "```",
+            "",
+        ]
+
+    if shared_additions_content:
+        out += ["## Shared additions (read-only, may import from)"]
+        for path, content in shared_additions_content.items():
+            out += [f"### {path}", "```", content, "```", ""]
+
+    if other_subtasks:
+        out += [
+            "## Other subtasks (being implemented in parallel -- do NOT touch their files)",
+            *other_subtasks,
+            "",
+        ]
+
+    test_files_str = " ".join(new_test_files) or "<your test files>"
+    out += [
+        "## Instructions",
+        "1. Read each CURRENT file above. Understand what is there.",
+        "2. Read each TARGET STUB. Understand what the post-edit shape should be.",
+        "3. Read the NEW TEST FILES. They are the source of truth for the",
+        "   new behavior.",
+        "4. MODIFY each file in 'Files you must modify' to match its target",
+        "   stub AND make the new tests pass. Use the Edit or Write tool.",
+        "5. Run the new tests:",
+        f"     pytest {test_files_str} -x --tb=short",
+        "   Fix any failures by iterating on the implementation.",
+        "6. The EXISTING project test suite (whatever was already in the repo)",
+        "   MUST CONTINUE TO PASS. Do not break existing tests.",
+        "7. Stop when the new tests pass. Do not commit. Do not modify files",
+        "   outside the allowed list above.",
+    ]
+    return "\n".join(out)
+
+
 async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
                           shared_files_content, stub_files_content,
                           test_files_content, all_subtasks=None,
-                          timeout_seconds: int = 600):
+                          timeout_seconds: int = 600,
+                          mode: str = "scaffold",
+                          target_stubs=None,
+                          new_test_files_content=None,
+                          shared_additions_content=None):
     """Drop-in replacement for ``miner.agent.execute_subtask`` that
-    drives a Claude Code subprocess instead of the Anthropic SDK loop."""
+    drives a Claude Code subprocess instead of the Anthropic SDK loop.
+
+    Supports both scaffold mode (default; existing behavior) and diff
+    mode. In diff mode the prompt is built via ``_build_diff_prompt``
+    and the post-run test verification uses the subtask's
+    ``new_test_files`` instead of ``stub_test_files``.
+    """
     sid = subtask["subtask_id"]
-    allowed_files = subtask.get("allowed_files", []) or []
-    print(f"  [Miner-CC {sid}] starting Claude Code subprocess in {repo_path}")
+    if mode == "diff":
+        allowed_files = subtask.get("allowed_files") or (
+            (subtask.get("modify_files") or []) + (subtask.get("new_test_files") or [])
+        )
+    else:
+        allowed_files = subtask.get("allowed_files", []) or []
+    print(f"  [Miner-CC {sid}] starting Claude Code subprocess (mode={mode}) in {repo_path}")
 
     if shutil.which(_DEFAULT_BINARY) is None and not os.path.isfile(_DEFAULT_BINARY):
         msg = (
@@ -317,13 +468,23 @@ async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
             files_modified=[],
         )
 
-    prompt = _build_prompt(
-        subtask=subtask,
-        shared_files_content=shared_files_content or {},
-        stub_files_content=stub_files_content or {},
-        test_files_content=test_files_content or {},
-        all_subtasks=all_subtasks,
-    )
+    if mode == "diff":
+        prompt = _build_diff_prompt(
+            subtask=subtask,
+            target_stubs=target_stubs or {},
+            new_test_files_content=new_test_files_content or {},
+            shared_additions_content=shared_additions_content or {},
+            all_subtasks=all_subtasks,
+            repo_path=repo_path,
+        )
+    else:
+        prompt = _build_prompt(
+            subtask=subtask,
+            shared_files_content=shared_files_content or {},
+            stub_files_content=stub_files_content or {},
+            test_files_content=test_files_content or {},
+            all_subtasks=all_subtasks,
+        )
 
     # Run the subprocess in a worker thread so the asyncio loop (e.g.
     # the miner FastAPI server) stays responsive for /status calls
