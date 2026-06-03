@@ -148,13 +148,23 @@ def _discover_existing_tests(repo_path, exclude):
 
 
 def _run_pytest(repo_path, test_files, timeout=300):
-    """Run pytest on a list of test files; return (passed, output)."""
+    """Run pytest on a list of test files; return (passed, output).
+
+    PYTHONPATH is set to include both ``<repo>/src`` and ``<repo>``
+    so packages following either layout import correctly without
+    requiring an explicit ``pip install -e .`` per-workspace.
+    """
     if not test_files:
         return True, "(no tests to run)"
+    env = {**os.environ}
+    src_dir = os.path.join(repo_path, "src")
+    paths = [p for p in (src_dir, repo_path) if os.path.isdir(p)]
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join(paths + ([existing] if existing else []))
     try:
         result = subprocess.run(
             [sys.executable, "-m", "pytest", *test_files, "-x", "--tb=short", "-q"],
-            cwd=repo_path, capture_output=True, text=True, timeout=timeout,
+            cwd=repo_path, capture_output=True, text=True, timeout=timeout, env=env,
         )
         output = (result.stdout or "") + (
             ("\n[stderr]\n" + result.stderr) if result.stderr else ""
