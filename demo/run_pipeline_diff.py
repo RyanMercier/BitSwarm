@@ -147,12 +147,16 @@ def _discover_existing_tests(repo_path, exclude):
     return sorted(found)
 
 
-def _run_pytest(repo_path, test_files, timeout=300):
+def _run_pytest(repo_path, test_files, timeout=300, stop_on_first=True):
     """Run pytest on a list of test files; return (passed, output).
 
     PYTHONPATH is set to include both ``<repo>/src`` and ``<repo>``
     so packages following either layout import correctly without
     requiring an explicit ``pip install -e .`` per-workspace.
+
+    ``stop_on_first`` toggles ``-x``. For the per-tier additive gate
+    we want stop-on-first (fast fail). For the regression gate we
+    want to run everything so we can do a proper before/after diff.
     """
     if not test_files:
         return True, "(no tests to run)"
@@ -161,10 +165,13 @@ def _run_pytest(repo_path, test_files, timeout=300):
     paths = [p for p in (src_dir, repo_path) if os.path.isdir(p)]
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = os.pathsep.join(paths + ([existing] if existing else []))
+    args = [sys.executable, "-m", "pytest", *test_files, "--tb=short", "-q"]
+    if stop_on_first:
+        args.append("-x")
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", *test_files, "-x", "--tb=short", "-q"],
-            cwd=repo_path, capture_output=True, text=True, timeout=timeout, env=env,
+            args, cwd=repo_path, capture_output=True, text=True,
+            timeout=timeout, env=env,
         )
         output = (result.stdout or "") + (
             ("\n[stderr]\n" + result.stderr) if result.stderr else ""
@@ -174,6 +181,47 @@ def _run_pytest(repo_path, test_files, timeout=300):
         return False, "[TIMEOUT]"
     except Exception as exc:
         return False, f"[ERROR: {exc}]"
+
+
+def _collect_failing_nodeids(repo_path, test_files, timeout=600):
+    """Run pytest with --no-header --no-summary and parse the set of
+    failing nodeids. Used to compare before/after for the regression
+    gate so pre-existing failures don't penalize us."""
+    if not test_files:
+        return set(), "(no tests to run)"
+    env = {**os.environ}
+    src_dir = os.path.join(repo_path, "src")
+    paths = [p for p in (src_dir, repo_path) if os.path.isdir(p)]
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join(paths + ([existing] if existing else []))
+    args = [sys.executable, "-m", "pytest", *test_files,
+            "--tb=no", "-q", "--no-header", "-rN"]
+    try:
+        result = subprocess.run(
+            args, cwd=repo_path, capture_output=True, text=True,
+            timeout=timeout, env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return set(), "[TIMEOUT]"
+    except Exception as exc:
+        return set(), f"[ERROR: {exc}]"
+    output = (result.stdout or "") + (
+        ("\n[stderr]\n" + result.stderr) if result.stderr else ""
+    )
+    failing = set()
+    for line in output.splitlines():
+        # pytest -q FAILED lines look like:
+        #   FAILED tests/test_foo.py::test_bar - assert ...
+        # or for parametrize:
+        #   FAILED tests/test_foo.py::test_bar[case-1]
+        line = line.strip()
+        if line.startswith("FAILED "):
+            nodeid = line[len("FAILED "):].split(" - ", 1)[0].strip()
+            failing.add(nodeid)
+        elif line.startswith("ERROR "):
+            nodeid = line[len("ERROR "):].split(" - ", 1)[0].strip()
+            failing.add(nodeid)
+    return failing, output
 
 
 async def _run_miners(decomp, scaffolded_repo, miner_workdir, execute_subtask):
@@ -227,10 +275,27 @@ async def _run_miners(decomp, scaffolded_repo, miner_workdir, execute_subtask):
     return results
 
 
-def _apply_patches_in_order(decomp, miner_results, merge_repo):
-    """Apply each miner's patch to merge_repo in dependency order."""
+def _apply_patches_in_order(decomp, miner_results, merge_repo, out_dir=None):
+    """Apply each miner's patch to merge_repo in dependency order.
+
+    Patches are written to ``out_dir`` (or a tempdir under it) with an
+    ABSOLUTE path before being passed to ``git apply``. The path must
+    be absolute because git resolves the patch arg relative to cwd,
+    and cwd is merge_repo; a relative patch path that included
+    merge_repo would double-up. (Earlier versions of this function
+    had that bug; the patch file looked like
+    ``merge_repo/.bitswarm_patch.diff`` and git tried to find it
+    inside merge_repo, failing.)
+    """
+    import tempfile
     subtasks = _topological_order(decomp["subtasks"])
     applied = {}
+
+    patch_dir = (out_dir and os.path.join(out_dir, "patches")) or tempfile.mkdtemp(
+        prefix="bitswarm_patches_"
+    )
+    os.makedirs(patch_dir, exist_ok=True)
+
     for st in subtasks:
         sid = st["subtask_id"]
         result = miner_results.get(sid)
@@ -238,38 +303,34 @@ def _apply_patches_in_order(decomp, miner_results, merge_repo):
             print(f"  [merge] {sid}: empty patch, skipping")
             applied[sid] = False
             continue
-        # Write patch to a temp file then `git apply`
-        patch_file = os.path.join(merge_repo, ".bitswarm_patch.diff")
+        # Write to an absolute path OUTSIDE merge_repo so git apply
+        # (running with cwd=merge_repo) resolves the arg correctly.
+        patch_file = os.path.abspath(os.path.join(patch_dir, f"{sid}.diff"))
         with open(patch_file, "w") as f:
             f.write(result.patch)
-        try:
+        proc = subprocess.run(
+            ["git", "apply", "--whitespace=nowarn", patch_file],
+            cwd=merge_repo, capture_output=True, text=True,
+        )
+        if proc.returncode != 0:
             proc = subprocess.run(
-                ["git", "apply", "--whitespace=nowarn", patch_file],
+                ["git", "apply", "--3way", "--whitespace=nowarn", patch_file],
                 cwd=merge_repo, capture_output=True, text=True,
             )
-            if proc.returncode != 0:
-                # Try 3-way
-                proc = subprocess.run(
-                    ["git", "apply", "--3way", "--whitespace=nowarn", patch_file],
-                    cwd=merge_repo, capture_output=True, text=True,
-                )
-            ok = proc.returncode == 0
-            applied[sid] = ok
-            if ok:
-                print(f"  [merge] {sid}: patch applied")
-                # Commit so subsequent tier patches don't conflict
-                subprocess.run(["git", "add", "-A"], cwd=merge_repo, capture_output=True)
-                subprocess.run(
-                    ["git", "commit", "-m", f"apply {sid}", "--allow-empty"],
-                    cwd=merge_repo, capture_output=True, env=GIT_ENV,
-                )
-            else:
-                print(f"  [merge] {sid}: patch FAILED to apply\n{proc.stderr[-400:]}")
-        finally:
-            try:
-                os.remove(patch_file)
-            except OSError:
-                pass
+        ok = proc.returncode == 0
+        applied[sid] = ok
+        if ok:
+            print(f"  [merge] {sid}: patch applied "
+                  f"({len(result.patch)} chars, saved to {patch_file})")
+            subprocess.run(["git", "add", "-A"], cwd=merge_repo, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"apply {sid}", "--allow-empty"],
+                cwd=merge_repo, capture_output=True, env=GIT_ENV,
+            )
+        else:
+            tail = (proc.stderr or proc.stdout or "")[-500:]
+            print(f"  [merge] {sid}: patch FAILED to apply\n    {tail.strip()}")
+            print(f"    (patch preserved at {patch_file} for inspection)")
     return applied
 
 
@@ -337,15 +398,22 @@ async def run(spec_path, target_repo, out_dir):
     for t in new_test_paths:
         print(f"           - {t}")
 
-    # Pre-mining regression baseline: confirm existing tests pass on the
-    # unmodified-plus-new-tests scaffolded repo. (If they don't, the
-    # delta after mining can't be attributed cleanly.)
+    # Pre-mining regression baseline: capture which existing tests
+    # currently fail on the UNMODIFIED-plus-new-tests scaffolded repo.
+    # Any test failing here was already broken; we won't penalize the
+    # miners for it. The regression gate only counts tests that
+    # changed state from PASS to FAIL.
     print("\n[pipeline-diff] === pre-mining regression baseline ===")
-    pre_passed, pre_output = _run_pytest(repo_path, existing_tests, timeout=600)
+    pre_failing, pre_output = _collect_failing_nodeids(
+        repo_path, existing_tests, timeout=600,
+    )
     print(f"[pipeline-diff] existing tests on unmodified repo: "
-          f"{'PASS' if pre_passed else 'FAIL (proceeding anyway)'}")
-    if not pre_passed:
-        print(pre_output[-1200:])
+          f"{len(pre_failing)} pre-existing failure(s)")
+    if pre_failing:
+        for nid in sorted(pre_failing)[:10]:
+            print(f"           - {nid}")
+        if len(pre_failing) > 10:
+            print(f"           ... and {len(pre_failing) - 10} more")
 
     print("\n[pipeline-diff] === miners ===")
     miner_results = await _run_miners(
@@ -361,7 +429,9 @@ async def run(spec_path, target_repo, out_dir):
         shutil.rmtree(merge_repo)
     shutil.copytree(scaffolded_snapshot, merge_repo)
 
-    patch_applied = _apply_patches_in_order(decomp, miner_results, merge_repo)
+    patch_applied = _apply_patches_in_order(
+        decomp, miner_results, merge_repo, out_dir=out_dir,
+    )
 
     # Additive gate: per-subtask new tests on the merged state
     print("\n[pipeline-diff] additive gate (per-subtask new tests on merged):")
@@ -373,17 +443,27 @@ async def run(spec_path, target_repo, out_dir):
         additive_results[sid] = passed
         print(f"  {sid}: {'PASS' if passed else 'FAIL'}")
 
-    # Regression gate: existing tests on the merged state
+    # Regression gate: existing tests on the merged state.
+    # New failures = tests that fail now but did NOT fail before.
     print("\n[pipeline-diff] regression gate (existing tests on merged):")
-    regression_passed, regression_output = _run_pytest(
+    post_failing, post_output = _collect_failing_nodeids(
         merge_repo, existing_tests, timeout=600,
     )
-    print(f"  {'PASS' if regression_passed else 'FAIL'}")
-    if not regression_passed:
-        print(regression_output[-1500:])
+    newly_failing = post_failing - pre_failing
+    pre_existing_still_failing = post_failing & pre_failing
+    print(f"  {len(newly_failing)} newly-failing test(s); "
+          f"{len(pre_existing_still_failing)} pre-existing failure(s) carried over; "
+          f"{len(pre_failing - post_failing)} pre-existing failure(s) coincidentally fixed")
+    if newly_failing:
+        print("  NEW REGRESSIONS:")
+        for nid in sorted(newly_failing)[:10]:
+            print(f"    - {nid}")
+        if len(newly_failing) > 10:
+            print(f"    ... and {len(newly_failing) - 10} more")
+    regression_passed = (len(newly_failing) == 0)
 
     # Scoring: complexity_weight * additive_pass * regression_multiplier
-    # regression_multiplier = 1.0 if all existing tests pass, 0.5 otherwise
+    # regression_multiplier = 1.0 if no new regressions, 0.5 otherwise
     regression_mult = 1.0 if regression_passed else 0.5
     print("\n[pipeline-diff] === SCORES ===")
     total = 0.0
@@ -397,7 +477,8 @@ async def run(spec_path, target_repo, out_dir):
         print(f"  {sid:25s}  score={per_score:.3f}  "
               f"patch={'OK  ' if applied_ok else 'FAIL'}  "
               f"new_tests={'PASS' if add_ok else 'FAIL'}")
-    print(f"  regression_multiplier      {regression_mult:.2f}")
+    print(f"  regression_multiplier      {regression_mult:.2f} "
+          f"({'no new regressions' if regression_passed else f'{len(newly_failing)} new regression(s)'})")
     print(f"  TOTAL                      {total:.3f} / 1.000")
 
     print(f"\n[pipeline-diff] merged repo: {merge_repo}")
