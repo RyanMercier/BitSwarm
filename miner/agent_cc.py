@@ -196,9 +196,13 @@ def _run_claude_subprocess(prompt: str, cwd: str, timeout: int) -> _CCRunResult:
     signalled via ``timed_out`` rather than raised so the caller can
     still emit a valid ``MinerResult``.
     """
+    # Prompt comes via stdin to avoid Linux ARG_MAX (warm-start
+    # contexts on large existing codebases can exceed 128KB and would
+    # crash with E2BIG if passed as a CLI argument). With ``-p`` and
+    # no inline prompt, claude reads from stdin and exits when EOF.
     cmd = [
         _DEFAULT_BINARY,
-        "-p", prompt,
+        "-p",
         "--no-session-persistence",
         "--dangerously-skip-permissions",
         "--output-format", "text",
@@ -211,14 +215,10 @@ def _run_claude_subprocess(prompt: str, cwd: str, timeout: int) -> _CCRunResult:
     ]
 
     try:
-        # ``stdin=DEVNULL`` is critical: without it, claude treats the
-        # parent's open stdin as a (potentially streaming) input source
-        # and prints a 3-second "waiting for stdin" warning, then often
-        # exits with a non-zero status even after completing the work.
         proc = subprocess.run(
             cmd,
             cwd=cwd,
-            stdin=subprocess.DEVNULL,
+            input=prompt,
             capture_output=True,
             text=True,
             timeout=timeout,

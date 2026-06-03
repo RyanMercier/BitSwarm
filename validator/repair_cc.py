@@ -55,9 +55,10 @@ class _CCRunResult:
 def _run_claude_in_workspace(prompt: str, workspace: str,
                               timeout: int = 600) -> _CCRunResult:
     """Spawn ``claude -p`` with ``workspace`` as cwd."""
+    # Prompt via stdin to avoid Linux ARG_MAX on large repo contexts.
     cmd = [
         _DEFAULT_BINARY,
-        "-p", prompt,
+        "-p",
         "--no-session-persistence",
         "--dangerously-skip-permissions",
         "--output-format", "text",
@@ -70,7 +71,7 @@ def _run_claude_in_workspace(prompt: str, workspace: str,
         proc = subprocess.run(
             cmd,
             cwd=workspace,
-            stdin=subprocess.DEVNULL,
+            input=prompt,
             capture_output=True,
             text=True,
             timeout=timeout,

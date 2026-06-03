@@ -86,9 +86,13 @@ def _run_claude(prompt: str, system_prompt: str, timeout: int = 600) -> str:
             f"CC_COORDINATOR_BINARY."
         )
 
+    # Prompt is passed via stdin, NOT as a CLI argument. Linux ARG_MAX
+    # is around 128KB; large repos (e.g. diff mode against a real OSS
+    # codebase) easily produce prompts of several hundred KB. ``claude
+    # -p`` reads the prompt from stdin when no inline prompt is given.
     cmd = [
         _DEFAULT_BINARY,
-        "-p", prompt,
+        "-p",
         "--no-session-persistence",
         "--dangerously-skip-permissions",
         # ``text`` over ``json``: the JSON envelope mode has a size cap
@@ -114,7 +118,7 @@ def _run_claude(prompt: str, system_prompt: str, timeout: int = 600) -> str:
         try:
             proc = subprocess.run(
                 cmd,
-                stdin=subprocess.DEVNULL,
+                input=prompt,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -181,9 +185,12 @@ def _run_claude_writing_files(prompt: str, workdir: str,
             f"Install via 'npm install -g @anthropic-ai/claude-code'."
         )
     os.makedirs(workdir, exist_ok=True)
+    # Prompt comes via stdin to avoid Linux ARG_MAX (large diff-mode
+    # prompts that pre-load existing repo contents easily exceed
+    # 128KB and would crash argv-passing with E2BIG).
     cmd = [
         _DEFAULT_BINARY,
-        "-p", prompt,
+        "-p",
         "--no-session-persistence",
         "--dangerously-skip-permissions",
         "--output-format", "text",
@@ -197,7 +204,7 @@ def _run_claude_writing_files(prompt: str, workdir: str,
     try:
         proc = subprocess.run(
             cmd,
-            stdin=subprocess.DEVNULL,
+            input=prompt,
             cwd=workdir,
             capture_output=True,
             text=True,
