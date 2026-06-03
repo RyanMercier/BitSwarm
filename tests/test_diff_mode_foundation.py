@@ -70,6 +70,38 @@ def test_phase1_prompt_includes_existing_file_contents(tiny_repo):
     assert "=== calc/ops.py ===" in prompt
 
 
+def test_phase1_prompt_truncates_content_on_large_repos(tmp_path):
+    """When the repo exceeds the inline-content budget, the prompt
+    must NOT embed every file's content (that's what caused the
+    'Prompt is too long' crash on real OSS targets). It still
+    includes the file tree and explicitly-referenced files."""
+    # Build a repo with 60 files each ~5KB ~> 300KB total, far above
+    # the 80KB budget. Mention only one file by name in the spec.
+    src = tmp_path / "bigpkg"
+    src.mkdir()
+    (src / "__init__.py").write_text("")
+    for i in range(60):
+        (src / f"mod_{i:02d}.py").write_text(
+            "# filler\n" + "\n".join(f"def fn_{j}(): pass" for j in range(200))
+        )
+
+    prompt = build_diff_phase1_prompt(
+        repo_path=str(tmp_path),
+        change_spec="Modify bigpkg/mod_05.py to add a new helper.",
+    )
+
+    # File tree is always present
+    assert "bigpkg" in prompt
+    assert "mod_05.py" in prompt
+    # The mentioned file should be pre-loaded
+    assert "=== bigpkg/mod_05.py ===" in prompt
+    # An UN-mentioned file's content should NOT be embedded
+    assert "=== bigpkg/mod_42.py ===" not in prompt
+    # The inclusion-note explains the truncation
+    assert "large" in prompt.lower()
+    assert "pre-loaded" in prompt.lower()
+
+
 def test_phase1_prompt_carries_previous_errors(tiny_repo):
     prompt = build_diff_phase1_prompt(
         repo_path=tiny_repo,

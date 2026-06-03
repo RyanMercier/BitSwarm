@@ -187,9 +187,65 @@ def build_diff_phase1_prompt(repo_path, change_spec, previous_errors=None,
     profile = profile_for(language=language, repo_path=repo_path)
     file_tree = get_file_tree(repo_path)
     repo_files = collect_repo_files(repo_path)
+
+    # Budget for pre-loaded file content in the Phase 1 prompt. Below
+    # this threshold (small repos like the wordle demo target), include
+    # every file inline so the coordinator can plan with full context.
+    # Above it (real OSS repos: click is ~940KB, would blow past the
+    # model's context window), include only the file tree and a small
+    # selection of "obviously relevant" files (those mentioned by name
+    # or relative path in the change spec). Phase 2 then pre-loads the
+    # full content of every file Phase 1 marked for modification, so
+    # target stubs always converge against the real source.
+    PHASE1_CONTENT_BUDGET_BYTES = 80_000
+    total_bytes = sum(len(c.encode("utf-8")) for c in repo_files.values())
+
     file_contents = ""
-    for path, content in repo_files.items():
-        file_contents += f"\n=== {path} ===\n{content}\n"
+    inclusion_note = ""
+    if total_bytes <= PHASE1_CONTENT_BUDGET_BYTES:
+        for path, content in repo_files.items():
+            file_contents += f"\n=== {path} ===\n{content}\n"
+        inclusion_note = (
+            f"All {len(repo_files)} files pre-loaded "
+            f"({total_bytes / 1024:.0f} KB total)."
+        )
+    else:
+        # Pick files whose path is mentioned in the change spec, plus
+        # all top-level __init__.py files in any source package
+        # (those are the export surface and tend to be small).
+        spec_lower = change_spec.lower()
+        mentioned = [
+            p for p in repo_files
+            if p.lower() in spec_lower
+            or p.split("/")[-1].lower() in spec_lower
+        ]
+        inits = [p for p in repo_files
+                 if p.endswith("__init__.py") and p.count("/") <= 2]
+        candidates = list(dict.fromkeys(mentioned + inits))
+
+        included: list[str] = []
+        bytes_used = 0
+        for p in candidates:
+            content = repo_files.get(p, "")
+            if not content:
+                continue
+            csize = len(content.encode("utf-8"))
+            if bytes_used + csize > PHASE1_CONTENT_BUDGET_BYTES:
+                continue
+            file_contents += f"\n=== {p} ===\n{content}\n"
+            included.append(p)
+            bytes_used += csize
+
+        inclusion_note = (
+            f"Repository is large ({total_bytes / 1024:.0f} KB / "
+            f"{len(repo_files)} files). Pre-loaded {len(included)} "
+            f"files referenced by name in the change spec or matching "
+            f"package __init__.py conventions ({bytes_used / 1024:.0f} KB). "
+            f"For files not pre-loaded, plan based on the file tree and "
+            f"the spec; Phase 2 pre-loads the full content of every "
+            f"file you mark for modification, so your target stubs will "
+            f"always see the real source before they are written."
+        )
 
     language_block = (
         "## TARGET LANGUAGE\n\n"
@@ -199,9 +255,11 @@ def build_diff_phase1_prompt(repo_path, change_spec, previous_errors=None,
         "---\n\n"
     )
 
-    message = language_block + f"""IMPORTANT: All repository context is pre-loaded below. You do NOT have tools in this invocation. Skim the file tree and contents directly; proceed to decomposition.
+    message = language_block + f"""IMPORTANT: Repository context is pre-loaded below. You do NOT have tools in this invocation. Skim the file tree and any pre-loaded file contents directly; proceed to decomposition.
 
 ## Existing Repository
+
+{inclusion_note}
 
 File tree:
 {file_tree}
