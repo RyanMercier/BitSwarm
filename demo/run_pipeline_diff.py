@@ -463,7 +463,15 @@ async def run(spec_path, target_repo, out_dir):
     regression_passed = (len(newly_failing) == 0)
 
     # Scoring: complexity_weight * additive_pass * regression_multiplier
-    # regression_multiplier = 1.0 if no new regressions, 0.5 otherwise
+    # regression_multiplier = 1.0 if no new regressions, 0.5 otherwise.
+    #
+    # Honesty gate: a subtask whose miner produced ZERO patch chars
+    # cannot have legitimately landed any code changes in merge_repo
+    # (the patch is what carries the work across the workspace boundary).
+    # If its additive gate "passed", that's a false positive (commonly:
+    # the new test file imports a symbol from a pip-installed editable
+    # version of the target that bypassed merge_repo's source). Zero
+    # the score for any such subtask.
     regression_mult = 1.0 if regression_passed else 0.5
     print("\n[pipeline-diff] === SCORES ===")
     total = 0.0
@@ -472,11 +480,18 @@ async def run(spec_path, target_repo, out_dir):
         w = float(st.get("complexity_weight", 0))
         add_ok = additive_results.get(sid, False)
         applied_ok = patch_applied.get(sid, False)
+        result = miner_results.get(sid)
+        patch_size = len(getattr(result, "patch", "") or "")
+        if add_ok and patch_size == 0:
+            add_ok = False
+            note = " (additive PASS overridden: empty patch -> false positive)"
+        else:
+            note = ""
         per_score = w * (1.0 if add_ok else 0.0) * regression_mult
         total += per_score
         print(f"  {sid:25s}  score={per_score:.3f}  "
               f"patch={'OK  ' if applied_ok else 'FAIL'}  "
-              f"new_tests={'PASS' if add_ok else 'FAIL'}")
+              f"new_tests={'PASS' if add_ok else 'FAIL'}{note}")
     print(f"  regression_multiplier      {regression_mult:.2f} "
           f"({'no new regressions' if regression_passed else f'{len(newly_failing)} new regression(s)'})")
     print(f"  TOTAL                      {total:.3f} / 1.000")

@@ -272,14 +272,19 @@ def _generate_patch(repo_path, allowed_files):
         if os.path.exists(lock_file):
             os.remove(lock_file)
 
-        # Find the scaffolding commit  -  it's the one with that specific message
+        # Find the baseline commit. Two valid baseline tags:
+        #   - scaffold mode: "BitSwarm scaffolding"
+        #   - diff mode:     "BitSwarm diff baseline"
+        # We try both. The miner doesn't know its own mode at this
+        # layer; matching either keeps this function backend-agnostic.
         log_result = subprocess.run(
             ["git", "log", "--all", "--format=%H %s"],
             capture_output=True, text=True, cwd=repo_path,
         )
         scaffolding_hash = None
         for line in log_result.stdout.strip().split("\n"):
-            if "BitSwarm scaffolding" in line:
+            if ("BitSwarm scaffolding" in line
+                    or "BitSwarm diff baseline" in line):
                 scaffolding_hash = line.split()[0]
                 break
 
@@ -296,8 +301,19 @@ def _generate_patch(repo_path, allowed_files):
                 capture_output=True, text=True, cwd=repo_path,
             )
         else:
-            # Fallback: no scaffolding commit (git commit failed earlier)
-            # Use git diff --cached which shows staged changes vs HEAD
+            # Fallback: no scaffolding commit found (would silently
+            # mask miner work as an empty patch). Log loudly so the
+            # caller can see what happened in the pipeline output,
+            # then try git diff --cached as a last resort.
+            recent = subprocess.run(
+                ["git", "log", "--all", "--format=%s", "-5"],
+                capture_output=True, text=True, cwd=repo_path,
+            )
+            print(f"    WARNING: no 'BitSwarm scaffolding' or 'BitSwarm "
+                  f"diff baseline' commit found in {repo_path}. "
+                  f"Recent log subjects: {recent.stdout.strip().splitlines()[:5]}. "
+                  f"Falling back to git diff --cached (will be empty unless "
+                  f"changes were staged).")
             result = subprocess.run(
                 ["git", "diff", "--cached", "--"] + allowed_files,
                 capture_output=True, text=True, cwd=repo_path,
