@@ -130,9 +130,10 @@ def _run_via_subprocess(prompt: str, model: str) -> str:
     binary = (os.environ.get("CC_COORDINATOR_BINARY", "")
               or os.environ.get("MINER_CC_BINARY", "")
               or "claude")
+    # Prompt via stdin to avoid Linux ARG_MAX on large repo contexts.
     cmd = [
         binary,
-        "-p", prompt,
+        "-p",
         "--no-session-persistence",
         "--dangerously-skip-permissions",
         "--output-format", "text",
@@ -144,7 +145,7 @@ def _run_via_subprocess(prompt: str, model: str) -> str:
     try:
         proc = subprocess.run(
             cmd,
-            stdin=subprocess.DEVNULL,
+            input=prompt,
             capture_output=True,
             text=True,
             timeout=300,

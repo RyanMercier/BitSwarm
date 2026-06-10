@@ -47,7 +47,7 @@ from miner.recovery import (
     update_state,
 )
 from miner.tools import TOOL_DEFINITIONS, configure as configure_tools, run_tool
-from miner.warm_start import build_warm_start_message
+from miner.warm_start import build_warm_start_message, build_diff_warm_start_message
 
 
 _MAX_OUTPUT_TOKENS = int(os.environ.get("MINER_OPENAI_MAX_TOKENS", "4096"))
@@ -105,18 +105,34 @@ def _make_client():
 
 async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
                           shared_files_content, stub_files_content,
-                          test_files_content, all_subtasks=None):
+                          test_files_content, all_subtasks=None,
+                          mode: str = "scaffold",
+                          target_stubs=None,
+                          new_test_files_content=None,
+                          shared_additions_content=None):
     """Drop-in replacement for ``miner.agent.execute_subtask`` that
     drives an OpenAI-compatible Chat Completions endpoint instead of
-    the Anthropic SDK."""
+    the Anthropic SDK.
+
+    Supports both scaffold mode (default) and diff mode. In diff mode
+    the warm-start references the current file content + target stub
+    instead of stub files, and tool config routes interface checks
+    through the target stub.
+    """
     subtask_id = subtask["subtask_id"]
     allowed_files = subtask["allowed_files"]
-    test_files = subtask["stub_test_files"]
+    if mode == "diff":
+        test_files = subtask.get("new_test_files") or []
+    else:
+        test_files = subtask["stub_test_files"]
 
-    print(f"  [Miner-OpenAI {subtask_id}] starting, model={OPENAI_MODEL} "
+    print(f"  [Miner-OpenAI {subtask_id}] starting (mode={mode}), model={OPENAI_MODEL} "
           f"base_url={OPENAI_BASE_URL or 'api.openai.com (default)'}")
 
-    configure_tools(repo_path, allowed_files, test_files)
+    configure_tools(
+        repo_path, allowed_files, test_files,
+        mode=mode, target_stubs=target_stubs or {},
+    )
 
     original_stubs = {}
     for path in allowed_files:
@@ -125,16 +141,26 @@ async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
             with open(full_path, "r") as f:
                 original_stubs[path] = f.read()
 
-    warm_start_text = build_warm_start_message(
-        subtask=subtask,
-        repo_root=repo_path,
-        shared_files_content=shared_files_content,
-        stub_files_content=stub_files_content,
-        test_files_content=test_files_content,
-        all_subtask_files=all_subtask_files,
-        shared_file_paths=list(shared_files.keys()) if isinstance(shared_files, dict) else shared_files,
-        all_subtasks=all_subtasks,
-    )
+    if mode == "diff":
+        warm_start_text = build_diff_warm_start_message(
+            subtask=subtask,
+            repo_root=repo_path,
+            target_stubs=target_stubs or {},
+            new_test_files_content=new_test_files_content or {},
+            shared_additions_content=shared_additions_content or {},
+            all_subtasks=all_subtasks,
+        )
+    else:
+        warm_start_text = build_warm_start_message(
+            subtask=subtask,
+            repo_root=repo_path,
+            shared_files_content=shared_files_content,
+            stub_files_content=stub_files_content,
+            test_files_content=test_files_content,
+            all_subtask_files=all_subtask_files,
+            shared_file_paths=list(shared_files.keys()) if isinstance(shared_files, dict) else shared_files,
+            all_subtasks=all_subtasks,
+        )
 
     client = _make_client()
     tools_oai = _to_openai_tools(TOOL_DEFINITIONS)

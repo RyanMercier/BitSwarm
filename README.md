@@ -11,8 +11,10 @@ C, C++, Rust). 242 unit and integration tests cover the contracts.
 
 For the deep dive (architecture, invariants, every env var, the full
 roadmap), read [docs/STATUS.md](docs/STATUS.md). For the original
-design rationale read [BITSWARM_SPEC.md](BITSWARM_SPEC.md). This
-README is the quick-start and the multi-LLM cheat sheet.
+design rationale read [BITSWARM_SPEC.md](BITSWARM_SPEC.md). For why
+this architecture beats a centralized orchestrator with subagents,
+read [docs/WHY_BITSWARM.md](docs/WHY_BITSWARM.md). This README is
+the quick-start and the multi-LLM cheat sheet.
 
 
 ## Multi-LLM support

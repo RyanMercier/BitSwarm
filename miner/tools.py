@@ -10,6 +10,13 @@ import subprocess
 _repo_root_var = contextvars.ContextVar("repo_root", default="")
 _allowed_files_var = contextvars.ContextVar("allowed_files", default=[])
 _stub_test_files_var = contextvars.ContextVar("stub_test_files", default=[])
+# Diff mode: when set to "diff", interface-stability checks compare
+# the miner's new content against the TARGET STUB (the post-edit
+# contract) instead of against the original file. In diff mode the
+# whole point is that the public interface changes; the target stub
+# defines the new shape, not the original.
+_mode_var = contextvars.ContextVar("mode", default="scaffold")
+_target_stubs_var = contextvars.ContextVar("target_stubs", default={})
 
 BASH_TIMEOUT_SECONDS = 60
 MAX_FILE_READ_BYTES = 512_000
@@ -199,21 +206,50 @@ def validate_file_write(params):
             f"Fix the syntax before writing. Line {e.lineno}: {e.text}"
         )
 
-    # Public interface check
+    # Public interface check. Two modes:
+    #   scaffold mode: compare against the on-disk file (the stub). The
+    #     miner may only implement existing public symbols; adding new
+    #     ones is a contract violation.
+    #   diff mode: compare against the TARGET STUB (the coordinator's
+    #     post-edit contract). The miner is free to add public symbols
+    #     listed in the target stub, since the target stub IS the spec.
     try:
-        if os.path.isfile(abs_path):
-            with open(abs_path, "r") as f:
-                original_content = f.read()
-            original_public = _extract_public_names(original_content)
-            new_public = _extract_public_names(content)
-            added = new_public - original_public
-            if added:
-                return False, (
-                    f"INTERFACE VIOLATION: You added new public symbols that "
-                    f"were not in the original stub: {added}. "
-                    f"You may only implement existing functions/classes. "
-                    f"Private helpers (prefixed with _) are allowed."
-                )
+        mode = _mode_var.get()
+        if mode == "diff":
+            target_stubs = _target_stubs_var.get() or {}
+            # Look up the target stub for this file via its repo-relative
+            # path. The path key is the same one used in modify_files.
+            rel = os.path.relpath(abs_path, os.path.normpath(repo_root))
+            target_stub = target_stubs.get(rel)
+            if target_stub:
+                target_public = _extract_public_names(target_stub)
+                new_public = _extract_public_names(content)
+                extra = new_public - target_public
+                if extra:
+                    return False, (
+                        f"INTERFACE VIOLATION (diff mode): you added public "
+                        f"symbols that are not in the target stub for {rel}: "
+                        f"{extra}. The target stub is the spec; if you need a "
+                        f"public symbol it must be declared there. Private "
+                        f"helpers (prefixed with _) are allowed."
+                    )
+            # No target stub for this path -> skip the interface check
+            # (the file is a new test file or other freely-writable
+            # path the miner is permitted to edit).
+        else:
+            if os.path.isfile(abs_path):
+                with open(abs_path, "r") as f:
+                    original_content = f.read()
+                original_public = _extract_public_names(original_content)
+                new_public = _extract_public_names(content)
+                added = new_public - original_public
+                if added:
+                    return False, (
+                        f"INTERFACE VIOLATION: You added new public symbols that "
+                        f"were not in the original stub: {added}. "
+                        f"You may only implement existing functions/classes. "
+                        f"Private helpers (prefixed with _) are allowed."
+                    )
     except Exception:
         pass
 
@@ -390,11 +426,20 @@ TOOL_REGISTRY = {
 }
 
 
-def configure(repo_root, allowed_files, stub_test_files=None):
-    """Set the runtime configuration for the tools module (async-safe)."""
+def configure(repo_root, allowed_files, stub_test_files=None,
+               mode: str = "scaffold", target_stubs: dict | None = None):
+    """Set the runtime configuration for the tools module (async-safe).
+
+    ``mode`` selects scaffold-mode (default) or diff-mode behavior for
+    the file_write interface check. ``target_stubs`` is the
+    {modify_file_path: target_stub_source} dict in diff mode; ignored
+    in scaffold mode.
+    """
     _repo_root_var.set(repo_root)
     _allowed_files_var.set(allowed_files)
     _stub_test_files_var.set(stub_test_files or [])
+    _mode_var.set(mode)
+    _target_stubs_var.set(target_stubs or {})
 
 
 def run_tool(name, params):

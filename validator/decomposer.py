@@ -470,7 +470,8 @@ def parse_json_response(text):
 
 
 def call_coordinator(repo_path, feature_spec, previous_errors=None,
-                      debug_dir=None, language: str | None = None):
+                      debug_dir=None, language: str | None = None,
+                      mode: str = "scaffold"):
     """
     Two-phase coordinator call:
       Phase 1 - get decomposition plan (subtask structure, no file contents)
@@ -485,6 +486,12 @@ def call_coordinator(repo_path, feature_spec, previous_errors=None,
     language idioms). When ``None``, resolves via the
     ``COORDINATOR_LANGUAGE`` env var / repo auto-detect, defaulting to
     Python.
+
+    ``mode`` is ``"scaffold"`` (default; scaffold new code from an
+    empty/minimal repo) or ``"diff"`` (modify an existing codebase). Diff
+    mode uses a separate set of prompts (``validator/diff_prompts.py``)
+    and produces decompositions with the diff-mode shape (modify_files,
+    target_stubs, new_test_files).
     """
     client = anthropic.Anthropic(
         api_key=ANTHROPIC_API_KEY,
@@ -494,7 +501,13 @@ def call_coordinator(repo_path, feature_spec, previous_errors=None,
     from validator.lang_profiles import profile_for
     profile = profile_for(language=language, repo_path=repo_path)
 
-    # Phase 1: decomposition plan
+    if mode == "diff":
+        return _call_coordinator_diff(
+            client, profile, repo_path, feature_spec,
+            previous_errors, debug_dir,
+        )
+
+    # Scaffold mode (existing behavior).
     print("  [Phase 1] Decomposition plan...", end="", flush=True)
     plan_message = build_user_message(
         repo_path, feature_spec, previous_errors, language=profile.name,
@@ -555,6 +568,88 @@ def call_coordinator(repo_path, feature_spec, previous_errors=None,
     return decomposition
 
 
+def _call_coordinator_diff(client, profile, repo_path, change_spec,
+                            previous_errors, debug_dir):
+    """SDK-backed diff-mode coordinator. Same two-phase split as scaffold
+    mode but uses the diff-mode prompts and produces the diff-mode
+    decomposition shape."""
+    from validator.diff_prompts import (
+        DIFF_COORDINATOR_SYSTEM_PROMPT,
+        build_diff_phase1_prompt,
+        build_diff_phase2_prompt,
+    )
+
+    print("  [Phase 1, diff] Modification plan...", end="", flush=True)
+    plan_message = build_diff_phase1_prompt(
+        repo_path, change_spec, previous_errors, language=profile.name,
+    )
+    plan_debug = os.path.join(debug_dir, "phase1_plan.txt") if debug_dir else None
+
+    plan_text = stream_json(
+        client, COORDINATOR_MODEL,
+        system=DIFF_COORDINATOR_SYSTEM_PROMPT,
+        messages=[
+            {"role": "user", "content": plan_message},
+            {"role": "assistant", "content": "{"},
+        ],
+        label="plan",
+        debug_path=plan_debug,
+    )
+
+    try:
+        decomposition = parse_json_response(plan_text)
+    except (ValueError, json.JSONDecodeError) as e:
+        raise ValueError(f"Phase 1 (diff) JSON parse error: {e}")
+
+    if decomposition.get("mode") != "diff":
+        # The coordinator should set mode=diff; if it didn't, force it.
+        decomposition["mode"] = "diff"
+
+    subtasks = decomposition.get("subtasks", []) or []
+    if not subtasks:
+        raise ValueError("Phase 1 (diff) returned no subtasks")
+    print(f" {len(subtasks)} modification subtask(s) planned", flush=True)
+
+    print("  [Phase 2, diff] Generating target stubs + new tests...", end="", flush=True)
+    file_prompt = build_diff_phase2_prompt(
+        decomposition, repo_path, change_spec, language=profile.name,
+    )
+    files_debug = os.path.join(debug_dir, "phase2_files.txt") if debug_dir else None
+
+    files_text = stream_json(
+        client, COORDINATOR_MODEL,
+        system=(
+            f"You are a {profile.display_name} code generator producing "
+            "target-state stubs for an existing codebase. Output only valid "
+            "JSON. No prose. Start with {."
+        ),
+        messages=[
+            {"role": "user", "content": file_prompt},
+            {"role": "assistant", "content": "{"},
+        ],
+        label="files",
+        debug_path=files_debug,
+    )
+
+    try:
+        file_contents = parse_json_response(files_text)
+    except (ValueError, json.JSONDecodeError) as e:
+        raise ValueError(f"Phase 2 (diff) JSON parse error: {e}")
+
+    decomposition["target_stubs"] = file_contents.get("target_stubs", {}) or {}
+    decomposition["new_test_files"] = file_contents.get("new_test_files", {}) or {}
+    decomposition["integration_test_files"] = (
+        file_contents.get("integration_test_files", {}) or {}
+    )
+    if file_contents.get("shared_additions"):
+        # Merge Phase 2 shared additions into whatever Phase 1 already had.
+        existing = decomposition.get("shared_additions", {}) or {}
+        existing.update(file_contents["shared_additions"])
+        decomposition["shared_additions"] = existing
+
+    return decomposition
+
+
 def _select_call_coordinator():
     """Resolve ``COORDINATOR_BACKEND`` to a ``call_coordinator`` callable.
 
@@ -573,21 +668,31 @@ def _select_call_coordinator():
     )
 
 
-def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
+def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None,
+               mode: str = "scaffold"):
     """
     Run the coordinator decomposition with self-verification loop.
 
     validate_fn(decomposition, repo_path) -> list[str]  (empty = valid)
+        When None and mode='diff', defaults to
+        validator.diff_validator.validate_diff_decomposition.
+        When None and mode='scaffold', no automatic validation runs
+        (caller's responsibility).
     debug_dir: if set, saves raw API responses there for inspection
+    mode: 'scaffold' (default) or 'diff'
     """
     previous_errors = []
     call_coord = _select_call_coordinator()
 
-    # Cache lookup: hash (spec, repo, language, model, backend) and try
-    # to short-circuit the whole coordinator round trip if we've seen
-    # this exact input before. A cached decomposition still has to pass
-    # ``validate_fn`` to be reused; stale caches fall through to a
-    # fresh run.
+    # Diff mode defaults to using the diff-mode structural validator.
+    if mode == "diff" and validate_fn is None:
+        from validator.diff_validator import validate_diff_decomposition
+        validate_fn = validate_diff_decomposition
+
+    # Cache lookup: hash (spec, repo, language, model, backend, mode)
+    # and try to short-circuit. Mode is part of the key so a scaffold
+    # decomposition and a diff decomposition of the same repo+spec
+    # cache separately.
     from validator import cache as _cache
     from validator.lang_profiles import profile_for as _profile_for
     _profile = _profile_for(repo_path=repo_path)
@@ -597,7 +702,7 @@ def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
         repo_path=repo_path,
         language=_profile.name,
         model=COORDINATOR_MODEL,
-        backend=_backend,
+        backend=f"{_backend}:{mode}",
     )
     _cached = _cache.load(_cache_key)
     if _cached is not None:
@@ -625,6 +730,7 @@ def decompose(repo_path, feature_spec, validate_fn=None, debug_dir=None):
                 previous_errors=previous_errors if previous_errors else None,
                 debug_dir=attempt_debug_dir,
                 language=_profile.name,
+                mode=mode,
             )
         except (json.JSONDecodeError, ValueError) as e:
             print(f"\n[Coordinator] Error: {e}")
