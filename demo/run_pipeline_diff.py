@@ -161,8 +161,17 @@ def _isolated_test_env(repo_path):
     per-user site-packages dir, eliminating the channel.
     """
     env = {**os.environ}
-    src_dir = os.path.join(repo_path, "src")
-    paths = [p for p in (src_dir, repo_path) if os.path.isdir(p)]
+    # ABSOLUTE paths only. The test subprocess runs with cwd=repo_path,
+    # and Python resolves relative sys.path entries against the
+    # subprocess cwd, so a relative PYTHONPATH entry like
+    # "out/run/merge_repo/src" silently points at a nonexistent
+    # directory and the import falls through to system site-packages
+    # (which in our base image contains click via Flask, postgres
+    # drivers, etc.). That exact failure shipped: every gate in runs
+    # v1-v5 was importing the system copy of the target package.
+    repo_abs = os.path.abspath(repo_path)
+    src_dir = os.path.join(repo_abs, "src")
+    paths = [p for p in (src_dir, repo_abs) if os.path.isdir(p)]
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = os.pathsep.join(paths + ([existing] if existing else []))
     env["PYTHONNOUSERSITE"] = "1"

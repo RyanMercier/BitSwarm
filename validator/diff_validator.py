@@ -66,10 +66,24 @@ def validate_diff_decomposition(decomposition: dict, repo_path: str) -> list[str
             f"complexity_weight values sum to {total_weight:.3f}, expected 1.0."
         )
 
-    # 5. modify_files paths exist
+    # 5. modify_files paths exist, and every subtask modifies something.
+    # A test-only subtask (empty modify_files) has nothing to ship:
+    # new tests are authored by the coordinator and owned by the
+    # validator, so a miner assigned only tests scores zero by
+    # construction. Reject at validation time so the coordinator
+    # re-plans instead of wasting a miner slot.
     for st in subtasks:
         sid = st.get("subtask_id", "?")
-        for f in st.get("modify_files", []) or []:
+        modify = st.get("modify_files", []) or []
+        if not modify:
+            errors.append(
+                f"subtask {sid!r} has an empty modify_files list. Every "
+                "subtask must modify at least one existing source file; "
+                "new tests are validator-owned and are not a deliverable. "
+                "Fold this subtask's intent into the subtask that "
+                "implements the change."
+            )
+        for f in modify:
             full = os.path.normpath(os.path.join(repo_path, f))
             if not os.path.isfile(full):
                 errors.append(

@@ -355,6 +355,14 @@ def _hermetic_replay_verify(repo_path: str, allowed_files: list,
     worktree replay mechanics are language-agnostic and the runner
     dispatch can be generalized via lang_profiles later.
     """
+    if not allowed_files:
+        # Guard: "git diff <hash> --" with ZERO pathspecs diffs the
+        # whole tree, which would let a subtask with no modify_files
+        # ship arbitrary edits. A subtask that modifies nothing has
+        # nothing to verify and nothing to score.
+        return False, ("[hermetic-verify] subtask has no modify_files; "
+                        "nothing can ship, score is zero by construction"), ""
+
     baseline = _find_baseline_hash(repo_path)
     if baseline is None:
         return False, ("[hermetic-verify] no BitSwarm baseline commit found "

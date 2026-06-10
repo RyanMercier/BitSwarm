@@ -300,3 +300,23 @@ def test_validator_rejects_empty_subtasks(tiny_repo):
     d["subtasks"] = []
     errors = validate_diff_decomposition(d, tiny_repo)
     assert any("no subtasks" in e for e in errors)
+
+
+def test_validator_rejects_test_only_subtask(tiny_repo):
+    """A subtask with empty modify_files (test-only) has nothing to
+    ship and must be rejected at validation time. This also auto-
+    invalidates stale cached decompositions produced before the rule."""
+    d = _good_decomp(tiny_repo)
+    d["subtasks"].append({
+        "subtask_id": "tests_only",
+        "description": "just add tests",
+        "modify_files": [],
+        "new_test_files": ["tests/test_extra.py"],
+        "behavior_spec": "more coverage",
+        "dependencies": [],
+        "complexity_weight": 0.0,
+    })
+    d["subtasks"][0]["complexity_weight"] = 1.0
+    d["new_test_files"]["tests/test_extra.py"] = "def test_x(): ..."
+    errors = validate_diff_decomposition(d, tiny_repo)
+    assert any("empty modify_files" in e for e in errors)

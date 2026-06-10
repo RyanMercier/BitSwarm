@@ -266,6 +266,13 @@ def _generate_patch(repo_path, allowed_files):
 
     Falls back to git diff --cached if no scaffolding commit exists.
     """
+    if not allowed_files:
+        # "git diff <hash> --" with zero pathspecs diffs the whole
+        # tree. An empty allowed list must mean an empty patch, never
+        # an everything-patch.
+        print("    WARNING: empty allowed_files; returning empty patch")
+        return ""
+
     try:
         # Remove stale lock file if present (inherited from workspace copy)
         lock_file = os.path.join(repo_path, ".git", "index.lock")

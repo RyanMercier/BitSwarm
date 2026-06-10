@@ -349,6 +349,46 @@ def test_hermetic_replay_isolated_from_user_site(calc_repo, monkeypatch):
     assert calc_repo in env.get("PYTHONPATH", "")
 
 
+def test_hermetic_replay_refuses_empty_allowed_files(calc_repo):
+    """Empty allowed_files must short-circuit to FAIL, never fall
+    through to an unscoped 'git diff <hash> --' which would diff the
+    whole tree and let a no-deliverable subtask ship arbitrary edits."""
+    from miner.agent_cc import _hermetic_replay_verify
+
+    decomp = _good_diff_decomp(calc_repo)
+    write_scaffolding(decomp, calc_repo)
+    passed, output, patch = _hermetic_replay_verify(
+        calc_repo, allowed_files=[], test_files=["tests/test_multiply.py"],
+    )
+    assert not passed
+    assert patch == ""
+    assert "no modify_files" in output
+
+
+def test_pipeline_isolated_env_uses_absolute_paths(tmp_path, monkeypatch):
+    """_isolated_test_env must emit ABSOLUTE PYTHONPATH entries. A
+    relative entry resolves against the test subprocess's cwd and
+    silently points nowhere, letting imports fall through to system
+    site-packages (the v5 click false-import)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "rpd", os.path.join(os.path.dirname(__file__), "..", "demo",
+                              "run_pipeline_diff.py"))
+    rpd = importlib.util.module_from_spec(spec)
+    sys.modules["rpd"] = rpd
+    spec.loader.exec_module(rpd)
+
+    (tmp_path / "src").mkdir()
+    monkeypatch.chdir(tmp_path.parent)
+    rel = os.path.relpath(str(tmp_path))
+    env = rpd._isolated_test_env(rel)
+    for entry in env["PYTHONPATH"].split(os.pathsep):
+        if not entry:
+            continue
+        assert os.path.isabs(entry), f"relative PYTHONPATH entry: {entry}"
+    assert env.get("PYTHONNOUSERSITE") == "1"
+
+
 def test_end_to_end_simulated_miner_produces_passing_patch(calc_repo):
     """Stitch the full diff-mode flow end-to-end with a hand-written
     'miner' that performs the modification the way a real LLM agent
