@@ -20,13 +20,24 @@ works today in two end-to-end demo configurations and 242 unit /
 integration tests cover the contracts.
 
 **What works live (verified end-to-end):**
-- **Python Wordle**: 1.000 / 1.000 score, first try. Real two-pass
-  duplicate-letter algorithm, plays interactively.
-- **C++ Wordle**: builds + plays, every miner + every tier
-  cross-compile passes, integration test passes 100%.
-- **Multi-language coordinator**: 7 language profiles
-  (Python / TypeScript / Java / C# / C / C++ / Rust), per-language
-  stub idioms / test frameworks / build commands.
+- **All seven languages at 1.000 / 1.000** on a single
+  language-agnostic Wordle spec (Python, TypeScript, Java, C#, C,
+  C++, Rust), across two overnight Docker runs on the claude_code
+  backend at zero API spend. Java and Rust needed a retry after an
+  Anthropic API outage; the retry landed both clean.
+- **Diff mode on a real OSS codebase**: pallets/click (~45K lines,
+  1,000+ existing tests). Two cooperating miners landed a new
+  parameter type at a verified 1.000: real patches, additive gate
+  passing on the merged result, zero regressions in the existing
+  suite. The implementation miner's patch could not pass alone (the
+  export lived in the other miner's file); the merge produced a
+  passing whole from individually insufficient parts with per-miner
+  attribution intact (0.800 / 0.200).
+- **Hermetic verification harness**: the miner's local success
+  signal is the same computation as the validator's scoring gate
+  (patch applied to pristine baseline, tests run in an isolated
+  environment). Closed a live false-positive class found during
+  diff-mode bring-up; see docs/WHY_BITSWARM.md for the case study.
 
 **What's wired but not live-tested:**
 - Drop-and-replace recovery (replace failing patches by re-mining
@@ -35,12 +46,14 @@ integration tests cover the contracts.
 - Subprocess repair miner (the SDK version IS live-tested for
   Python).
 - Mixed backend modes (SDK coordinator + subprocess miner).
-- Five of seven languages (Java, C#, TypeScript, C, Rust)
-  end-to-end.
 - **OpenAI-compatible miner backend** (`MINER_BACKEND=openai`).
   Tool-schema translation + dispatcher are unit-tested; first
   pipeline run on a non-Anthropic provider (DeepSeek, OpenRouter,
   local vLLM, etc.) is the next polish task.
+- Diff mode beyond Python: the worktree replay mechanics are
+  language-agnostic, but the hermetic test runner currently invokes
+  pytest; routing it through the language profile registry is known
+  follow-up work.
 
 **What's not built yet:**
 - Bittensor protocol layer (Axon / Dendrite / weight-setting /

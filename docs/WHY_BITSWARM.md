@@ -45,7 +45,16 @@ the score was zero regardless of the agent's claim. A centralized
 orchestrator would have accepted the subagent's report and called the
 task done. We then went one step further and moved the same hermetic
 check inside the miner's own loop, so a worker can no longer be
-honestly wrong about its own success:
+honestly wrong about its own success. With the harness closed, the
+next run landed the feature on the same repository (pallets/click,
+roughly 45K lines, 1,000+ existing tests) at a verified 1.000: real
+patches from two cooperating miners, both gates passing on the
+merged result, zero regressions in the existing suite. The same run
+also demonstrated the cooperative property: the implementation
+miner's patch could not pass alone (the export lived in the other
+miner's file), it reported that failure honestly, and the merge
+produced a passing whole from individually insufficient parts, with
+per-miner attribution intact. The harness in that loop is:
 
 - The unit of work is a patch against a pinned baseline commit.
 - The miner's success signal is computed by applying that patch to a
