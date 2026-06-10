@@ -277,6 +277,78 @@ def test_tools_interface_check_blocks_unauthorized_addition(calc_repo):
     assert "DIVIDE_NOT_IN_STUB" in result["output"]
 
 
+def test_hermetic_replay_passes_on_real_edit(calc_repo):
+    """_hermetic_replay_verify: a genuine workspace edit produces a
+    non-empty patch that replays cleanly onto a pristine baseline and
+    passes the new tests there."""
+    from miner.agent_cc import _hermetic_replay_verify
+
+    decomp = _good_diff_decomp(calc_repo)
+    write_scaffolding(decomp, calc_repo)
+
+    # Simulate the miner's edit directly on disk.
+    (open(os.path.join(calc_repo, "calc", "ops.py"), "w")).write(textwrap.dedent('''\
+        def add(a, b):
+            return a + b
+
+
+        def sub(a, b):
+            return a - b
+
+
+        def multiply(a, b):
+            """Return a * b."""
+            return a * b
+        '''))
+    (open(os.path.join(calc_repo, "calc", "main.py"), "w")).write(textwrap.dedent('''\
+        from calc.ops import multiply
+
+
+        def run():
+            """Return 2 * 3 = 6."""
+            return multiply(2, 3)
+        '''))
+
+    passed, output, patch = _hermetic_replay_verify(
+        calc_repo,
+        allowed_files=["calc/ops.py", "calc/main.py"],
+        test_files=["tests/test_multiply.py"],
+    )
+    assert passed, output
+    assert "+def multiply" in patch
+    # The replay worktree must be cleaned up.
+    assert not [d for d in os.listdir(calc_repo) if d.startswith("wt")]
+
+
+def test_hermetic_replay_fails_on_empty_patch(calc_repo):
+    """_hermetic_replay_verify: no workspace edits -> empty patch ->
+    automatic FAIL with a self-explanatory message, regardless of what
+    any local test run might have claimed."""
+    from miner.agent_cc import _hermetic_replay_verify
+
+    decomp = _good_diff_decomp(calc_repo)
+    write_scaffolding(decomp, calc_repo)
+
+    passed, output, patch = _hermetic_replay_verify(
+        calc_repo,
+        allowed_files=["calc/ops.py", "calc/main.py"],
+        test_files=["tests/test_multiply.py"],
+    )
+    assert not passed
+    assert patch == ""
+    assert "EMPTY PATCH" in output
+
+
+def test_hermetic_replay_isolated_from_user_site(calc_repo, monkeypatch):
+    """The replay env must set PYTHONNOUSERSITE so user-site editable
+    installs can't hijack imports."""
+    from miner.agent_cc import _hermetic_env
+
+    env = _hermetic_env(calc_repo)
+    assert env.get("PYTHONNOUSERSITE") == "1"
+    assert calc_repo in env.get("PYTHONPATH", "")
+
+
 def test_end_to_end_simulated_miner_produces_passing_patch(calc_repo):
     """Stitch the full diff-mode flow end-to-end with a hand-written
     'miner' that performs the modification the way a real LLM agent

@@ -245,11 +245,12 @@ async def _run_miners(decomp, scaffolded_repo, miner_workdir, execute_subtask):
     new_test_files_content = decomp.get("new_test_files", {}) or {}
     shared_additions_content = decomp.get("shared_additions", {}) or {}
 
-    # allowed_files = modify_files + new_test_files
+    # Patch scope = modify_files ONLY. The new test files are the
+    # validator-owned contract: the miner reads them but its edits to
+    # them never ship (scoring runs against the canonical copies
+    # committed in the baseline). Workers don't grade their own homework.
     for st in subtasks:
-        modify = st.get("modify_files", []) or []
-        new_tests = st.get("new_test_files", []) or []
-        st["allowed_files"] = list(dict.fromkeys(modify + new_tests))
+        st["allowed_files"] = list(dict.fromkeys(st.get("modify_files", []) or []))
 
     all_subtask_files = {s["subtask_id"]: s["allowed_files"] for s in subtasks}
 
@@ -446,6 +447,25 @@ async def run(spec_path, target_repo, out_dir):
         decomp, miner_results, merge_repo, out_dir=out_dir,
     )
 
+    # Restore the validator's canonical new test files from the diff
+    # baseline before scoring. Patch scope already excludes them, but
+    # this is the belt-and-suspenders guarantee that scoring always
+    # runs the coordinator's tests, not anything a miner touched.
+    baseline_log = subprocess.run(
+        ["git", "log", "--all", "--format=%H %s"],
+        capture_output=True, text=True, cwd=merge_repo,
+    )
+    baseline_hash = None
+    for line in (baseline_log.stdout or "").splitlines():
+        if "BitSwarm diff baseline" in line:
+            baseline_hash = line.split()[0]
+            break
+    if baseline_hash and new_test_paths:
+        subprocess.run(
+            ["git", "checkout", baseline_hash, "--"] + new_test_paths,
+            capture_output=True, cwd=merge_repo,
+        )
+
     # Additive gate: per-subtask new tests on the merged state
     print("\n[pipeline-diff] additive gate (per-subtask new tests on merged):")
     additive_results = {}
@@ -455,6 +475,9 @@ async def run(spec_path, target_repo, out_dir):
         passed, output = _run_pytest(merge_repo, new_tests, timeout=300)
         additive_results[sid] = passed
         print(f"  {sid}: {'PASS' if passed else 'FAIL'}")
+        if not passed:
+            for line in output.splitlines()[-25:]:
+                print(f"    {line}")
 
     # Regression gate: existing tests on the merged state.
     # New failures = tests that fail now but did NOT fail before.

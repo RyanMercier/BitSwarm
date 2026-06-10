@@ -134,6 +134,12 @@ target stubs becomes an integration failure at merge time.
 - DO NOT decompose so finely that each subtask modifies a single
   function. Subtasks should respect logical boundaries (modules,
   layers); a subtask modifying a single line is wasted overhead.
+- DO NOT create test-only subtasks (a subtask whose modify_files is
+  empty and which only declares new_test_files). The new tests are
+  authored in Phase 2 and owned by the validator; a miner assigned a
+  test-only subtask has nothing to ship and scores zero by
+  construction. Every subtask must modify at least one existing
+  source file.
 
 ## Output format
 
