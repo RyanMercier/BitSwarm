@@ -1,20 +1,43 @@
 # BitSwarm
 
-A Bittensor subnet where validators decompose feature specs into
-scaffolded subtasks, ship them to miners that implement in parallel,
-and score each miner on test results. Validators set on-chain weights;
-miners earn TAO.
+The verification layer for AI-generated code. A Bittensor subnet that
+turns natural-language feature specs into verified, merged code: a
+coordinator decomposes the spec into executable contracts; independent
+miners implement the pieces in isolation; a hermetic dual-gate harness
+verifies that the components compose without breaking what was already
+there; miners are paid only for verified work.
 
-Live-tested end-to-end on Python (1.000/1.000 score) and C++
-(builds + plays). Seven languages wired (Python, TypeScript, Java, C#,
-C, C++, Rust). 242 unit and integration tests cover the contracts.
+## Live results
 
-For the deep dive (architecture, invariants, every env var, the full
-roadmap), read [docs/STATUS.md](docs/STATUS.md). For the original
-design rationale read [BITSWARM_SPEC.md](BITSWARM_SPEC.md). For why
-this architecture beats a centralized orchestrator with subagents,
-read [docs/WHY_BITSWARM.md](docs/WHY_BITSWARM.md). This README is
-the quick-start and the multi-LLM cheat sheet.
+- **All seven supported languages at 1.000 / 1.000** on a single
+  language-agnostic Wordle spec (Python, TypeScript, Java, C#, C,
+  C++, Rust) across two overnight Docker runs, zero API spend on
+  the Claude Max subscription.
+- **Diff mode on pallets/click**, a real 45,000-line open-source
+  Python repo with 1,000+ existing tests: a verified 1.000 / 1.000
+  added a new EnumChoice parameter type from a four-sentence spec.
+  Two cooperating miners; zero new failures in the existing suite;
+  13 minutes wall time; $0 cost.
+
+## Why this beats a centralized orchestrator with subagents
+
+The miner's local success signal is byte-for-byte the same
+computation the validator runs at scoring time, which is the same
+computation any auditor's replay produces. No point in the trust
+chain asks anyone to take anyone's word. Read
+[docs/WHY_BITSWARM.md](docs/WHY_BITSWARM.md) for the case study (a
+live false-positive class we caught and closed during diff-mode
+bring-up).
+
+## Docs
+
+- [docs/WHY_BITSWARM.md](docs/WHY_BITSWARM.md) - the verification
+  thesis, with the case study.
+- [docs/STATUS.md](docs/STATUS.md) - engineering state, every env
+  var, the full roadmap.
+- [BITSWARM_SPEC.md](BITSWARM_SPEC.md) - the v2 design spec.
+
+This README is the quick-start and the multi-LLM cheat sheet.
 
 
 ## Multi-LLM support
