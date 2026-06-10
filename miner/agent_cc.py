@@ -515,6 +515,39 @@ async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
     patch = _generate_patch(repo_path, allowed_files)
     if not patch:
         print(f"  [Miner-CC {sid}] WARNING: empty patch generated for {allowed_files}")
+        # Diagnostic dump: show git state + file mtimes + content
+        # hashes so we can tell whether the miner actually edited
+        # anything. (Empty patch + tests "passed" is the false-positive
+        # scenario, and the most common cause is the test importing
+        # via a user-site editable install instead of the workspace.)
+        import hashlib
+        try:
+            log = subprocess.run(
+                ["git", "log", "--all", "--format=%h %s", "-10"],
+                capture_output=True, text=True, cwd=repo_path,
+            )
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True, text=True, cwd=repo_path,
+            )
+            print(f"    [diag] git log -10: {log.stdout.strip().splitlines()[:5]}")
+            print(f"    [diag] git status --porcelain (truncated):")
+            for line in (status.stdout or "").splitlines()[:10]:
+                print(f"      {line}")
+            for path in allowed_files:
+                full = os.path.join(repo_path, path)
+                if not os.path.isfile(full):
+                    print(f"    [diag] {path}: MISSING from workspace")
+                    continue
+                try:
+                    with open(full, "rb") as f:
+                        data = f.read()
+                    print(f"    [diag] {path}: {len(data)} bytes, "
+                          f"sha256={hashlib.sha256(data).hexdigest()[:12]}")
+                except OSError as exc:
+                    print(f"    [diag] {path}: read error: {exc}")
+        except Exception as exc:
+            print(f"    [diag] dump failed: {exc}")
 
     print(f"  [Miner-CC {sid}] done: "
           f"{'PASSED' if tests_passed else 'FAILED'} (reason: {stop_reason})")

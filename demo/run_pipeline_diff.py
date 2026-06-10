@@ -147,12 +147,33 @@ def _discover_existing_tests(repo_path, exclude):
     return sorted(found)
 
 
+def _isolated_test_env(repo_path):
+    """Build a subprocess env that forces test runs to import the
+    repo from disk, not from any user-site-packages editable install.
+
+    Why: when ``pip install -e <some_repo>`` was ever run in the
+    container (or in a previous container sharing the same bind-
+    mounted ``$HOME``), an .egg-link or .pth file lives in
+    ``~/.local/lib/python3.*/site-packages/`` and gets prepended to
+    sys.path during site.py startup. That can hijack ``import <pkg>``
+    to a location OUTSIDE the merge_repo, producing false positives
+    in the additive gate. Setting PYTHONNOUSERSITE=1 disables the
+    per-user site-packages dir, eliminating the channel.
+    """
+    env = {**os.environ}
+    src_dir = os.path.join(repo_path, "src")
+    paths = [p for p in (src_dir, repo_path) if os.path.isdir(p)]
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join(paths + ([existing] if existing else []))
+    env["PYTHONNOUSERSITE"] = "1"
+    return env
+
+
 def _run_pytest(repo_path, test_files, timeout=300, stop_on_first=True):
     """Run pytest on a list of test files; return (passed, output).
 
-    PYTHONPATH is set to include both ``<repo>/src`` and ``<repo>``
-    so packages following either layout import correctly without
-    requiring an explicit ``pip install -e .`` per-workspace.
+    Uses ``_isolated_test_env`` to keep the test from importing the
+    target package via a user-site-packages editable install.
 
     ``stop_on_first`` toggles ``-x``. For the per-tier additive gate
     we want stop-on-first (fast fail). For the regression gate we
@@ -160,11 +181,7 @@ def _run_pytest(repo_path, test_files, timeout=300, stop_on_first=True):
     """
     if not test_files:
         return True, "(no tests to run)"
-    env = {**os.environ}
-    src_dir = os.path.join(repo_path, "src")
-    paths = [p for p in (src_dir, repo_path) if os.path.isdir(p)]
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = os.pathsep.join(paths + ([existing] if existing else []))
+    env = _isolated_test_env(repo_path)
     args = [sys.executable, "-m", "pytest", *test_files, "--tb=short", "-q"]
     if stop_on_first:
         args.append("-x")
@@ -189,11 +206,7 @@ def _collect_failing_nodeids(repo_path, test_files, timeout=600):
     gate so pre-existing failures don't penalize us."""
     if not test_files:
         return set(), "(no tests to run)"
-    env = {**os.environ}
-    src_dir = os.path.join(repo_path, "src")
-    paths = [p for p in (src_dir, repo_path) if os.path.isdir(p)]
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = os.pathsep.join(paths + ([existing] if existing else []))
+    env = _isolated_test_env(repo_path)
     args = [sys.executable, "-m", "pytest", *test_files,
             "--tb=no", "-q", "--no-header", "-rN"]
     try:
