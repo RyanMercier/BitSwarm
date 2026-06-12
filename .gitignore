@@ -25,3 +25,4 @@ docs/YUMA_*.md
 .local/
 .npm/
 .nuget/
+.commit_msg.txt
