@@ -1,6 +1,6 @@
 # BitSwarm Status & Roadmap
 
-*Last updated: 2026-05-15*
+*Last updated: 2026-06-11*
 
 A status document covering where BitSwarm stands today, how the system
 actually works in code, and the work between here and a credible
@@ -16,7 +16,7 @@ not built. Skim the [TL;DR](#tldr) for the headline; scroll the
 
 BitSwarm decomposes a feature spec into parallel subtasks, ships each
 to a miner agent that produces a patch, then merges and scores. It
-works today in two end-to-end demo configurations and 242 unit /
+works today in two end-to-end demo configurations and 275 unit /
 integration tests cover the contracts.
 
 **What works live (verified end-to-end):**
@@ -50,10 +50,20 @@ integration tests cover the contracts.
   Tool-schema translation + dispatcher are unit-tested; first
   pipeline run on a non-Anthropic provider (DeepSeek, OpenRouter,
   local vLLM, etc.) is the next polish task.
-- Diff mode beyond Python: the worktree replay mechanics are
-  language-agnostic, but the hermetic test runner currently invokes
-  pytest; routing it through the language profile registry is known
-  follow-up work.
+- Diff mode over HTTP: mode + target stubs + new-test content thread
+  through TaskAssignment with backward-compatible defaults, and
+  validator/server.run_task accepts mode="diff"; covered by dispatch
+  tests, not yet exercised against live HTTP miners (the in-process
+  demo runner is the live-tested path).
+- Diff-mode repair loop: a failing additive gate triggers one
+  claude-code repair scoped to the subtask's modify_files, then the
+  gate re-runs (never trusting the repair stage's own report). Wired
+  in validator/diff_merge.py; not yet observed firing on a live run.
+- Diff-mode merge gates beyond Python: the miner-side hermetic
+  replay dispatches per-language runners (pytest, vitest, mvn,
+  dotnet, cargo, make), but the merge-side additive/regression gates
+  invoke pytest directly and the regression gate parses pytest
+  failure ids. Per-language gate parsing is known follow-up work.
 
 **What's not built yet:**
 - Bittensor protocol layer (Axon / Dendrite / weight-setting /
@@ -73,13 +83,14 @@ integration tests cover the contracts.
 
 ### Test footprint
 
-242 tests passing across 13 test files. Coverage by area:
+275 tests passing across 15 test files. Coverage by area:
 
 | Area | Tests |
 |---|---|
 | Multi-language parsers (7 languages) | 95 |
 | Language profile registry + prompt builder | 33 |
-| HTTP dispatch + protocol + transport | 24 |
+| Diff mode (prompts, validator, scaffolder, replay, merge gates) | 33 |
+| HTTP dispatch + protocol + transport | 26 |
 | Phase 1.5 contract checker | 22 |
 | Drop-and-replace + recovery wiring | 12 |
 | Cache | 10 |
@@ -90,7 +101,7 @@ integration tests cover the contracts.
 | Multi-LLM backend dispatch + tool translation | 8 |
 
 Run with `pytest tests/` from the repo root. Full suite completes
-in ~5 seconds.
+in ~15 seconds.
 
 ### Live demo results
 
@@ -136,7 +147,7 @@ covers DeepSeek / OpenRouter / vLLM / Ollama / Groq / Together / etc.
 
 ```
 main   - SDK + Claude Code subprocess + OpenAI-compatible backends.
-         242 tests. Miner picks one of three (sdk / claude_code /
+         275 tests. Miner picks one of three (sdk / claude_code /
          openai) via MINER_BACKEND. Coordinator picks one of two
          (sdk / claude_code) via COORDINATOR_BACKEND; openai-coord
          is on the roadmap.
@@ -883,7 +894,7 @@ For someone picking up the repo for the first time.
 git clone https://github.com/RyanMercier/BitSwarm.git
 cd BitSwarm
 pip install -r requirements.txt
-python -m pytest tests/                    # 242 tests, ~5s
+python -m pytest tests/                    # 275 tests, ~5s
 
 # Option A: Anthropic API
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -997,7 +1008,7 @@ BitSwarm/
 │   ├── spec_minidb.txt         stretch demo
 │   └── target_repo/            empty starter repo
 │
-├── tests/                      242 tests
+├── tests/                      275 tests
 │   ├── test_protocol.py
 │   ├── test_transport.py
 │   ├── test_dispatch.py

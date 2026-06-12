@@ -331,7 +331,8 @@ def _hermetic_env(repo_root: str) -> dict:
 
 def _hermetic_replay_verify(repo_path: str, allowed_files: list,
                               test_files: list,
-                              timeout: int = 300) -> tuple[bool, str, str]:
+                              timeout: int = 300,
+                              tests_binding: bool = True) -> tuple[bool, str, str]:
     """The diff-mode success signal: patch-is-the-product verification.
 
     1. Diff the workspace against the BitSwarm baseline commit,
@@ -345,15 +346,24 @@ def _hermetic_replay_verify(repo_path: str, allowed_files: list,
        workspace, or the baseline was already contaminated with the
        feature).
     3. Replay the patch onto a pristine checkout of the baseline (a
-       temporary git worktree) and run ``test_files`` there with the
-       hermetic env. What passes HERE is what the validator's
-       additive gate will see.
+       temporary git worktree) and run ``test_files`` there via the
+       build-system-aware runner dispatch (pytest, vitest, mvn,
+       dotnet, cargo, make) with the hermetic env. What passes HERE
+       is what the validator's additive gate will see.
 
-    Returns ``(tests_passed, output, patch)``.
+    ``tests_binding`` controls how test failures are treated. When the
+    decomposition has a single subtask, the local replay equals the
+    merge result, so test failures are FINAL (binding). When multiple
+    subtasks run in parallel, shared gate tests routinely reference
+    symbols owned by sibling subtasks and CANNOT pass against any one
+    patch in isolation; in that case the binding bar is "patch is
+    non-empty and applies cleanly," test results are reported for
+    signal, and the verdict defers to the validator's merge gates.
+    The pallets/click run demonstrated why: the implementation miner's
+    patch was correct but could not pass alone because the public-API
+    export belonged to the sibling subtask.
 
-    Currently Python-only on the test-running side (pytest); the
-    worktree replay mechanics are language-agnostic and the runner
-    dispatch can be generalized via lang_profiles later.
+    Returns ``(shipped_ok, output, patch)``.
     """
     if not allowed_files:
         # Guard: "git diff <hash> --" with ZERO pathspecs diffs the
@@ -416,16 +426,36 @@ def _hermetic_replay_verify(repo_path: str, allowed_files: list,
         if not test_files:
             return True, "[hermetic-verify] patch applies cleanly (no tests specified)", patch
 
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", *test_files, "-q", "--tb=short"],
-            capture_output=True, text=True, cwd=worktree_path,
-            timeout=timeout, env=_hermetic_env(worktree_path),
-        )
-        output = (result.stdout or "") + (
-            ("\n[stderr]\n" + result.stderr) if result.stderr else ""
-        )
-        passed = result.returncode == 0
-        return passed, f"[hermetic-verify on pristine baseline]\n{output}", patch
+        # Language-aware execution: the build-system dispatch picks
+        # pytest / vitest / mvn / dotnet / cargo / make from on-disk
+        # markers in the worktree, with the hermetic env merged in.
+        from validator.test_runners import run_test as _run_test
+        hermetic = _hermetic_env(worktree_path)
+        combined: list[str] = []
+        all_passed = True
+        for tf in test_files:
+            result = _run_test(tf, worktree_path, timeout=timeout,
+                                extra_env=hermetic)
+            out = (result.stdout or "") + (
+                ("\n[stderr]\n" + result.stderr) if result.stderr else ""
+            )
+            combined.append(f"--- {tf} ---\n{out}")
+            # Exit 5 = pytest collected nothing (e.g. empty module),
+            # not a real failure; everything else non-zero is.
+            if result.returncode not in (0, 5):
+                all_passed = False
+        output = "\n".join(combined)
+
+        if all_passed:
+            return True, f"[hermetic-verify on pristine baseline]\n{output}", patch
+        if not tests_binding:
+            return True, (
+                "[hermetic-verify] patch ships (non-empty, applies cleanly). "
+                "Local test failures DEFERRED to merge gates: shared gate "
+                "tests span parallel subtasks and cannot pass against this "
+                "patch in isolation.\n" + output
+            ), patch
+        return False, f"[hermetic-verify on pristine baseline]\n{output}", patch
     except subprocess.TimeoutExpired:
         return False, "[hermetic-verify] TIMEOUT running tests on replay", patch
     finally:
@@ -559,6 +589,17 @@ def _build_diff_prompt(subtask: dict,
             "## Other subtasks (being implemented in parallel -- do NOT touch their files)",
             *other_subtasks,
             "",
+            "## When to stop if tests reference parallel subtasks",
+            "The gate tests may reference symbols (exports, functions,",
+            "classes) that belong to the parallel subtasks above. Those",
+            "symbols will not exist until the validator merges everyone's",
+            "patches. If your remaining test failures are caused ONLY by",
+            "missing symbols owned by another subtask: implement YOUR files",
+            "to match YOUR target stub, confirm your own code imports and",
+            "compiles cleanly, and stop. Do not implement the other",
+            "subtask's files; do not stub out their symbols; the merge",
+            "gates will verify the combined result.",
+            "",
         ]
 
     test_files_str = " ".join(new_test_files) or "<your test files>"
@@ -675,13 +716,21 @@ async def execute_subtask(subtask, repo_path, all_subtask_files, shared_files,
         # performs, so the miner's local result can't diverge from its
         # score. An empty patch fails by definition.
         new_tests = subtask.get("new_test_files") or []
+        # Test verdicts bind only when this is the sole subtask: with
+        # parallel subtasks, shared gate tests reference sibling-owned
+        # symbols and the merge gates are the authority.
+        tests_binding = len(all_subtasks or []) <= 1
         tests_passed, test_output, patch = _hermetic_replay_verify(
             repo_path, allowed_files, new_tests,
+            tests_binding=tests_binding,
         )
         if not tests_passed:
             print(f"  [Miner-CC {sid}] hermetic replay FAILED:")
             for line in test_output.splitlines()[:8]:
                 print(f"    {line}")
+        elif "DEFERRED to merge gates" in test_output:
+            print(f"  [Miner-CC {sid}] patch ships; test verdict deferred "
+                  f"to merge gates (parallel subtasks share gate tests)")
     else:
         tests_passed, test_output = _run_final_tests(subtask, repo_path)
         patch = _generate_patch(repo_path, allowed_files)

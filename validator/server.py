@@ -113,16 +113,27 @@ async def dispatch_to_miners(
     task_id = task_id or str(uuid.uuid4())
     bundle_b64 = bundle_repo(scaffolded_repo)
 
+    mode = decomposition.get("mode", "scaffold")
     subtasks = decomposition["subtasks"]
     shared_files = decomposition.get("shared_files", {})
     stub_files = decomposition.get("stub_files", {})
     test_files = decomposition.get("stub_test_files", {})
+    target_stubs = decomposition.get("target_stubs", {}) or {}
+    new_test_files_content = decomposition.get("new_test_files", {}) or {}
+    shared_additions = decomposition.get("shared_additions", {}) or {}
 
-    # allowed_files per subtask: stubs + tests (see orchestrator.py rationale)
+    # allowed_files per subtask. Scaffold mode: stubs + tests (the
+    # miner may adjust its own tests; see orchestrator rationale).
+    # Diff mode: modify_files ONLY; new tests are the validator-owned
+    # read-only contract and miner edits to them never ship.
     for st in subtasks:
-        stub_f = st.get("stub_files", [])
-        test_f = st.get("stub_test_files", [])
-        st["allowed_files"] = list(dict.fromkeys(stub_f + test_f))
+        if mode == "diff":
+            st["allowed_files"] = list(dict.fromkeys(
+                st.get("modify_files", []) or []))
+        else:
+            stub_f = st.get("stub_files", [])
+            test_f = st.get("stub_test_files", [])
+            st["allowed_files"] = list(dict.fromkeys(stub_f + test_f))
 
     all_subtask_files = {st["subtask_id"]: st["allowed_files"] for st in subtasks}
 
@@ -145,6 +156,10 @@ async def dispatch_to_miners(
             stub_files_content=stub_files,
             test_files_content=test_files,
             all_subtasks=subtasks,
+            mode=mode,
+            target_stubs=target_stubs,
+            new_test_files_content=new_test_files_content,
+            shared_additions_content=shared_additions,
         )
         try:
             async with httpx.AsyncClient(timeout=http_timeout) as client:
@@ -196,8 +211,15 @@ async def run_task(
     miner_urls: list[str],
     output_dir: str,
     subtask_timeout: int = SUBTASK_TIMEOUT_SECONDS,
+    mode: str = "scaffold",
 ) -> dict:
-    """Full pipeline: decompose, scaffold, dispatch to miners, merge, score."""
+    """Full pipeline: decompose, scaffold, dispatch to miners, merge, score.
+
+    ``mode``: "scaffold" (build from spec; default) or "diff" (modify
+    the existing target repo). Diff mode uses the diff-mode coordinator
+    prompts, the diff structural validator (selected automatically by
+    decompose), and the dual-gate merge pipeline.
+    """
     if not miner_urls:
         raise ValueError("run_task requires at least one miner URL")
 
@@ -205,7 +227,7 @@ async def run_task(
     task_id = str(uuid.uuid4())
     workspace_dir = os.path.join(output_dir, "workspace")
 
-    print(f"\n[Validator] task={task_id} miners={miner_urls}")
+    print(f"\n[Validator] task={task_id} mode={mode} miners={miner_urls}")
 
     # Step 1: working repo
     print("[1/5] Setting up working repo...")
@@ -219,13 +241,15 @@ async def run_task(
             capture_output=True,
         )
 
-    # Step 3: decompose
+    # Step 3: decompose. Scaffold mode uses the Phase 1.5 validator;
+    # diff mode lets decompose() pick the diff structural validator.
     print("[2/5] Running coordinator decomposition...")
     decomposition = decompose(
         repo_path=repo_path,
         feature_spec=spec,
-        validate_fn=validate_decomposition,
+        validate_fn=validate_decomposition if mode == "scaffold" else None,
         debug_dir=os.path.join(output_dir, "debug"),
+        mode=mode,
     )
     if decomposition is None:
         raise RuntimeError("coordinator failed to produce a valid decomposition")

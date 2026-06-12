@@ -130,6 +130,58 @@ def test_dispatch_requires_at_least_one_miner(fake_decomposition):
         ))
 
 
+def test_dispatch_diff_mode_threads_context(monkeypatch, fake_decomposition):
+    """Diff-mode decompositions carry mode + target_stubs + new test
+    content through the TaskAssignment, and allowed_files scope to
+    modify_files only (tests are validator-owned in diff mode)."""
+    monkeypatch.setattr(validator_server, "bundle_repo", lambda path: "bundle-b64")
+
+    decomp = dict(fake_decomposition)
+    decomp["mode"] = "diff"
+    decomp["target_stubs"] = {"a.py": "def f(): ..."}
+    decomp["new_test_files"] = {"tests/test_new.py": "def test_x(): ..."}
+    decomp["shared_additions"] = {}
+    for st in decomp["subtasks"]:
+        st["modify_files"] = [f"{st['subtask_id']}.py"]
+        st["new_test_files"] = ["tests/test_new.py"]
+
+    seen = []
+
+    async def fake_send(client, miner_url, assignment):
+        seen.append(assignment)
+        return MinerResponse(task_id=assignment.task_id,
+                              subtask_id=assignment.subtask_id,
+                              patch="x", stub_tests_passed=True)
+
+    monkeypatch.setattr(validator_server, "_send_to_miner", fake_send)
+
+    asyncio.run(validator_server.dispatch_to_miners(
+        decomposition=decomp,
+        scaffolded_repo="/nonexistent",
+        miner_urls=["http://miner-1:8081"],
+    ))
+
+    by_sid = {a.subtask_id: a for a in seen}
+    a = by_sid["a"]
+    assert a.mode == "diff"
+    assert a.target_stubs == {"a.py": "def f(): ..."}
+    assert a.new_test_files_content == {"tests/test_new.py": "def test_x(): ..."}
+    # Patch scope excludes the new test file in diff mode.
+    assert a.allowed_files == ["a.py"]
+
+
+def test_task_assignment_defaults_are_scaffold_compatible():
+    """A TaskAssignment built without the diff fields behaves exactly
+    like the pre-diff schema (mode defaults to scaffold, diff dicts
+    empty), so older peers interoperate."""
+    from protocol.schemas import TaskAssignment
+    t = TaskAssignment(task_id="t", subtask_id="s")
+    assert t.mode == "scaffold"
+    assert t.target_stubs == {}
+    assert t.new_test_files_content == {}
+    assert t.shared_additions_content == {}
+
+
 def test_dispatch_populates_allowed_files(monkeypatch, fake_decomposition):
     """Subtask records should pick up allowed_files = stub_files + stub_test_files."""
     monkeypatch.setattr(validator_server, "bundle_repo", lambda path: "bundle-b64")

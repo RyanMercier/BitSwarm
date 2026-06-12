@@ -7,7 +7,16 @@ from pydantic import BaseModel, Field
 
 
 class TaskAssignment(BaseModel):
-    """Validator -> Miner: subtask assignment."""
+    """Validator -> Miner: subtask assignment.
+
+    ``mode`` selects the workload shape. "scaffold" (default) is the
+    build-from-spec flow: the miner replaces not-implemented stub
+    bodies. "diff" is the modify-existing-code flow: the miner edits
+    the files in its subtask's modify_files toward the post-edit
+    contracts in ``target_stubs``, and the diff-mode fields below
+    carry the context. All new fields default to empty so existing
+    scaffold-mode peers interoperate unchanged.
+    """
     task_id: str = ""
     subtask_id: str = ""
     repo_bundle: str = ""           # base64 encoded scaffolded repo (git bundle)
@@ -21,6 +30,11 @@ class TaskAssignment(BaseModel):
     stub_files_content: dict[str, str] = Field(default_factory=dict)
     test_files_content: dict[str, str] = Field(default_factory=dict)
     all_subtasks: list[dict] = Field(default_factory=list)
+    # Diff-mode fields (ignored in scaffold mode):
+    mode: str = "scaffold"
+    target_stubs: dict[str, str] = Field(default_factory=dict)
+    new_test_files_content: dict[str, str] = Field(default_factory=dict)
+    shared_additions_content: dict[str, str] = Field(default_factory=dict)
 
 
 class MinerResponse(BaseModel):

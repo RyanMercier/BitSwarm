@@ -23,6 +23,7 @@ Coverage:
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -365,28 +366,140 @@ def test_hermetic_replay_refuses_empty_allowed_files(calc_repo):
     assert "no modify_files" in output
 
 
-def test_pipeline_isolated_env_uses_absolute_paths(tmp_path, monkeypatch):
-    """_isolated_test_env must emit ABSOLUTE PYTHONPATH entries. A
+def test_isolated_env_uses_absolute_paths(tmp_path, monkeypatch):
+    """isolated_test_env must emit ABSOLUTE PYTHONPATH entries. A
     relative entry resolves against the test subprocess's cwd and
     silently points nowhere, letting imports fall through to system
     site-packages (the v5 click false-import)."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "rpd", os.path.join(os.path.dirname(__file__), "..", "demo",
-                              "run_pipeline_diff.py"))
-    rpd = importlib.util.module_from_spec(spec)
-    sys.modules["rpd"] = rpd
-    spec.loader.exec_module(rpd)
+    from validator.diff_merge import isolated_test_env
 
     (tmp_path / "src").mkdir()
     monkeypatch.chdir(tmp_path.parent)
     rel = os.path.relpath(str(tmp_path))
-    env = rpd._isolated_test_env(rel)
+    env = isolated_test_env(rel)
     for entry in env["PYTHONPATH"].split(os.pathsep):
         if not entry:
             continue
         assert os.path.isabs(entry), f"relative PYTHONPATH entry: {entry}"
     assert env.get("PYTHONNOUSERSITE") == "1"
+
+
+def test_merge_and_test_diff_end_to_end(calc_repo, tmp_path):
+    """The shared diff merge pipeline scores a correct simulated miner
+    result at 1.000 and an empty-patch result at 0.000, with the
+    regression gate clean."""
+    import asyncio
+    import types
+    from validator.diff_merge import merge_and_test_diff
+    from validator.merge import merge_and_test
+
+    os.environ["BITSWARM_REPAIR_MODE"] = "off"
+    decomp = _good_diff_decomp(calc_repo)
+    write_scaffolding(decomp, calc_repo)
+
+    # Build the correct patch by editing a scratch clone and diffing.
+    scratch = str(tmp_path / "scratch")
+    shutil.copytree(calc_repo, scratch)
+    (open(os.path.join(scratch, "calc", "ops.py"), "w")).write(textwrap.dedent('''\
+        def add(a, b):
+            return a + b
+
+
+        def sub(a, b):
+            return a - b
+
+
+        def multiply(a, b):
+            """Return a * b."""
+            return a * b
+        '''))
+    (open(os.path.join(scratch, "calc", "main.py"), "w")).write(textwrap.dedent('''\
+        from calc.ops import multiply
+
+
+        def run():
+            """Return 2 * 3 = 6."""
+            return multiply(2, 3)
+        '''))
+    diff = subprocess.run(
+        ["git", "diff", "HEAD", "--", "calc/ops.py", "calc/main.py"],
+        cwd=scratch, capture_output=True, text=True,
+    )
+    patch = diff.stdout
+    assert "+def multiply" in patch
+
+    fake_result = types.SimpleNamespace(patch=patch, tests_passed=True)
+    miner_results = {"add_multiply": fake_result}
+
+    merge_result = asyncio.run(merge_and_test_diff(
+        decomp, miner_results, calc_repo, out_dir=str(tmp_path / "out"),
+    ))
+    assert merge_result["scores"]["add_multiply"] == 1.0
+    assert merge_result["regression_passed"] is True
+    assert merge_result["integration_passed"] is True
+    assert merge_result["patch_applied"]["add_multiply"] is True
+
+    # Dispatch through the scaffold-mode entry point routes here too.
+    merge_result2 = asyncio.run(merge_and_test(
+        decomp, miner_results, calc_repo,
+    ))
+    assert merge_result2["scores"]["add_multiply"] == 1.0
+
+    # Empty patch scores zero (honesty override) even though the
+    # canonical tests exist on disk.
+    empty_result = types.SimpleNamespace(patch="", tests_passed=True)
+    merge_result3 = asyncio.run(merge_and_test_diff(
+        decomp, {"add_multiply": empty_result}, calc_repo,
+        out_dir=str(tmp_path / "out3"),
+    ))
+    assert merge_result3["scores"]["add_multiply"] == 0.0
+
+
+def test_replay_defers_tests_when_not_binding(calc_repo):
+    """With tests_binding=False (parallel subtasks share gate tests),
+    a non-empty cleanly-applying patch ships even if its tests fail in
+    isolation; the verdict defers to the merge gates."""
+    from miner.agent_cc import _hermetic_replay_verify
+
+    decomp = _good_diff_decomp(calc_repo)
+    write_scaffolding(decomp, calc_repo)
+
+    # Edit ONLY ops.py; main.py keeps calling add(), so the new test's
+    # run()==6 assertion fails in isolation (simulates the sibling-
+    # subtask dependency from the click run).
+    (open(os.path.join(calc_repo, "calc", "ops.py"), "w")).write(textwrap.dedent('''\
+        def add(a, b):
+            return a + b
+
+
+        def sub(a, b):
+            return a - b
+
+
+        def multiply(a, b):
+            """Return a * b."""
+            return a * b
+        '''))
+
+    passed, output, patch = _hermetic_replay_verify(
+        calc_repo,
+        allowed_files=["calc/ops.py"],
+        test_files=["tests/test_multiply.py"],
+        tests_binding=False,
+    )
+    assert passed, output
+    assert "DEFERRED to merge gates" in output
+    assert "+def multiply" in patch
+
+    # Same scenario with binding tests fails, as it should for a
+    # single-subtask decomposition.
+    passed2, output2, _ = _hermetic_replay_verify(
+        calc_repo,
+        allowed_files=["calc/ops.py"],
+        test_files=["tests/test_multiply.py"],
+        tests_binding=True,
+    )
+    assert not passed2
 
 
 def test_end_to_end_simulated_miner_produces_passing_patch(calc_repo):

@@ -123,6 +123,18 @@ def _run_agent_blocking(task: TaskAssignment):
 
     repo_path = subtask.pop("_repo_path")
 
+    kwargs = {}
+    if getattr(task, "mode", "scaffold") == "diff":
+        # Diff-mode context rides along; scaffold-mode agents never
+        # see these kwargs so older agent implementations stay
+        # compatible.
+        kwargs = {
+            "mode": "diff",
+            "target_stubs": task.target_stubs,
+            "new_test_files_content": task.new_test_files_content,
+            "shared_additions_content": task.shared_additions_content,
+        }
+
     return asyncio.run(execute_subtask(
         subtask=subtask,
         repo_path=repo_path,
@@ -132,6 +144,7 @@ def _run_agent_blocking(task: TaskAssignment):
         stub_files_content=task.stub_files_content,
         test_files_content=task.test_files_content,
         all_subtasks=task.all_subtasks or None,
+        **kwargs,
     ))
 
 

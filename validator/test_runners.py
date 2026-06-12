@@ -170,18 +170,27 @@ def _runner_from_package_json(pkg_json_path: str) -> RunnerSpec | None:
 
 
 def run_test(test_file: str, repo_root: str,
-             timeout: int = 60) -> subprocess.CompletedProcess:
+             timeout: int = 60,
+             extra_env: dict | None = None) -> subprocess.CompletedProcess:
     """Run a single test file under the auto-detected runner.
 
     Returns the ``CompletedProcess``. Non-zero exit code is the
     "stub raised" signal in :func:`verify_stub_tests_fail`.
+
+    ``extra_env`` entries are merged over the inherited environment.
+    Callers that need hermetic import resolution (diff-mode replay,
+    merge-time gates) pass PYTHONNOUSERSITE / PYTHONPATH through here
+    so the same runner dispatch serves both casual and pinned runs.
     """
     spec = detect_runner(repo_root)
     cmd = [arg.replace("{test}", test_file) for arg in spec.cmd]
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         cmd,
         capture_output=True, text=True, cwd=repo_root, timeout=timeout,
-        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        env=env,
     )
 
 

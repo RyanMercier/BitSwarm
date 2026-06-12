@@ -204,7 +204,15 @@ async def _try_drop_and_replace(decomposition, subtask, miner_results,
 
 async def merge_and_test(decomposition, miner_results, base_repo_path):
     """
-    Tiered merge pipeline:
+    Merge pipeline entry point. Dispatches on decomposition mode:
+
+    Diff mode (``decomposition["mode"] == "diff"``) routes to
+    ``validator.diff_merge.merge_and_test_diff``: dependency-ordered
+    patch application, canonical-test restore, additive gate with
+    repair, regression gate via before/after failing-test comparison,
+    dual-gate scoring with the empty-patch honesty override.
+
+    Scaffold mode (default) is the tiered pipeline below:
 
     1. Group subtasks into dependency tiers
     2. For each tier:
@@ -214,6 +222,12 @@ async def merge_and_test(decomposition, miner_results, base_repo_path):
     3. Run integration tests on the fully merged + repaired repo
     4. Compute scores
     """
+    if decomposition.get("mode") == "diff":
+        from validator.diff_merge import merge_and_test_diff
+        return await merge_and_test_diff(
+            decomposition, miner_results, base_repo_path,
+        )
+
     subtasks = decomposition["subtasks"]
     integration_files = list(decomposition.get("integration_test_files", {}).keys())
 

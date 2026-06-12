@@ -1,0 +1,62 @@
+Diff mode debt cleanup: shared merge module, smarter replay, HTTP threading
+
+Burns down the engineering debt left from the diff-mode sprint and
+prepares the repo for external review. 275 tests passing (full suite
+including all seven language parsers).
+
+1. Dependency-aware hermetic replay (miner/agent_cc.py).
+   On the pallets/click run, the implementation miner spent its whole
+   loop trying to satisfy a gate test that could not pass in
+   isolation (the public-API export belonged to the sibling subtask).
+   The replay now takes tests_binding: with a single subtask, test
+   failures are final; with parallel subtasks, the binding bar is
+   "patch is non-empty and applies cleanly to the pristine baseline,"
+   test results are reported for signal, and verdicts defer to the
+   merge gates. The miner prompt gains a matching when-to-stop
+   section so the agent stops cleanly instead of chasing
+   sibling-owned symbols.
+
+2. Language-generic replay runner.
+   The replay previously hardcoded pytest. It now routes through
+   validator/test_runners.run_test (pytest / vitest / mvn / dotnet /
+   cargo / make picked from on-disk markers), with a new extra_env
+   parameter so hermetic vars ride along. The merge-side gates remain
+   Python-first (the regression gate parses pytest failure ids);
+   noted honestly in STATUS as follow-up.
+
+3. validator/diff_merge.py: the production home of the dual-gate
+   machinery proven in the demo runner. apply_patches_in_order,
+   isolated_test_env (absolute-path PYTHONPATH), run_pytest_files,
+   collect_failing_nodeids, discover_existing_tests, and
+   merge_and_test_diff with: canonical-test restore from the diff
+   baseline, additive gate per subtask, regression gate counting only
+   newly-failing tests, empty-patch honesty override, and
+   scaffold-compatible result keys so validator/server.py consumes
+   either mode's result identically. merge.py's merge_and_test now
+   dispatches on decomposition mode. demo/run_pipeline_diff.py is a
+   thin orchestrator importing the shared module (about half its
+   former size, zero duplicated logic).
+
+4. Diff-mode repair loop (validator/diff_merge.py).
+   A failing additive gate triggers one claude-code repair scoped to
+   the subtask's modify_files (adapting the existing repair_cc
+   backend), then the gate re-runs hermetically; the repair stage's
+   own success claim is never trusted. BITSWARM_REPAIR_MODE=off
+   skips.
+
+5. Diff mode over HTTP.
+   TaskAssignment gains mode, target_stubs, new_test_files_content,
+   shared_additions_content with backward-compatible defaults (older
+   scaffold-mode peers interoperate unchanged; covered by a schema
+   defaults test). miner/server passes the diff context to
+   execute_subtask only when mode=diff. validator/server's
+   dispatch_to_miners threads the fields and scopes diff-mode
+   allowed_files to modify_files only; run_task accepts mode and
+   selects the structural validator accordingly.
+
+Tests: 9 new (replay binding/deferred behavior, shared-module merge
+end-to-end incl. dispatch through merge_and_test and the empty-patch
+honesty override, diff dispatch threading, schema defaults).
+Docs: README diff-mode quick-start section + refreshed status
+footer; STATUS test footprint and wired-but-untested list updated to
+match what shipped here; stale 242 counts corrected to 275.

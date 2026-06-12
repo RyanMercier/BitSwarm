@@ -160,7 +160,7 @@ make test
 ```bash
 pip install -r requirements.txt
 pip install pytest
-python -m pytest tests/                    # ~5s, 242 tests
+python -m pytest tests/                    # ~5s, 275 tests
 ```
 
 
@@ -187,18 +187,37 @@ validator/
 protocol/              pydantic schemas + repo bundling
 docker/                Dockerfile.miner + Dockerfile.validator
 demo/                  in-process pipeline runner + specs
-tests/                 242 tests
+tests/                 275 tests
 docs/STATUS.md         full status, architecture, roadmap
 ```
 
 
+## Diff mode (modify an existing codebase)
+
+```bash
+python demo/run_pipeline_diff.py \
+  --target /path/to/existing/repo \
+  --spec   /path/to/change_spec.txt \
+  --out    out/diff_run_1
+```
+
+The coordinator decomposes the change into per-file modification
+subtasks, each with a target-state stub (the post-edit public API as
+real source code). Miners verify their own work by replaying their
+patch onto a pristine baseline in a hermetic environment, which is
+the same computation the validator's scoring gates run. Scoring is
+dual-gate: the coordinator's new tests must pass on the merged
+result, and the existing test suite must not lose any
+previously-passing test.
+
 ## Status
 
-Live-tested: Python Wordle end-to-end (1.000/1.000), C++ Wordle
-end-to-end (builds and plays). The `openai` backend is wired and
-covered by tests for the dispatch + tool-translation layer but has
-not yet had a full pipeline run on a non-Anthropic provider. The
-first such run will likely surface small tweaks (token limits,
-tool_choice quirks).
+Live-tested: all seven languages at 1.000 on the Wordle spec
+(scaffold mode), and a verified 1.000 on pallets/click (diff mode).
+The `openai` backend is wired and covered by dispatch +
+tool-translation tests but has not yet had a full pipeline run on a
+non-Anthropic provider; that run is the next milestone. Diff mode's
+miner-side replay is language-generic via the build-system runner
+dispatch; the merge-side gates are Python-first today.
 
 Roadmap and known limitations: [docs/STATUS.md](docs/STATUS.md).
