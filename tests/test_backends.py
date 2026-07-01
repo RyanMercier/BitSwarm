@@ -20,12 +20,28 @@ import sys
 import pytest
 
 
+_BACKEND_MODULES = ("miner.server", "miner.runtime", "config")
+
+
+@pytest.fixture(autouse=True)
+def _clean_backend_modules():
+    """Every test in this file mutates MINER_BACKEND and reloads the
+    modules that cache it. monkeypatch restores the env var, but a
+    cached ``config`` module would keep the mutated value and poison
+    whichever test imports miner.server next (the unknown-backend test
+    used to leave config.MINER_BACKEND='not_a_real_backend' behind,
+    crashing an unrelated lock test). Pop the caches after each test
+    so the next natural import re-reads the restored environment."""
+    yield
+    for mod in _BACKEND_MODULES:
+        sys.modules.pop(mod, None)
+
+
 def _reload_backend(monkeypatch, backend_value):
     """Set ``MINER_BACKEND`` and reload the modules that read it at
     import time. Returns the freshly imported ``miner.server`` module."""
     monkeypatch.setenv("MINER_BACKEND", backend_value)
-    # config and miner.server cache the env var at import; nuke both.
-    for mod in ("miner.server", "config"):
+    for mod in _BACKEND_MODULES:
         sys.modules.pop(mod, None)
     return importlib.import_module("miner.server")
 

@@ -16,7 +16,7 @@ not built. Skim the [TL;DR](#tldr) for the headline; scroll the
 
 BitSwarm decomposes a feature spec into parallel subtasks, ships each
 to a miner agent that produces a patch, then merges and scores. It
-works today in two end-to-end demo configurations and 275 unit /
+works today in two end-to-end demo configurations and 292 unit /
 integration tests cover the contracts.
 
 **What works live (verified end-to-end):**
@@ -65,9 +65,19 @@ integration tests cover the contracts.
   invoke pytest directly and the regression gate parses pytest
   failure ids. Per-language gate parsing is known follow-up work.
 
+**Phase A shipped (built, chain-untested):**
+- Bittensor protocol layer. Three Synapse subclasses
+  (protocol/synapses.py), a rolling-EMA ScoreBook + weight submission
+  (validator/weights.py), hidden-test commit-reveal
+  (validator/holdback.py), a transport-agnostic miner runtime
+  (miner/runtime.py) shared by the HTTP server and the axon, and the
+  two neuron entry points (neurons/miner.py, neurons/validator.py).
+  30 unit tests cover the chain layer without needing a live chain.
+  The runbook to register and run on testnet is docs/TESTNET.md. What
+  remains is operator action (wallets, faucet, registration) plus the
+  first live weight-set, none of which can be unit-tested.
+
 **What's not built yet:**
-- Bittensor protocol layer (Axon / Dendrite / weight-setting /
-  metagraph). Currently HTTP-only.
 - Native Gemini backend (function-declaration shape is different
   enough to warrant its own adapter; OpenAI-compat covers most other
   providers).
@@ -83,7 +93,7 @@ integration tests cover the contracts.
 
 ### Test footprint
 
-275 tests passing across 15 test files. Coverage by area:
+292 tests passing across 16 test files. Coverage by area:
 
 | Area | Tests |
 |---|---|
@@ -99,9 +109,10 @@ integration tests cover the contracts.
 | Bug-fix regressions | 13 |
 | End-to-end multilang validation | 13 |
 | Multi-LLM backend dispatch + tool translation | 8 |
+| Chain layer (synapses, weights, holdback, miner runtime) | 17 |
 
 Run with `pytest tests/` from the repo root. Full suite completes
-in ~15 seconds.
+in ~17 seconds.
 
 ### Live demo results
 
@@ -147,7 +158,7 @@ covers DeepSeek / OpenRouter / vLLM / Ollama / Groq / Together / etc.
 
 ```
 main   - SDK + Claude Code subprocess + OpenAI-compatible backends.
-         275 tests. Miner picks one of three (sdk / claude_code /
+         292 tests. Miner picks one of three (sdk / claude_code /
          openai) via MINER_BACKEND. Coordinator picks one of two
          (sdk / claude_code) via COORDINATOR_BACKEND; openai-coord
          is on the roadmap.
@@ -894,7 +905,7 @@ For someone picking up the repo for the first time.
 git clone https://github.com/RyanMercier/BitSwarm.git
 cd BitSwarm
 pip install -r requirements.txt
-python -m pytest tests/                    # 275 tests, ~5s
+python -m pytest tests/                    # 292 tests, ~5s
 
 # Option A: Anthropic API
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -1008,7 +1019,7 @@ BitSwarm/
 │   ├── spec_minidb.txt         stretch demo
 │   └── target_repo/            empty starter repo
 │
-├── tests/                      275 tests
+├── tests/                      292 tests
 │   ├── test_protocol.py
 │   ├── test_transport.py
 │   ├── test_dispatch.py

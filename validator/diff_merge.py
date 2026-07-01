@@ -331,12 +331,21 @@ async def merge_and_test_diff(decomposition: dict, miner_results: dict,
             capture_output=True, cwd=merge_repo,
         )
 
+    # Hidden-test reveal: write any held-back gate tests into the
+    # merge repo (verifying against the pre-mining commitment) so
+    # miners are scored on tests they never saw. Overfitting to the
+    # visible tests stops paying.
+    from validator.holdback import reveal_into_repo
+    holdback_paths = reveal_into_repo(decomposition, merge_repo)
+
     # Additive gate per subtask, with one repair attempt on failure.
+    # Held-back tests join every subtask's gate (they are task-level
+    # contracts, not per-subtask ones).
     print("  [diff-merge] additive gate (per-subtask new tests on merged):")
     additive_results: dict = {}
     for st in subtasks:
         sid = st["subtask_id"]
-        new_tests = st.get("new_test_files", []) or []
+        new_tests = (st.get("new_test_files", []) or []) + holdback_paths
         passed, output = run_pytest_files(merge_repo, new_tests)
         if not passed:
             print(f"    {sid}: FAIL")

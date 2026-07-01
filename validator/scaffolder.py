@@ -46,6 +46,14 @@ def write_scaffolding(decomposition, repo_path):
         ``BitSwarm diff baseline`` so the patch diff baseline includes the new
         tests (the regression gate) but otherwise matches the original repo state.
     """
+    # Hidden-test holdback: split the gate tests BEFORE anything is
+    # written, so held-back tests never land in the repo miners see.
+    # No-op unless BITSWARM_HOLDBACK_FRACTION > 0. The commitment hash
+    # is recorded on the decomposition now, ahead of any mining.
+    from validator.holdback import apply_holdback
+    apply_holdback(decomposition,
+                    seed=str(decomposition.get("task_id", "bitswarm")))
+
     if decomposition.get("mode") == "diff":
         return _write_diff_scaffolding(decomposition, repo_path)
 

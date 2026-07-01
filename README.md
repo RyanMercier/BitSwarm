@@ -33,6 +33,8 @@ bring-up).
 
 - [docs/WHY_BITSWARM.md](docs/WHY_BITSWARM.md) - the verification
   thesis, with the case study.
+- [docs/TESTNET.md](docs/TESTNET.md) - step-by-step runbook to
+  register and run BitSwarm on the Bittensor test network.
 - [docs/STATUS.md](docs/STATUS.md) - engineering state, every env
   var, the full roadmap.
 - [BITSWARM_SPEC.md](BITSWARM_SPEC.md) - the v2 design spec.
@@ -160,7 +162,7 @@ make test
 ```bash
 pip install -r requirements.txt
 pip install pytest
-python -m pytest tests/                    # ~5s, 275 tests
+python -m pytest tests/                    # ~5s, 292 tests
 ```
 
 
@@ -176,19 +178,25 @@ miner/
   tools.py             tool definitions (file_read/write, bash, list_files)
   recovery.py          retry / hard-reset state machine
   warm_start.py        pre-loaded context for the first turn
+  runtime.py           transport-agnostic execution (shared by HTTP + axon)
 validator/
   server.py            orchestration server
   decomposer.py        Phase 1 / 1.5 / 2 coordinator (SDK)
   decomposer_cc.py     subprocess coordinator
   scaffolder.py        write stubs + git commit baseline
-  merge.py             tiered merge + recovery
+  merge.py             tiered merge + recovery (dispatches diff_merge)
+  diff_merge.py        diff-mode dual-gate scoring
+  weights.py           rolling-EMA scores + on-chain weight submission
+  holdback.py          hidden-test commit-reveal
   scorer.py            per-subtask scoring
   parsers/             per-language tree-sitter parsers
-protocol/              pydantic schemas + repo bundling
+protocol/              pydantic schemas + synapses + repo bundling
+neurons/               Bittensor entry points (miner.py, validator.py)
 docker/                Dockerfile.miner + Dockerfile.validator
 demo/                  in-process pipeline runner + specs
-tests/                 275 tests
+tests/                 292 tests
 docs/STATUS.md         full status, architecture, roadmap
+docs/TESTNET.md        testnet runbook
 ```
 
 

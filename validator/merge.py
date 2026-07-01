@@ -339,6 +339,14 @@ async def merge_and_test(decomposition, miner_results, base_repo_path):
                 print(f"    {sid} repair: FAILED")
 
     # ── Phase 4: Integration tests on fully merged + repaired repo ──────
+    # Hidden-test reveal: write any held-back integration tests into
+    # the merge repo (verified against the pre-mining commitment) and
+    # include them in the run. Miners never saw these.
+    from validator.holdback import reveal_into_repo
+    integration_files = integration_files + reveal_into_repo(
+        decomposition, merge_repo,
+    )
+
     integration_passed, integration_output, integration_ratio = \
         run_integration_tests(integration_files, merge_repo)
 
