@@ -2,8 +2,15 @@
 
 Step-by-step for taking BitSwarm from the local pipeline to a running
 subnet on the Bittensor test network. Everything here is operator
-action: wallet creation, faucet, registration, and launching the
-neurons. The code is on main; this doc is how you drive it.
+action: wallet creation, getting test TAO, registration, and
+launching the neurons. The code is on main; this doc is how you drive
+it.
+
+Cost: **zero real money.** Testnet runs entirely on test TAO, which
+has no monetary value and comes free from the community faucet
+channel on Discord. Real TAO is only involved at mainnet launch
+(Phase C), and even there the subnet-registration lock is returned on
+deregistration.
 
 The design keeps the chain at the edges. The coordinator, miners,
 merge pipeline, and gates are the same code the local pipeline runs
@@ -56,18 +63,32 @@ Back up the mnemonics. On testnet the TAO is play money, but losing a
 coldkey still means re-registering.
 
 
-## 2. Fund from the testnet faucet
+## 2. Get test TAO
 
-```bash
-btcli wallet faucet --wallet.name bitswarm_validator --subtensor.network test
-btcli wallet faucet --wallet.name bitswarm_miner     --subtensor.network test
-```
+Everything on testnet is paid in **test TAO**, a token with no
+monetary value. You never spend real TAO to run on testnet. (Real
+TAO only enters at mainnet, Phase C, where subnet registration has a
+lock cost that is returned on deregistration.)
 
-Confirm balances:
+The automated faucet (`btcli wallet faucet`) is **disabled** on
+testnet. Get test TAO from the community instead:
+
+1. Join the Bittensor Discord (discord.com/invite/bittensor).
+2. Go to the faucet / test-tao channel.
+3. Post your validator and miner coldkey ss58 addresses and request
+   test TAO. You need roughly 100+ test TAO on the validator coldkey
+   to create a subnet (the lock cost fluctuates with demand), plus a
+   small amount on each for registration.
+
+Get your ss58 addresses to paste into Discord:
 
 ```bash
 btcli wallet overview --wallet.name bitswarm_validator --subtensor.network test
+btcli wallet overview --wallet.name bitswarm_miner     --subtensor.network test
 ```
+
+Once the community sends test TAO, re-run the overview commands to
+confirm the balances arrived before proceeding.
 
 
 ## 3. Get a subnet
