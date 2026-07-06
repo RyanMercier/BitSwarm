@@ -1,6 +1,6 @@
 # BitSwarm Status & Roadmap
 
-*Last updated: 2026-06-11*
+*Last updated: 2026-07-06*
 
 A status document covering where BitSwarm stands today, how the system
 actually works in code, and the work between here and a credible
@@ -905,7 +905,7 @@ For someone picking up the repo for the first time.
 git clone https://github.com/RyanMercier/BitSwarm.git
 cd BitSwarm
 pip install -r requirements.txt
-python -m pytest tests/                    # 292 tests, ~5s
+python -m pytest tests/                    # 292 tests, ~20s
 
 # Option A: Anthropic API
 export ANTHROPIC_API_KEY=sk-ant-...

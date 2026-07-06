@@ -132,6 +132,39 @@ and "here is a reproducible chain of custody with economically bonded
 verification" is the difference between failing and passing
 procurement.
 
+## 6. Hidden tests: overfitting to the gate does not pay
+
+Any fixed set of visible tests can, in principle, be gamed: a worker
+optimizing for "tests pass" rather than "change is correct" can
+overfit to the letter of the checks. BitSwarm's first structural
+counter is shipped, not planned: the coordinator holds back a
+fraction of the gate tests from miners. A hash of the held-back set
+is committed before any miner starts; the tests themselves are
+revealed only at scoring, and the reveal is verified against the
+commitment (a validator whose reveal does not match its own
+commitment refuses to score). Miners are graded partly on checks
+they never saw, selected deterministically so any other validator
+re-derives the same split. Overfitting to the visible tests stops
+being a strategy.
+
+## Where this stands today
+
+Everything above is running code with a passing test suite, not a
+design document:
+
+- 292 automated tests across the coordinator, miners, merge
+  pipelines, language parsers, multi-model backends, and the chain
+  layer.
+- Live results on both workload shapes: all seven supported
+  languages at a perfect score from one spec (scaffold mode), and a
+  verified perfect score adding a feature to pallets/click, a real
+  45,000-line open-source repository (diff mode).
+- The Bittensor protocol layer is built: synapse definitions, the
+  rolling per-miner score book that becomes the on-chain weight
+  vector, hidden-test commit-reveal, and the miner and validator
+  neuron entry points. The step-by-step path to running on the test
+  network is docs/TESTNET.md.
+
 ## What BitSwarm is not
 
 Honesty about limits, because the claims above only hold inside them:
@@ -149,9 +182,13 @@ Honesty about limits, because the claims above only hold inside them:
   the binding constraints, which is why both are scored and iterated
   in production rather than assumed.
 - Not a guarantee of semantic perfection. Gates are tests. Tests are
-  partial specs. The roadmap items that close this gap (hidden test
-  reserves, mutation scoring, staked counterexample challenges) are
-  exactly that: roadmap, stated as such.
+  partial specs. Hidden-test holdback (shipped) narrows the gap;
+  mutation scoring and staked counterexample challenges (roadmap,
+  stated as such) narrow it further.
+- Not yet hardened against a hostile miner running arbitrary code.
+  Miners execute in isolated workspace copies and only their scoped
+  patch ships, but full sandbox lockdown (network egress cut during
+  test execution) is pre-mainnet work, disclosed in docs/STATUS.md.
 
 ## The one-sentence version
 

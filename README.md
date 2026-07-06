@@ -162,7 +162,7 @@ make test
 ```bash
 pip install -r requirements.txt
 pip install pytest
-python -m pytest tests/                    # ~5s, 292 tests
+python -m pytest tests/                    # ~20s, 292 tests
 ```
 
 
