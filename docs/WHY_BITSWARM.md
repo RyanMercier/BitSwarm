@@ -152,7 +152,7 @@ being a strategy.
 Everything above is running code with a passing test suite, not a
 design document:
 
-- 292 automated tests across the coordinator, miners, merge
+- 311 automated tests across the coordinator, miners, merge
   pipelines, language parsers, multi-model backends, and the chain
   layer.
 - Live results on both workload shapes: all seven supported

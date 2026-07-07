@@ -31,14 +31,49 @@ live false positives during bring-up: user-site editable installs
 hijacked imports, and relative PYTHONPATH entries resolved against
 the subprocess cwd and silently pointed nowhere, letting imports fall
 through to system site-packages.
+
+Language coverage. Both gates dispatch on the repo's build system via
+``validator.test_runners.detect_runner``, the same dispatch the
+miner-side hermetic replay uses (one harness, both sides). The
+additive gate runs each gate test file through ``run_test``. The
+regression gate needs per-test failure identities for its
+before/after comparison; granularity depends on what the runner's
+output supports:
+
+- per-test ids: pytest (node ids), cargo (test names), dotnet
+  (Failed lines), ctest (failed-test section), vitest/jest (JSON
+  reporter), mvn/gradle (JUnit XML report files).
+- suite-level: mocha, make, and any runner whose output we cannot
+  parse. The whole suite is one unit: penalize only when it passed
+  before the change and fails after. Degradation is always toward
+  the coarse signal, never toward silently passing: a nonzero suite
+  exit with no parsed test ids records the sentinel failure
+  ``<suite>``.
+
+For suite-run collectors the coordinator's new test files (and any
+revealed holdback tests) are moved out of the tree for the duration
+of the regression run, so the additive contract never contaminates
+the regression signal.
 """
 from __future__ import annotations
 
+import contextlib
+import glob
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
+
+from validator.test_runners import detect_runner, run_test
+
+# Sentinel "test id" recorded when a suite fails but the output gives
+# no per-test identities. Keeps the before/after set algebra honest at
+# suite granularity instead of silently reporting zero failures.
+SUITE_SENTINEL = "<suite>"
 
 GIT_ENV = {
     **os.environ,
@@ -100,6 +135,45 @@ def run_pytest_files(repo_path: str, test_files: list,
         return False, f"[ERROR: {exc}]"
 
 
+def run_gate_tests(repo_path: str, test_files: list,
+                    timeout: int = 300) -> tuple[bool, str]:
+    """Run gate test files under the repo's detected build system.
+
+    Python repos keep the batch pytest invocation (the live-tested
+    path). Everything else goes file-by-file through the same
+    ``run_test`` dispatch the miner-side hermetic replay uses, with
+    the same hermetic env, so the gate result is the computation the
+    miner already verified locally.
+    """
+    if not test_files:
+        return True, "(no tests to run)"
+    spec = detect_runner(repo_path)
+    if spec.name == "pytest":
+        return run_pytest_files(repo_path, test_files, timeout=timeout)
+    env_overlay = isolated_test_env(repo_path)
+    combined: list[str] = []
+    all_passed = True
+    for tf in test_files:
+        try:
+            result = run_test(tf, repo_path, timeout=timeout,
+                              extra_env=env_overlay)
+        except subprocess.TimeoutExpired:
+            combined.append(f"--- {tf} ---\n[TIMEOUT]")
+            all_passed = False
+            continue
+        except Exception as exc:
+            combined.append(f"--- {tf} ---\n[ERROR: {exc}]")
+            all_passed = False
+            continue
+        output = (result.stdout or "") + (
+            ("\n[stderr]\n" + result.stderr) if result.stderr else ""
+        )
+        combined.append(f"--- {tf} ---\n{output}")
+        if result.returncode != 0:
+            all_passed = False
+    return all_passed, "\n".join(combined)
+
+
 def collect_failing_nodeids(repo_path: str, test_files: list,
                               timeout: int = 600) -> tuple[set, str]:
     """Run pytest and parse the set of FAILED/ERROR node ids.
@@ -132,6 +206,208 @@ def collect_failing_nodeids(repo_path: str, test_files: list,
         elif line.startswith("ERROR "):
             failing.add(line[len("ERROR "):].split(" - ", 1)[0].strip())
     return failing, output
+
+
+@contextlib.contextmanager
+def _stash_paths(repo_path: str, rel_paths: list):
+    """Temporarily move files out of the repo, restoring them after.
+
+    Used by suite-run failure collection: the coordinator's new gate
+    tests (and revealed holdback tests) must not run inside the
+    regression suite, and suite-based runners have no reliable
+    per-file exclusion flag. Physically absent files are excluded in
+    every build system.
+    """
+    stash_dir = tempfile.mkdtemp(prefix="bitswarm_stash_")
+    moved: list[tuple[str, str]] = []
+    try:
+        for rel in rel_paths or []:
+            src = os.path.join(repo_path, rel)
+            if not os.path.isfile(src):
+                continue
+            dst = os.path.join(stash_dir, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.move(src, dst)
+            moved.append((src, dst))
+        yield
+    finally:
+        for src, dst in moved:
+            os.makedirs(os.path.dirname(src), exist_ok=True)
+            shutil.move(dst, src)
+        shutil.rmtree(stash_dir, ignore_errors=True)
+
+
+def _suite_command(runner_name: str) -> list | None:
+    """Whole-suite invocation for a runner, or None when the project
+    type has no suite concept (compile-only C fallback)."""
+    commands = {
+        "mvn": ["mvn", "-q", "-DfailIfNoTests=false", "test"],
+        "gradle": ["gradle", "test"],
+        "dotnet": ["dotnet", "test"],
+        "cargo": ["cargo", "test", "--no-fail-fast"],
+        "ctest": ["ctest", "--output-on-failure"],
+        "make": ["make", "test"],
+        "vitest": ["npx", "--no-install", "vitest", "run",
+                    "--reporter=json"],
+        "jest": ["npx", "--no-install", "jest", "--json",
+                  "--colors=false"],
+        "mocha": ["npx", "--no-install", "mocha"],
+    }
+    return commands.get(runner_name)
+
+
+def _parse_cargo_failures(output: str) -> set:
+    """``test path::name ... FAILED`` lines from cargo test."""
+    return set(re.findall(r"^test (\S+) \.\.\. FAILED\s*$",
+                           output, re.MULTILINE))
+
+
+def _parse_dotnet_failures(output: str) -> set:
+    """``  Failed FullyQualifiedName [3 ms]`` lines from dotnet test.
+    The ``Failed!`` summary line and ``Failed:     1`` counters have
+    no whitespace after the word, so the pattern skips them."""
+    return set(re.findall(r"^\s*Failed\s+([\w.+`\[\]<>]+)",
+                           output, re.MULTILINE))
+
+
+def _parse_ctest_failures(output: str) -> set:
+    """Names from ctest's ``The following tests FAILED:`` section."""
+    failures: set = set()
+    in_section = False
+    for line in output.splitlines():
+        if "The following tests FAILED:" in line:
+            in_section = True
+            continue
+        if in_section:
+            m = re.match(r"^\s*\d+\s*-\s*(\S+)\s*\(", line)
+            if m:
+                failures.add(m.group(1))
+            elif line.strip():
+                in_section = False
+    return failures
+
+
+def _parse_js_json_failures(output: str) -> set | None:
+    """Failed test full names from a vitest/jest JSON reporter blob.
+
+    Both emit the same shape: testResults[].assertionResults[] with a
+    status field. Returns None when no JSON can be located, so the
+    caller falls back to suite-level.
+    """
+    text = output.strip()
+    data = None
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end > start:
+            try:
+                data = json.loads(text[start:end + 1])
+            except (json.JSONDecodeError, ValueError):
+                return None
+    if not isinstance(data, dict) or "testResults" not in data:
+        return None
+    failures: set = set()
+    for tr in data.get("testResults") or []:
+        for ar in tr.get("assertionResults") or []:
+            if ar.get("status") == "failed":
+                failures.add(ar.get("fullName") or ar.get("title")
+                              or "<unnamed>")
+    return failures
+
+
+def _parse_junit_xml_failures(repo_path: str) -> set | None:
+    """Failing ``classname#name`` ids from JUnit XML report files.
+
+    Surefire/failsafe (maven) and gradle both write these to disk;
+    parsing the files is stable across tool versions where stdout is
+    not. Returns None when no report files exist.
+    """
+    patterns = [
+        "target/surefire-reports/TEST-*.xml",
+        "target/failsafe-reports/TEST-*.xml",
+        "build/test-results/**/*.xml",
+        "**/target/surefire-reports/TEST-*.xml",
+    ]
+    report_files: list = []
+    for pat in patterns:
+        report_files.extend(glob.glob(os.path.join(repo_path, pat),
+                                       recursive=True))
+    if not report_files:
+        return None
+    failures: set = set()
+    for rf in sorted(set(report_files)):
+        try:
+            root = ET.parse(rf).getroot()
+        except ET.ParseError:
+            continue
+        for case in root.iter("testcase"):
+            if case.find("failure") is not None or case.find("error") is not None:
+                cls = case.get("classname") or ""
+                name = case.get("name") or ""
+                failures.add(f"{cls}#{name}" if cls else name)
+    return failures
+
+
+def collect_failing_tests(repo_path: str, test_files: list | None = None,
+                            exclude_paths: list | None = None,
+                            timeout: int = 600) -> tuple[set, str]:
+    """Failing-test identities for the regression gate, any language.
+
+    Dispatches on the repo's detected build system. Python repos use
+    the per-nodeid pytest path over ``test_files``. Suite-based
+    runners move ``exclude_paths`` (the coordinator's gate tests) out
+    of the tree, run the whole suite, and parse per-test failures
+    where the runner's output supports it. A failing suite that
+    yields no parseable ids records SUITE_SENTINEL so coarse failures
+    still participate in the before/after comparison.
+    """
+    spec = detect_runner(repo_path)
+
+    if spec.name == "pytest":
+        return collect_failing_nodeids(repo_path, test_files or [],
+                                        timeout=timeout)
+
+    cmd = _suite_command(spec.name)
+    if cmd is None:
+        return set(), f"(no suite runner for '{spec.name}' projects)"
+
+    env = isolated_test_env(repo_path)
+    with _stash_paths(repo_path, exclude_paths or []):
+        try:
+            result = subprocess.run(
+                cmd, cwd=repo_path, capture_output=True, text=True,
+                timeout=timeout, env=env,
+            )
+        except subprocess.TimeoutExpired:
+            return {SUITE_SENTINEL}, "[TIMEOUT]"
+        except FileNotFoundError as exc:
+            return {SUITE_SENTINEL}, f"[ERROR: runner missing: {exc}]"
+        except Exception as exc:
+            return {SUITE_SENTINEL}, f"[ERROR: {exc}]"
+
+        output = (result.stdout or "") + (
+            ("\n[stderr]\n" + result.stderr) if result.stderr else ""
+        )
+        if result.returncode == 0:
+            return set(), output
+
+        parsed: set | None = None
+        if spec.name == "cargo":
+            parsed = _parse_cargo_failures(output)
+        elif spec.name == "dotnet":
+            parsed = _parse_dotnet_failures(output)
+        elif spec.name == "ctest":
+            parsed = _parse_ctest_failures(output)
+        elif spec.name in ("vitest", "jest"):
+            parsed = _parse_js_json_failures(output)
+        elif spec.name in ("mvn", "gradle"):
+            parsed = _parse_junit_xml_failures(repo_path)
+
+    if parsed:
+        return parsed, output
+    return {SUITE_SENTINEL}, output
 
 
 def discover_existing_tests(repo_path: str, exclude: list) -> list:
@@ -269,7 +545,7 @@ async def _try_repair_subtask(subtask: dict, merge_repo: str,
         return False
 
     # Re-verify with OUR gate regardless of what repair claimed.
-    passed, _ = run_pytest_files(
+    passed, _ = run_gate_tests(
         merge_repo, subtask.get("new_test_files", []) or [],
     )
     print(f"  [repair-diff] {sid}: gate after repair: "
@@ -303,8 +579,9 @@ async def merge_and_test_diff(decomposition: dict, miner_results: dict,
                                               exclude=new_test_paths)
 
     if pre_failing is None:
-        pre_failing, _ = collect_failing_nodeids(base_repo_path,
-                                                  existing_tests)
+        pre_failing, _ = collect_failing_tests(
+            base_repo_path, existing_tests, exclude_paths=new_test_paths,
+        )
 
     # Fresh merge repo from the scaffolded baseline.
     if out_dir:
@@ -346,7 +623,7 @@ async def merge_and_test_diff(decomposition: dict, miner_results: dict,
     for st in subtasks:
         sid = st["subtask_id"]
         new_tests = (st.get("new_test_files", []) or []) + holdback_paths
-        passed, output = run_pytest_files(merge_repo, new_tests)
+        passed, output = run_gate_tests(merge_repo, new_tests)
         if not passed:
             print(f"    {sid}: FAIL")
             for line in output.splitlines()[-15:]:
@@ -357,7 +634,10 @@ async def merge_and_test_diff(decomposition: dict, miner_results: dict,
         print(f"    {sid}: {'PASS' if passed else 'FAIL'}")
 
     # Regression gate: only NEWLY failing tests count.
-    post_failing, _ = collect_failing_nodeids(merge_repo, existing_tests)
+    post_failing, _ = collect_failing_tests(
+        merge_repo, existing_tests,
+        exclude_paths=new_test_paths + holdback_paths,
+    )
     newly_failing = post_failing - pre_failing
     carried = post_failing & pre_failing
     print(f"  [diff-merge] regression gate: {len(newly_failing)} newly-failing; "

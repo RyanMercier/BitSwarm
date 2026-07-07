@@ -52,7 +52,7 @@ os.environ.setdefault("MINER_BACKEND", "claude_code")
 
 from validator.diff_merge import (  # noqa: E402
     GIT_ENV,
-    collect_failing_nodeids,
+    collect_failing_tests,
     discover_existing_tests,
     merge_and_test_diff,
     topological_order,
@@ -203,8 +203,9 @@ async def run(spec_path, target_repo, out_dir):
         print(f"           - {t}")
 
     print("\n[pipeline-diff] === pre-mining regression baseline ===")
-    pre_failing, _ = collect_failing_nodeids(repo_path, existing_tests,
-                                              timeout=600)
+    pre_failing, _ = collect_failing_tests(repo_path, existing_tests,
+                                            exclude_paths=new_test_paths,
+                                            timeout=600)
     print(f"[pipeline-diff] existing tests on unmodified repo: "
           f"{len(pre_failing)} pre-existing failure(s)")
     for nid in sorted(pre_failing)[:10]:

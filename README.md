@@ -162,7 +162,7 @@ make test
 ```bash
 pip install -r requirements.txt
 pip install pytest
-python -m pytest tests/                    # ~20s, 292 tests
+python -m pytest tests/                    # ~25s, 311 tests
 ```
 
 
@@ -194,7 +194,7 @@ protocol/              pydantic schemas + synapses + repo bundling
 neurons/               Bittensor entry points (miner.py, validator.py)
 docker/                Dockerfile.miner + Dockerfile.validator
 demo/                  in-process pipeline runner + specs
-tests/                 292 tests
+tests/                 311 tests
 docs/STATUS.md         full status, architecture, roadmap
 docs/TESTNET.md        testnet runbook
 ```
@@ -224,8 +224,12 @@ Live-tested: all seven languages at 1.000 on the Wordle spec
 (scaffold mode), and a verified 1.000 on pallets/click (diff mode).
 The `openai` backend is wired and covered by dispatch +
 tool-translation tests but has not yet had a full pipeline run on a
-non-Anthropic provider; that run is the next milestone. Diff mode's
-miner-side replay is language-generic via the build-system runner
-dispatch; the merge-side gates are Python-first today.
+non-Anthropic provider; that run is the next milestone. Diff mode is
+language-generic on both sides: the miner-side replay and the
+merge-side gates share the same build-system runner dispatch, with
+per-test regression granularity for pytest, cargo, dotnet, ctest,
+vitest/jest, and mvn/gradle (JUnit XML), and suite-level comparison
+elsewhere. The live diff-mode run so far is Python (pallets/click);
+a non-Python diff run is on the roadmap.
 
 Roadmap and known limitations: [docs/STATUS.md](docs/STATUS.md).

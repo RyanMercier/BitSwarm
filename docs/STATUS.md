@@ -16,7 +16,7 @@ not built. Skim the [TL;DR](#tldr) for the headline; scroll the
 
 BitSwarm decomposes a feature spec into parallel subtasks, ships each
 to a miner agent that produces a patch, then merges and scores. It
-works today in two end-to-end demo configurations and 292 unit /
+works today in two end-to-end demo configurations and 311 unit /
 integration tests cover the contracts.
 
 **What works live (verified end-to-end):**
@@ -59,11 +59,21 @@ integration tests cover the contracts.
   claude-code repair scoped to the subtask's modify_files, then the
   gate re-runs (never trusting the repair stage's own report). Wired
   in validator/diff_merge.py; not yet observed firing on a live run.
-- Diff-mode merge gates beyond Python: the miner-side hermetic
-  replay dispatches per-language runners (pytest, vitest, mvn,
-  dotnet, cargo, make), but the merge-side additive/regression gates
-  invoke pytest directly and the regression gate parses pytest
-  failure ids. Per-language gate parsing is known follow-up work.
+- Diff-mode merge gates beyond Python: the merge-side gates now
+  dispatch on the repo's build system, same as the miner-side
+  hermetic replay. The additive gate runs each gate test file
+  through the shared runner dispatch; the regression gate collects
+  per-test failure identities where the runner's output supports it
+  (pytest node ids, cargo test names, dotnet Failed lines, ctest
+  failed-test section, vitest/jest JSON reporter, JUnit XML report
+  files for mvn/gradle) and degrades to suite-level comparison
+  otherwise (mocha, make), recording a sentinel failure rather than
+  silently passing. Gate tests are physically moved out of the tree
+  during suite-level regression runs so the additive contract never
+  contaminates the regression signal. All of this is covered by 19
+  dispatch/parser unit tests; the live diff-mode run so far is
+  Python (pallets/click), so non-Python diff runs remain
+  live-untested.
 
 **Phase A shipped (built, chain-untested):**
 - Bittensor protocol layer. Three Synapse subclasses
@@ -93,7 +103,7 @@ integration tests cover the contracts.
 
 ### Test footprint
 
-292 tests passing across 16 test files. Coverage by area:
+311 tests passing across 17 test files. Coverage by area:
 
 | Area | Tests |
 |---|---|
@@ -110,9 +120,10 @@ integration tests cover the contracts.
 | End-to-end multilang validation | 13 |
 | Multi-LLM backend dispatch + tool translation | 8 |
 | Chain layer (synapses, weights, holdback, miner runtime) | 17 |
+| Language-generic merge gates (failure parsers + dispatch) | 19 |
 
 Run with `pytest tests/` from the repo root. Full suite completes
-in ~17 seconds.
+in ~25 seconds.
 
 ### Live demo results
 
@@ -158,7 +169,7 @@ covers DeepSeek / OpenRouter / vLLM / Ollama / Groq / Together / etc.
 
 ```
 main   - SDK + Claude Code subprocess + OpenAI-compatible backends.
-         292 tests. Miner picks one of three (sdk / claude_code /
+         311 tests. Miner picks one of three (sdk / claude_code /
          openai) via MINER_BACKEND. Coordinator picks one of two
          (sdk / claude_code) via COORDINATOR_BACKEND; openai-coord
          is on the roadmap.
@@ -905,7 +916,7 @@ For someone picking up the repo for the first time.
 git clone https://github.com/RyanMercier/BitSwarm.git
 cd BitSwarm
 pip install -r requirements.txt
-python -m pytest tests/                    # 292 tests, ~20s
+python -m pytest tests/                    # 311 tests, ~25s
 
 # Option A: Anthropic API
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -1019,7 +1030,7 @@ BitSwarm/
 │   ├── spec_minidb.txt         stretch demo
 │   └── target_repo/            empty starter repo
 │
-├── tests/                      292 tests
+├── tests/                      311 tests
 │   ├── test_protocol.py
 │   ├── test_transport.py
 │   ├── test_dispatch.py
