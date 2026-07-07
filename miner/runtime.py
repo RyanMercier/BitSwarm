@@ -25,11 +25,18 @@ import traceback
 import uuid
 
 from config import MINER_BACKEND
+from protocol import PROTOCOL_VERSION
 from protocol.schemas import MinerResponse, TaskAssignment
 from protocol.transport import unbundle_repo
 
 
 MINER_ID = os.environ.get("MINER_ID") or f"miner-{uuid.uuid4().hex[:8]}"
+
+# Ceiling on the wall-clock a single assignment may hold this miner,
+# regardless of what the validator requested. Protects the miner from
+# a hostile or buggy validator sending timeout_seconds=10**9 and
+# parking the miner forever.
+MAX_TASK_SECONDS = int(os.environ.get("BITSWARM_MAX_TASK_SECONDS", "3600"))
 
 
 def select_backend():
@@ -106,6 +113,20 @@ async def run_assignment(task: TaskAssignment,
     if execute_subtask is None:
         execute_subtask = select_backend()
 
+    version = getattr(task, "protocol_version", 1)
+    if version != PROTOCOL_VERSION:
+        return MinerResponse(
+            task_id=task.task_id,
+            subtask_id=task.subtask_id,
+            patch="",
+            stub_tests_passed=False,
+            error_message=(
+                f"protocol version mismatch: assignment is v{version}, "
+                f"this miner speaks v{PROTOCOL_VERSION}. Upgrade the "
+                f"older side."),
+            stop_reason="protocol_mismatch",
+        )
+
     workspace = tempfile.mkdtemp(prefix=f"miner_{task.subtask_id}_")
     repo_path = os.path.join(workspace, "repo")
     started = time.perf_counter()
@@ -117,7 +138,8 @@ async def run_assignment(task: TaskAssignment,
         subtask_manifest["_repo_path"] = repo_path
         task_with_path = task.model_copy(update={"subtask_manifest": subtask_manifest})
 
-        timeout = task.timeout_seconds if task.timeout_seconds > 0 else None
+        requested = task.timeout_seconds if task.timeout_seconds > 0 else MAX_TASK_SECONDS
+        timeout = min(requested, MAX_TASK_SECONDS)
 
         result = await asyncio.wait_for(
             asyncio.to_thread(_run_agent_blocking, task_with_path, execute_subtask),

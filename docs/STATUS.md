@@ -16,7 +16,7 @@ not built. Skim the [TL;DR](#tldr) for the headline; scroll the
 
 BitSwarm decomposes a feature spec into parallel subtasks, ships each
 to a miner agent that produces a patch, then merges and scores. It
-works today in two end-to-end demo configurations and 311 unit /
+works today in two end-to-end demo configurations and 339 unit /
 integration tests cover the contracts.
 
 **What works live (verified end-to-end):**
@@ -86,12 +86,30 @@ integration tests cover the contracts.
   The runbook to register and run on testnet is docs/TESTNET.md. What
   remains is operator action (wallets, faucet, registration) plus the
   first live weight-set, none of which can be unit-tested.
+- Production/product layer. A docker sandbox for gate execution
+  (validator/sandbox.py: network-less container, resource ceilings,
+  allowlisted env so keys never cross; BITSWARM_SANDBOX=auto/docker/
+  off), a user-facing task submission API (validator/api.py: API-key
+  auth, submit spec + repo bundle, poll status, fetch the verified
+  patch), the task inbox lifecycle with crash recovery
+  (validator/inbox.py: orphaned .working tasks requeue on restart),
+  a combined patch.diff artifact per completed task, protocol
+  versioning (miners reject incompatible assignments up front), a
+  miner-side wall-clock ceiling per assignment
+  (BITSWARM_MAX_TASK_SECONDS), and bundle size limits in both
+  directions (BITSWARM_MAX_BUNDLE_MB). Operator guides:
+  docs/MINING.md and docs/VALIDATING.md.
 
 **What's not built yet:**
 - Native Gemini backend (function-declaration shape is different
   enough to warrant its own adapter; OpenAI-compat covers most other
   providers).
-- Real sandboxing (Docker exists but miners have full Bash).
+- Sandboxing of the miner's own agent loop. The validator side is
+  covered (gate tests run in a network-less container via
+  BITSWARM_SANDBOX), but a miner's agent still executes model-written
+  bash in its workspace with host privileges; docs/MINING.md tells
+  operators to run the miner inside docker/Dockerfile.miner or a VM,
+  and code-enforced agent confinement remains pre-mainnet work.
 - Cryptographic verification (anti-collusion mining).
 - Test-first decomposition's live validation against a real run
   (the prompt is wired, the three-phase coordinator runs, but it
@@ -103,7 +121,7 @@ integration tests cover the contracts.
 
 ### Test footprint
 
-311 tests passing across 17 test files. Coverage by area:
+339 tests passing across 19 test files. Coverage by area:
 
 | Area | Tests |
 |---|---|
@@ -121,9 +139,11 @@ integration tests cover the contracts.
 | Multi-LLM backend dispatch + tool translation | 8 |
 | Chain layer (synapses, weights, holdback, miner runtime) | 17 |
 | Language-generic merge gates (failure parsers + dispatch) | 19 |
+| Gate sandbox (command construction + mode resolution) | 11 |
+| Submission API, inbox lifecycle, protocol hardening | 17 |
 
 Run with `pytest tests/` from the repo root. Full suite completes
-in ~25 seconds.
+in ~30 seconds.
 
 ### Live demo results
 
@@ -169,7 +189,7 @@ covers DeepSeek / OpenRouter / vLLM / Ollama / Groq / Together / etc.
 
 ```
 main   - SDK + Claude Code subprocess + OpenAI-compatible backends.
-         311 tests. Miner picks one of three (sdk / claude_code /
+         339 tests. Miner picks one of three (sdk / claude_code /
          openai) via MINER_BACKEND. Coordinator picks one of two
          (sdk / claude_code) via COORDINATOR_BACKEND; openai-coord
          is on the roadmap.
@@ -916,7 +936,7 @@ For someone picking up the repo for the first time.
 git clone https://github.com/RyanMercier/BitSwarm.git
 cd BitSwarm
 pip install -r requirements.txt
-python -m pytest tests/                    # 311 tests, ~25s
+python -m pytest tests/                    # 339 tests, ~30s
 
 # Option A: Anthropic API
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -974,13 +994,16 @@ BitSwarm/
 ├── requirements.txt
 │
 ├── protocol/
+│   ├── __init__.py             PROTOCOL_VERSION
 │   ├── schemas.py              pydantic TaskAssignment / MinerResponse
-│   └── transport.py            git bundle <-> base64
+│   ├── synapses.py             bittensor Synapse subclasses
+│   └── transport.py            git bundle <-> base64, size limits
 │
 ├── miner/
-│   ├── server.py               FastAPI server + backend selection
+│   ├── server.py               FastAPI server (HTTP transport)
+│   ├── runtime.py              transport-agnostic execution + clamps
 │   ├── agent.py                SDK miner (Anthropic tool-use loop)
-│   ├── agent_cc.py             subprocess miner (claude -p)
+│   ├── agent_cc.py             subprocess miner (claude -p) + hermetic replay
 │   ├── agent_openai.py         OpenAI-compatible miner (any provider)
 │   ├── tools.py                tool definitions for SDK + openai miners
 │   ├── recovery.py             retry / hard-reset state machine
@@ -988,63 +1011,72 @@ BitSwarm/
 │   └── prompts.py              SDK miner system prompt
 │
 ├── validator/
-│   ├── server.py               FastAPI orchestrator
+│   ├── server.py               FastAPI orchestrator (HTTP transport)
+│   ├── api.py                  user-facing task submission API
+│   ├── inbox.py                task lifecycle: submit/status/recover/artifacts
+│   ├── sandbox.py              docker sandbox for gate execution
 │   ├── lang_profiles.py        per-language metadata registry
 │   ├── decomposer.py           SDK coordinator (Phase 1, 1.5, 2)
 │   ├── decomposer_cc.py        subprocess coordinator
+│   ├── diff_prompts.py         diff-mode coordinator prompts
+│   ├── diff_validator.py       diff-mode decomposition validation
+│   ├── diff_merge.py           diff-mode dual-gate merge + scoring
 │   ├── critique.py             self-critique pass
 │   ├── preflight.py            scaffold compile-check
 │   ├── cache.py                decomposition cache
 │   ├── scaffolder.py           write stubs + git commit baseline
+│   ├── holdback.py             hidden-test commit-reveal
+│   ├── weights.py              rolling-EMA ScoreBook + weight submission
 │   ├── validator_checks.py     Phase 1.5 dispatcher
 │   ├── validator_checks_common.py  language-agnostic contract check
-│   ├── parsers/
-│   │   ├── types.py            LanguageParser protocol + dataclasses
-│   │   ├── python.py           stdlib ast
-│   │   ├── typescript.py       tree-sitter-typescript
-│   │   ├── java.py             tree-sitter-java
-│   │   ├── csharp.py           tree-sitter-c-sharp
-│   │   ├── c.py                tree-sitter-c
-│   │   ├── cpp.py              tree-sitter-cpp
-│   │   └── rust.py             tree-sitter-rust
+│   ├── parsers/                7 language parsers (ast / tree-sitter)
 │   ├── test_runners.py         build-system dispatch
 │   ├── test_runner.py          merge-time test runner
-│   ├── merge.py                tiered merge + recovery
+│   ├── merge.py                tiered merge + recovery (dispatches diff_merge)
 │   ├── drop_replace.py         drop-and-replace recovery
 │   ├── repair.py               SDK repair miner
 │   ├── repair_cc.py            subprocess repair miner
 │   ├── scorer.py               per-subtask scoring
 │   └── prompts.py              coordinator system prompt
 │
+├── neurons/
+│   ├── miner.py                axon miner (chain transport)
+│   └── validator.py            inbox-driven validator + weight loop
+│
 ├── docker/
+│   ├── Dockerfile.base         all 7 toolchains (also the gate sandbox image)
 │   ├── Dockerfile.miner
 │   ├── Dockerfile.validator
 │   └── docker-compose.yml
 │
 ├── demo/
-│   ├── run_pipeline.py         in-process end-to-end runner
+│   ├── run_pipeline.py         in-process end-to-end runner (scaffold)
+│   ├── run_pipeline_diff.py    in-process diff-mode runner
+│   ├── run_all_languages.py    7-language sweep driver
 │   ├── smoke_miner_cc.py       single-miner smoke
 │   ├── smoke_coordinator_cc.py single-coord smoke
-│   ├── spec_wordle.txt         Python demo
-│   ├── spec_wordle_cpp.txt     C++ demo
+│   ├── spec_wordle.txt         Python demo (plus cpp / generic variants)
 │   ├── spec_minidb.txt         stretch demo
 │   └── target_repo/            empty starter repo
 │
-├── tests/                      311 tests
-│   ├── test_protocol.py
-│   ├── test_transport.py
-│   ├── test_dispatch.py
-│   ├── test_bug_fixes.py
-│   ├── test_validator_checks_python.py
-│   ├── test_validator_multilang.py
+├── tests/                      339 tests across 19 files
+│   ├── test_protocol.py / test_transport.py / test_dispatch.py
+│   ├── test_chain_layer.py     synapses, weights, holdback, runtime
+│   ├── test_sandbox.py         gate sandbox construction + modes
+│   ├── test_api_inbox.py       submission API, inbox, hardening
+│   ├── test_diff_mode_foundation.py / test_diff_mode_integration.py
+│   ├── test_diff_merge_languages.py  per-runner gate parsers
+│   ├── test_validator_checks_python.py / test_validator_multilang.py
 │   ├── test_lang_profiles.py
 │   ├── test_parsers_c.py       (and 5 more: cpp, csharp, java, rust, typescript)
-│   ├── test_cache.py
-│   ├── test_critique_preflight.py
-│   ├── test_test_first.py
-│   ├── test_drop_replace.py
+│   ├── test_cache.py / test_critique_preflight.py / test_test_first.py
+│   ├── test_drop_replace.py / test_bug_fixes.py
 │   └── test_backends.py        backend dispatch + tool translation
 │
 └── docs/
-    └── STATUS.md               this file
+    ├── STATUS.md               this file
+    ├── WHY_BITSWARM.md         the verification thesis
+    ├── MINING.md               miner operator guide
+    ├── VALIDATING.md           validator operator guide
+    └── TESTNET.md              testnet runbook
 ```

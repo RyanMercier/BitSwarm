@@ -17,6 +17,7 @@ class TaskAssignment(BaseModel):
     carry the context. All new fields default to empty so existing
     scaffold-mode peers interoperate unchanged.
     """
+    protocol_version: int = 1       # see protocol.PROTOCOL_VERSION
     task_id: str = ""
     subtask_id: str = ""
     repo_bundle: str = ""           # base64 encoded scaffolded repo (git bundle)

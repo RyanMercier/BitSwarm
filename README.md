@@ -33,6 +33,10 @@ bring-up).
 
 - [docs/WHY_BITSWARM.md](docs/WHY_BITSWARM.md) - the verification
   thesis, with the case study.
+- [docs/MINING.md](docs/MINING.md) - run a miner and earn: backends,
+  economics, host protection.
+- [docs/VALIDATING.md](docs/VALIDATING.md) - run a validator: the
+  sandbox, the user API, scoring knobs, operations.
 - [docs/TESTNET.md](docs/TESTNET.md) - step-by-step runbook to
   register and run BitSwarm on the Bittensor test network.
 - [docs/STATUS.md](docs/STATUS.md) - engineering state, every env
@@ -40,6 +44,33 @@ bring-up).
 - [BITSWARM_SPEC.md](BITSWARM_SPEC.md) - the v2 design spec.
 
 This README is the quick-start and the multi-LLM cheat sheet.
+
+
+## Running on the network
+
+Three roles, three entry points:
+
+```bash
+# Miner: earn by completing subtasks (see docs/MINING.md)
+python -m neurons.miner --netuid <N> --subtensor.network test \
+  --wallet.name miner --wallet.hotkey default --axon.port 8091
+
+# Validator: orchestrate, verify, set weights (see docs/VALIDATING.md)
+export BITSWARM_SANDBOX=docker BITSWARM_API_KEYS=key1
+python -m neurons.validator --netuid <N> --subtensor.network test \
+  --wallet.name validator --wallet.hotkey default \
+  --inbox ./task_inbox --output ./validator_runs
+
+# User: submit specs to any validator's API, fetch the verified patch
+python -m validator.api --inbox ./task_inbox --output ./validator_runs --port 8100
+curl -X POST http://validator:8100/tasks -H "X-API-Key: key1" \
+  -H "Content-Type: application/json" \
+  -d '{"spec": "...", "mode": "diff", "repo_bundle": "<base64 git bundle>"}'
+```
+
+Gate tests on the validator run inside a network-less docker sandbox
+(`BITSWARM_SANDBOX`), so miner-supplied code never executes bare on
+the host.
 
 
 ## Multi-LLM support
@@ -162,7 +193,7 @@ make test
 ```bash
 pip install -r requirements.txt
 pip install pytest
-python -m pytest tests/                    # ~25s, 311 tests
+python -m pytest tests/                    # ~30s, 339 tests
 ```
 
 
@@ -181,6 +212,9 @@ miner/
   runtime.py           transport-agnostic execution (shared by HTTP + axon)
 validator/
   server.py            orchestration server
+  api.py               user-facing task submission API
+  inbox.py             task lifecycle (submit / status / recover / artifacts)
+  sandbox.py           docker sandbox for gate execution
   decomposer.py        Phase 1 / 1.5 / 2 coordinator (SDK)
   decomposer_cc.py     subprocess coordinator
   scaffolder.py        write stubs + git commit baseline
@@ -190,11 +224,11 @@ validator/
   holdback.py          hidden-test commit-reveal
   scorer.py            per-subtask scoring
   parsers/             per-language tree-sitter parsers
-protocol/              pydantic schemas + synapses + repo bundling
+protocol/              pydantic schemas + synapses + repo bundling + versioning
 neurons/               Bittensor entry points (miner.py, validator.py)
 docker/                Dockerfile.miner + Dockerfile.validator
 demo/                  in-process pipeline runner + specs
-tests/                 311 tests
+tests/                 339 tests
 docs/STATUS.md         full status, architecture, roadmap
 docs/TESTNET.md        testnet runbook
 ```

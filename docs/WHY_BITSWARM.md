@@ -152,7 +152,7 @@ being a strategy.
 Everything above is running code with a passing test suite, not a
 design document:
 
-- 311 automated tests across the coordinator, miners, merge
+- 339 automated tests across the coordinator, miners, merge
   pipelines, language parsers, multi-model backends, and the chain
   layer.
 - Live results on both workload shapes: all seven supported
@@ -164,6 +164,12 @@ design document:
   vector, hidden-test commit-reveal, and the miner and validator
   neuron entry points. The step-by-step path to running on the test
   network is docs/TESTNET.md.
+- The product surface is built: users submit a spec and a repo
+  bundle to a validator's authenticated HTTP API, poll status, and
+  fetch back one verified unified diff. On the validator, gate tests
+  execute inside a network-less docker sandbox with an allowlisted
+  environment, so miner-supplied code never runs bare on the host.
+  Operator guides: docs/MINING.md and docs/VALIDATING.md.
 
 ## What BitSwarm is not
 
@@ -185,10 +191,13 @@ Honesty about limits, because the claims above only hold inside them:
   partial specs. Hidden-test holdback (shipped) narrows the gap;
   mutation scoring and staked counterexample challenges (roadmap,
   stated as such) narrow it further.
-- Not yet hardened against a hostile miner running arbitrary code.
-  Miners execute in isolated workspace copies and only their scoped
-  patch ships, but full sandbox lockdown (network egress cut during
-  test execution) is pre-mainnet work, disclosed in docs/STATUS.md.
+- Not yet hardened end to end against hostile code. The validator
+  side is: gate tests execute in a network-less container with
+  resource ceilings and no access to the host environment. On the
+  miner side, the agent loop still runs model-written commands with
+  host privileges; operators are told to containerize the miner
+  (docs/MINING.md), and code-enforced agent confinement is
+  pre-mainnet work, disclosed in docs/STATUS.md.
 
 ## The one-sentence version
 

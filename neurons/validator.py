@@ -140,7 +140,9 @@ class ValidatorNeuron:
         mode = spec_doc.get("mode", "scaffold")
         timeout = int(spec_doc.get("subtask_timeout", 1200))
 
-        task_id = str(uuid.uuid4())
+        # Tasks submitted through validator/api.py carry their id, so
+        # clients can correlate status polls with the result artifacts.
+        task_id = spec_doc.get("task_id") or str(uuid.uuid4())
         out_dir = os.path.join(self.config.output, task_id)
         os.makedirs(out_dir, exist_ok=True)
         bt.logging.info(f"task {task_id}: mode={mode} target={target}")
@@ -251,13 +253,24 @@ class ValidatorNeuron:
         bt.logging.info(f"task {task_id}: total={total:.3f} "
                          f"per-hotkey={per_hotkey}")
 
+        # User deliverable: one unified diff of the whole verified
+        # change, fetchable via GET /tasks/{id}/patch on the API.
+        from validator.inbox import write_patch_artifact
+        patch_written = False
+        merge_repo = merge_result.get("merge_repo", "")
+        if merge_repo and os.path.isdir(merge_repo):
+            patch_written = write_patch_artifact(
+                merge_repo, os.path.join(out_dir, "patch.diff"))
+
         with open(os.path.join(out_dir, "result.json"), "w") as f:
             json.dump({
                 "task_id": task_id,
                 "scores": merge_result["scores"],
+                "total": total,
                 "per_hotkey": per_hotkey,
                 "integration_passed": merge_result["integration_passed"],
                 "holdback_commit": decomposition.get("holdback_commit", ""),
+                "patch_file": "patch.diff" if patch_written else "",
             }, f, indent=2)
 
     # --- main loop ------------------------------------------------------
@@ -272,6 +285,13 @@ class ValidatorNeuron:
             self.last_weights_at = time.time()
 
     async def loop(self):
+        from validator.inbox import recover_orphaned
+        requeued = recover_orphaned(self.config.inbox)
+        if requeued:
+            bt.logging.warning(
+                f"requeued {len(requeued)} task(s) stranded by a previous "
+                f"crash: {requeued}")
+
         while True:
             try:
                 self.metagraph.sync(subtensor=self.subtensor)

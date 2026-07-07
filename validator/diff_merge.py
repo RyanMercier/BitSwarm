@@ -68,6 +68,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
+from validator.sandbox import run as sandboxed_run
 from validator.test_runners import detect_runner, run_test
 
 # Sentinel "test id" recorded when a suite fails but the output gives
@@ -121,10 +122,7 @@ def run_pytest_files(repo_path: str, test_files: list,
     if stop_on_first:
         args.append("-x")
     try:
-        result = subprocess.run(
-            args, cwd=repo_path, capture_output=True, text=True,
-            timeout=timeout, env=env,
-        )
+        result = sandboxed_run(args, repo_path, env=env, timeout=timeout)
         output = (result.stdout or "") + (
             ("\n[stderr]\n" + result.stderr) if result.stderr else ""
         )
@@ -187,10 +185,7 @@ def collect_failing_nodeids(repo_path: str, test_files: list,
     args = [sys.executable, "-m", "pytest", *test_files,
             "--tb=no", "-q", "--no-header", "-rN"]
     try:
-        result = subprocess.run(
-            args, cwd=repo_path, capture_output=True, text=True,
-            timeout=timeout, env=env,
-        )
+        result = sandboxed_run(args, repo_path, env=env, timeout=timeout)
     except subprocess.TimeoutExpired:
         return set(), "[TIMEOUT]"
     except Exception as exc:
@@ -376,10 +371,8 @@ def collect_failing_tests(repo_path: str, test_files: list | None = None,
     env = isolated_test_env(repo_path)
     with _stash_paths(repo_path, exclude_paths or []):
         try:
-            result = subprocess.run(
-                cmd, cwd=repo_path, capture_output=True, text=True,
-                timeout=timeout, env=env,
-            )
+            result = sandboxed_run(cmd, repo_path, env=env,
+                                    timeout=timeout)
         except subprocess.TimeoutExpired:
             return {SUITE_SENTINEL}, "[TIMEOUT]"
         except FileNotFoundError as exc:

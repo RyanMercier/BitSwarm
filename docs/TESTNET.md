@@ -187,7 +187,22 @@ testing; production tracks the real ~72-minute tempo).
 
 ## 8. Submit a task
 
-Drop a JSON file into the inbox. Scaffold mode (build from a spec):
+Two intakes, same inbox. The HTTP API is what real users hit
+(details in docs/VALIDATING.md):
+
+```bash
+export BITSWARM_API_KEYS=testkey
+python -m validator.api --inbox ./task_inbox --output ./validator_runs --port 8100 &
+
+curl -X POST http://localhost:8100/tasks \
+  -H "X-API-Key: testkey" -H "Content-Type: application/json" \
+  -d '{"spec": "Build a small calculator module with tests",
+       "mode": "scaffold", "target_repo": "/absolute/path/to/starter/repo"}'
+# poll /tasks/<id>; fetch /tasks/<id>/patch when done
+```
+
+Or drop a JSON file into the inbox directly. Scaffold mode (build
+from a spec):
 
 ```bash
 cat > task_inbox/task1.json <<'EOF'

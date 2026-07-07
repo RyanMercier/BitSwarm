@@ -181,17 +181,18 @@ def run_test(test_file: str, repo_root: str,
     Callers that need hermetic import resolution (diff-mode replay,
     merge-time gates) pass PYTHONNOUSERSITE / PYTHONPATH through here
     so the same runner dispatch serves both casual and pinned runs.
+
+    Execution routes through validator.sandbox: when a sandbox is
+    active the command runs in a network-less container mounted on
+    ``repo_root``; otherwise it runs on the host exactly as before.
     """
+    from validator.sandbox import run as sandboxed_run
     spec = detect_runner(repo_root)
     cmd = [arg.replace("{test}", test_file) for arg in spec.cmd]
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     if extra_env:
         env.update(extra_env)
-    return subprocess.run(
-        cmd,
-        capture_output=True, text=True, cwd=repo_root, timeout=timeout,
-        env=env,
-    )
+    return sandboxed_run(cmd, repo_root, env=env, timeout=timeout)
 
 
 def run_pytest(test_file: str, repo_root: str,

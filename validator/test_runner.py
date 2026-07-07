@@ -67,11 +67,15 @@ def _argv_for(test_file: str) -> list[str]:
 
 
 def run_test_file(test_file, repo_path):
-    """Run a single test file and return (passed, output)."""
+    """Run a single test file and return (passed, output).
+
+    Routed through validator.sandbox: merge-time tests execute
+    miner-supplied code, so on a production validator they run in a
+    network-less container (see BITSWARM_SANDBOX)."""
+    from validator.sandbox import run as sandboxed_run
     try:
-        result = subprocess.run(
-            _argv_for(test_file),
-            capture_output=True, text=True, cwd=repo_path, timeout=180,
+        result = sandboxed_run(
+            _argv_for(test_file), repo_path, timeout=180,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
         )
         output = result.stdout

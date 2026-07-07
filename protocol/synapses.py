@@ -47,6 +47,7 @@ class TaskSynapse(_Base):
     """
 
     # --- request (validator fills) ---
+    protocol_version: int = 1
     task_id: str = ""
     subtask_id: str = ""
     repo_bundle: str = ""
