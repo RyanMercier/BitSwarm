@@ -75,10 +75,16 @@ python -m neurons.miner \
 
 ## Protecting your host
 
-- Your agent executes model-written shell commands in its workspace.
-  Run the miner inside the provided container
-  (`docker/Dockerfile.miner`) or a VM; never on a host with keys or
-  credentials you care about.
+- Your agent executes model-written shell commands. On the `sdk` and
+  `openai` backends those commands are containerized in code: with
+  `BITSWARM_SANDBOX` active (the default when docker is present),
+  every agent bash call runs in a network-less container with only
+  the workspace mounted and no access to your environment or keys.
+  On the `claude_code` backend the CLI itself is the agent and runs
+  on the host, so containerize the whole miner
+  (`docker/Dockerfile.miner`) or use a VM for that backend.
+- Either way, never run a miner on a host holding credentials you
+  care about; defense in depth is cheap.
 - `BITSWARM_MAX_TASK_SECONDS` (default 3600) caps how long any
   assignment can hold your miner, regardless of what a validator
   requests.

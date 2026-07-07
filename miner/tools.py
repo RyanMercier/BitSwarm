@@ -358,19 +358,26 @@ def execute_file_write(params):
 
 
 def execute_bash(params):
-    """Execute bash command and return output."""
+    """Execute the agent's bash command and return output.
+
+    Model-written commands are the miner's largest attack surface, so
+    execution routes through validator.sandbox: with BITSWARM_SANDBOX
+    active (auto/docker) the command runs inside a network-less
+    container with only the workspace mounted and an allowlisted
+    environment; keys and the host filesystem are unreachable. Host
+    mode runs ``sh -c <command>`` in the workspace, the same semantics
+    the old shell=True call had. The validate_bash blocklist stays in
+    front of both paths as defense in depth.
+    """
+    from validator.sandbox import run as sandboxed_run
     repo_root = _repo_root_var.get()
     command = params["command"]
 
     try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=BASH_TIMEOUT_SECONDS,
-            cwd=repo_root,
+        result = sandboxed_run(
+            ["sh", "-c", command], repo_root,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            timeout=BASH_TIMEOUT_SECONDS,
         )
         output = ""
         if result.stdout:

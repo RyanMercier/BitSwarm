@@ -58,6 +58,13 @@ x-shared-env: &shared_env
   COORDINATOR_LANGUAGE: "${COORDINATOR_LANGUAGE:-python}"
   MINER_LANGUAGE: "${MINER_LANGUAGE:-${COORDINATOR_LANGUAGE:-python}}"
 
+  # Sandbox mode for untrusted code (agent bash on miners, gate tests
+  # on the validator). Inside these containers the container itself is
+  # the isolation boundary and docker-in-docker is unavailable, so the
+  # explicit default here is "off". On bare-host deployments leave the
+  # variable unset ("auto") or set "docker".
+  BITSWARM_SANDBOX: "${BITSWARM_SANDBOX:-off}"
+
 services:
   validator:
     build:

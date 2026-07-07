@@ -152,7 +152,7 @@ being a strategy.
 Everything above is running code with a passing test suite, not a
 design document:
 
-- 339 automated tests across the coordinator, miners, merge
+- 342 automated tests across the coordinator, miners, merge
   pipelines, language parsers, multi-model backends, and the chain
   layer.
 - Live results on both workload shapes: all seven supported
@@ -191,13 +191,14 @@ Honesty about limits, because the claims above only hold inside them:
   partial specs. Hidden-test holdback (shipped) narrows the gap;
   mutation scoring and staked counterexample challenges (roadmap,
   stated as such) narrow it further.
-- Not yet hardened end to end against hostile code. The validator
-  side is: gate tests execute in a network-less container with
-  resource ceilings and no access to the host environment. On the
-  miner side, the agent loop still runs model-written commands with
-  host privileges; operators are told to containerize the miner
-  (docs/MINING.md), and code-enforced agent confinement is
-  pre-mainnet work, disclosed in docs/STATUS.md.
+- Not yet hardened end to end against hostile code. Gate tests on
+  the validator and agent bash on the SDK and OpenAI-compatible
+  miner backends all execute in network-less containers with no
+  access to the host environment. The one exception is the
+  claude_code miner backend, where the agent is the Claude CLI and
+  confinement is deployment-level (run the miner containerized, per
+  docs/MINING.md) rather than code-enforced; disclosed in
+  docs/STATUS.md.
 
 ## The one-sentence version
 

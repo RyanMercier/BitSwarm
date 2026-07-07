@@ -16,7 +16,7 @@ not built. Skim the [TL;DR](#tldr) for the headline; scroll the
 
 BitSwarm decomposes a feature spec into parallel subtasks, ships each
 to a miner agent that produces a patch, then merges and scores. It
-works today in two end-to-end demo configurations and 339 unit /
+works today in two end-to-end demo configurations and 342 unit /
 integration tests cover the contracts.
 
 **What works live (verified end-to-end):**
@@ -104,12 +104,15 @@ integration tests cover the contracts.
 - Native Gemini backend (function-declaration shape is different
   enough to warrant its own adapter; OpenAI-compat covers most other
   providers).
-- Sandboxing of the miner's own agent loop. The validator side is
-  covered (gate tests run in a network-less container via
-  BITSWARM_SANDBOX), but a miner's agent still executes model-written
-  bash in its workspace with host privileges; docs/MINING.md tells
-  operators to run the miner inside docker/Dockerfile.miner or a VM,
-  and code-enforced agent confinement remains pre-mainnet work.
+- Confinement of the claude_code miner backend. Untrusted-code
+  execution is containerized in code everywhere else: validator gate
+  tests and the sdk/openai agents' bash tool both route through
+  BITSWARM_SANDBOX (network-less container, workspace-only mount,
+  allowlisted env). The remaining gap is the claude_code backend,
+  where the CLI itself is the agent and needs network for the
+  Anthropic API; its confinement is deployment-level
+  (docker/Dockerfile.miner or a VM, per docs/MINING.md) rather than
+  code-enforced.
 - Cryptographic verification (anti-collusion mining).
 - Test-first decomposition's live validation against a real run
   (the prompt is wired, the three-phase coordinator runs, but it
@@ -121,7 +124,7 @@ integration tests cover the contracts.
 
 ### Test footprint
 
-339 tests passing across 19 test files. Coverage by area:
+342 tests passing across 19 test files. Coverage by area:
 
 | Area | Tests |
 |---|---|
@@ -139,7 +142,7 @@ integration tests cover the contracts.
 | Multi-LLM backend dispatch + tool translation | 8 |
 | Chain layer (synapses, weights, holdback, miner runtime) | 17 |
 | Language-generic merge gates (failure parsers + dispatch) | 19 |
-| Gate sandbox (command construction + mode resolution) | 11 |
+| Gate sandbox + agent bash confinement | 14 |
 | Submission API, inbox lifecycle, protocol hardening | 17 |
 
 Run with `pytest tests/` from the repo root. Full suite completes
@@ -189,7 +192,7 @@ covers DeepSeek / OpenRouter / vLLM / Ollama / Groq / Together / etc.
 
 ```
 main   - SDK + Claude Code subprocess + OpenAI-compatible backends.
-         339 tests. Miner picks one of three (sdk / claude_code /
+         342 tests. Miner picks one of three (sdk / claude_code /
          openai) via MINER_BACKEND. Coordinator picks one of two
          (sdk / claude_code) via COORDINATOR_BACKEND; openai-coord
          is on the roadmap.
@@ -936,7 +939,7 @@ For someone picking up the repo for the first time.
 git clone https://github.com/RyanMercier/BitSwarm.git
 cd BitSwarm
 pip install -r requirements.txt
-python -m pytest tests/                    # 339 tests, ~30s
+python -m pytest tests/                    # 342 tests, ~30s
 
 # Option A: Anthropic API
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -1059,7 +1062,7 @@ BitSwarm/
 │   ├── spec_minidb.txt         stretch demo
 │   └── target_repo/            empty starter repo
 │
-├── tests/                      339 tests across 19 files
+├── tests/                      342 tests across 19 files
 │   ├── test_protocol.py / test_transport.py / test_dispatch.py
 │   ├── test_chain_layer.py     synapses, weights, holdback, runtime
 │   ├── test_sandbox.py         gate sandbox construction + modes

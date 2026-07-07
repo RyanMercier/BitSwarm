@@ -193,7 +193,7 @@ make test
 ```bash
 pip install -r requirements.txt
 pip install pytest
-python -m pytest tests/                    # ~30s, 339 tests
+python -m pytest tests/                    # ~30s, 342 tests
 ```
 
 
@@ -228,7 +228,7 @@ protocol/              pydantic schemas + synapses + repo bundling + versioning
 neurons/               Bittensor entry points (miner.py, validator.py)
 docker/                Dockerfile.miner + Dockerfile.validator
 demo/                  in-process pipeline runner + specs
-tests/                 339 tests
+tests/                 342 tests
 docs/STATUS.md         full status, architecture, roadmap
 docs/TESTNET.md        testnet runbook
 ```
