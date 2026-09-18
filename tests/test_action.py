@@ -96,6 +96,25 @@ def test_touching_tests_is_a_fail_verdict(repo, tmp_path):
     assert (tmp_path / "out" / "patch.diff").exists()
 
 
+def test_protection_off_still_holds_out_the_contract(repo, tmp_path):
+    root, base = repo
+    (root / "bounds.py").write_text("def clamp(value, low, high):\n    return max(value, low)\n")
+    (root / "tests" / "test_existing.py").write_text("def test_inside():\n    assert True\n")
+    (root / "acceptance" / "test_contract.py").write_text("def test_easy():\n    assert True\n")
+    head = commit(root, "weaken everything")
+    result = verify_pull_request(
+        root, base, head, "acceptance", None, ["*"], tmp_path / "out", dict(CONFIG),
+        protect_tests=False,
+    )
+    # The weakened existing test is accepted; the weakened contract is not,
+    # because the contract came from base, where test_high still exists.
+    assert result["outcome"] == "FAIL"
+    acceptance = result["gates"]["acceptance"]["tests"]
+    # Test identities carry pytest's rootdir-relative module path.
+    assert acceptance[next(k for k in acceptance if k.endswith("::test_high"))] == "failed"
+    assert "test protection off" in summary_markdown(result)
+
+
 def test_paths_outside_allow_list_fail_before_any_gate(repo, tmp_path):
     root, base = repo
     (root / "README.md").write_text("docs\n")

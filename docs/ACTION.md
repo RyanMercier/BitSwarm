@@ -7,10 +7,13 @@ model is involved. It is built for pull requests written by coding agents, where
 
 ## What it checks
 
-1. **Scope.** Every changed path must match the `allow` patterns. Test files,
-   test directories, dotfiles, and Python packaging or pytest configuration are
-   refused regardless of `allow`. A pull request that weakens a test fails
-   before any test runs, and the summary says which path caused it.
+1. **Scope.** Every changed path must match the `allow` patterns. With
+   `protect-tests` on (the default), test files, test directories, dotfiles,
+   and Python packaging or pytest configuration are refused regardless of
+   `allow`. A pull request that weakens a test fails before any test runs, and
+   the summary says which path caused it. Repositories whose human pull
+   requests routinely edit tests can turn protection off and rely on the
+   held-out contract and the regression gate.
 2. **Regression.** The existing suite under `tests/` runs on the base commit and
    on the candidate. Any previously passing test that no longer passes fails
    the verdict. Tests already broken at base are reported, not blamed.
@@ -67,6 +70,7 @@ job.
 | `gate-timeout` | `300` | Seconds per gate, up to 600 |
 | `max-repo-files`, `max-repo-mb` | `3000`, `30` | Snapshot limits |
 | `fail-on-inconclusive` | `true` | Fail the step on INCONCLUSIVE |
+| `protect-tests` | `true` | Refuse changes to tests and configuration. Turn off for repositories whose human pull requests edit tests; the contract stays held out |
 | `comment` | `false` | Post the summary as a pull request comment (needs `pull-requests: write`) |
 | `artifact` | `full` | Upload the whole run directory (`full`), the summary files, or nothing |
 

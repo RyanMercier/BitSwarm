@@ -59,7 +59,10 @@ def parse_report(path: Path, returncode: int, output: str) -> Gate:
         # A per-test error (fixture setup, teardown) is evidence against that
         # test, recorded per node id. Collection errors and interrupted runs
         # exit with codes other than 0/1 and were already classified above.
-        failed = any(v != "passed" for v in tests.values())
+        # Skips are recorded, not failed: the verifier decides what a skip
+        # means per gate (a previously passing test that is now skipped is a
+        # loss; a newly added opt-in test that skips is not a regression).
+        failed = any(v in ("failed", "error") for v in tests.values())
         if returncode == 1 and not failed:
             raise ValueError("exit code disagrees with report")
         return Gate("FAIL" if failed else "PASS", tests, output=output)
@@ -272,17 +275,22 @@ class Verifier:
             for k, v in baseline_gate.tests.items()
             if v == "passed" and regression.tests.get(k) != "passed"
         ]
+        # Every acceptance test must actually run and pass; a skipped contract
+        # test verifies nothing.
+        acceptance_ok = acceptance.outcome == "PASS" and all(
+            v == "passed" for v in acceptance.tests.values()
+        )
         if "INCONCLUSIVE" in [g["outcome"] for g in gates.values()] or any(
             not g["tests"] for g in gates.values()
         ):
             outcome = "INCONCLUSIVE"
-        elif lost or acceptance.outcome != "PASS":
+        elif lost or not acceptance_ok:
             outcome = "FAIL"
         else:
             new_failures = [
                 k
                 for k, v in regression.tests.items()
-                if v != "passed" and baseline_gate.tests.get(k) != v
+                if v in ("failed", "error") and baseline_gate.tests.get(k) != v
             ]
             outcome = "FAIL" if new_failures else "PASS"
         if (tree_hash(baseline), tree_hash(candidate), tree_hash(contract)) != (

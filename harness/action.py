@@ -104,6 +104,7 @@ def verify_pull_request(
     allow: list[str],
     out: Path,
     config: dict,
+    protect_tests: bool = True,
 ) -> dict:
     repo = repo.resolve()
     base = ensure_commit(repo, base)
@@ -116,6 +117,7 @@ def verify_pull_request(
         "contract_ref": contract_ref,
         "contract_path": contract_path,
         "allow": allow,
+        "protect_tests": protect_tests,
         "changed_paths": changed,
         "run": str(out.resolve()),
     }
@@ -148,7 +150,7 @@ def verify_pull_request(
     state = store.load()
     candidate = store.directory / "candidate"
     try:
-        apply_patch(candidate, patch, allowed)
+        apply_patch(candidate, patch, allowed, protect=protect_tests)
     except PolicyError as exc:
         # A patch that touches protected paths or does not apply is the verdict.
         verdict = {**result, "outcome": "FAIL", "reason": str(exc)[:500]}
@@ -217,8 +219,13 @@ def summary_markdown(result: dict) -> str:
             lines += ["**Previously passing tests that no longer pass:**", ""]
             lines += [f"- `{k}`" for k in lost[:20]]
             lines.append("")
+    changed = result.get("changed_paths", [])
+    shown = ", ".join(f"`{p}`" for p in changed[:30])
+    if len(changed) > 30:
+        shown += f", and {len(changed) - 30} more"
+    protection = "on" if result.get("protect_tests", True) else "off"
     lines += [
-        "Changed paths: " + ", ".join(f"`{p}`" for p in result.get("changed_paths", [])),
+        f"Changed paths ({len(changed)}, test protection {protection}): {shown}",
         "",
         (
             "Replay from the uploaded run directory with `bitswarm replay <dir>`; "
@@ -243,6 +250,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-repo-files", type=int, default=3000)
     parser.add_argument("--max-repo-mb", type=int, default=30)
     parser.add_argument("--fail-on-inconclusive", default="true")
+    parser.add_argument(
+        "--protect-tests",
+        default="true",
+        help="refuse changes to tests and configuration (keep on for agent pull requests)",
+    )
     args = parser.parse_args(argv)
     config = {
         "sandbox": args.sandbox,
@@ -260,6 +272,7 @@ def main(argv: list[str] | None = None) -> int:
         args.allow.split(),
         args.out,
         config,
+        protect_tests=args.protect_tests.lower() == "true",
     )
     args.out.mkdir(parents=True, exist_ok=True)
     write_json(args.out / "action.json", result)

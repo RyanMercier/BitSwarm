@@ -335,6 +335,50 @@ def test_missing_passing_test_fails(run_dir, monkeypatch):
     assert result["lost_passing_tests"] == ["b"]
 
 
+def test_skips_are_recorded_not_failed(tmp_path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_skip.py").write_text(
+        "import pytest\n\n@pytest.mark.skip\ndef test_later():\n    pass\n\ndef test_ok():\n    pass\n"
+    )
+    gate = Verifier("unsafe-local").gate(tmp_path)
+    assert gate.outcome == "PASS"
+    assert sorted(gate.tests.values()) == ["passed", "skipped"]
+
+
+def test_new_skipped_test_is_not_a_regression_but_lost_to_skip_is(run_dir, monkeypatch):
+    verifier = Verifier("unsafe-local")
+    results = iter(
+        [
+            Gate("PASS", {"a": "passed"}),
+            Gate("PASS", {"a": "passed", "opt_in": "skipped"}),
+            Gate("PASS", {"contract": "passed"}),
+        ]
+    )
+    monkeypatch.setattr(verifier, "gate", lambda *args: next(results))
+    ok = verifier.verify(run_dir / "baseline", run_dir / "candidate", run_dir / "contract")
+    assert ok["outcome"] == "PASS"
+    results = iter(
+        [
+            Gate("PASS", {"a": "passed"}),
+            Gate("PASS", {"a": "skipped"}),
+            Gate("PASS", {"contract": "passed"}),
+        ]
+    )
+    lost = verifier.verify(run_dir / "baseline", run_dir / "candidate", run_dir / "contract")
+    assert lost["outcome"] == "FAIL" and lost["lost_passing_tests"] == ["a"]
+    results = iter(
+        [
+            Gate("PASS", {"a": "passed"}),
+            Gate("PASS", {"a": "passed"}),
+            Gate("PASS", {"contract": "skipped"}),
+        ]
+    )
+    skipped_contract = verifier.verify(
+        run_dir / "baseline", run_dir / "candidate", run_dir / "contract"
+    )
+    assert skipped_contract["outcome"] == "FAIL"
+
+
 def test_missing_docker_never_falls_back(tmp_path, monkeypatch):
     verifier = Verifier("docker")
     monkeypatch.setattr(

@@ -226,8 +226,16 @@ def tree_hash(root: Path) -> str:
     return hasher.hexdigest()
 
 
-def apply_patch(root: Path, patch: str, allowed: list[str]) -> list[str]:
-    """Validate the result in a separate index before touching the workspace."""
+def apply_patch(
+    root: Path, patch: str, allowed: list[str], protect: bool = True
+) -> list[str]:
+    """Validate the result in a separate index before touching the workspace.
+
+    ``protect`` refuses test files and configuration even when they are in the
+    allow list. Model-authored patches always keep it on; the GitHub Action can
+    turn it off for human pull requests that legitimately edit tests, since the
+    acceptance contract is read from a ref the pull request cannot change.
+    """
     if not patch.strip() or len(patch.encode()) > 1_000_000:
         raise PolicyError("patch is empty or exceeds 1 MB")
     patch = normalize_diff_prefixes(patch)
@@ -235,7 +243,7 @@ def apply_patch(root: Path, patch: str, allowed: list[str]) -> list[str]:
         safe_path(root, path)
         # Acceptance/configuration paths never belong to an implementation.
         p = PurePosixPath(path)
-        if (
+        if protect and (
             any(part.startswith(".") for part in p.parts)
             or any(part in ("tests", "test", "__pycache__") for part in p.parts)
             or p.name.startswith("test_")
