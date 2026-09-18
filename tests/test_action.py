@@ -113,6 +113,11 @@ def test_protection_off_still_holds_out_the_contract(repo, tmp_path):
     # Test identities carry pytest's rootdir-relative module path.
     assert acceptance[next(k for k in acceptance if k.endswith("::test_high"))] == "failed"
     assert "test protection off" in summary_markdown(result)
+    # Replay re-applies the patch under the policy the verdict was made with.
+    from harness.runtime import replay
+
+    again = replay(tmp_path / "out")
+    assert again["outcome"] == "FAIL" and again["environment_match"] is True
 
 
 def test_paths_outside_allow_list_fail_before_any_gate(repo, tmp_path):

@@ -65,11 +65,12 @@ records both environments. See `docs/HARNESS_REVIEW.md` for the fixes.
 | Check | Observed result |
 |---|---|
 | Action unit tests (`tests/test_action.py`) | 10 passed; harness suite 45, regression suite 7 |
-| End-to-end on this repository, host sandbox | PASS: baseline 341 passed and 1 skipped, regression 400 passed and 7 skipped, acceptance 8 passed |
+| End-to-end on this repository, host sandbox | PASS: baseline 341 passed and 1 skipped, regression 403 passed and 7 skipped, acceptance 8 passed |
+| Replay of that run | PASS, `environment_match: true` |
 | Same run with `protect-tests` on | FAIL before any gate, naming `.github/workflows/harness.yml` as a protected path |
 
 The end-to-end run used base `c9fb5db` (the last commit before the harness),
-head `5fb32d6`, the contract read from head (bootstrap mode), and
+head `64d4d0b`, the contract read from head (bootstrap mode), and
 `--sandbox unsafe-local` because this workstation's Docker socket is not
 available to the normal user. The Docker path of the Action, the composite
 steps on a GitHub runner, and `docker/Dockerfile.self` have not been executed

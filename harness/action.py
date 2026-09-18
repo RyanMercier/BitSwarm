@@ -133,6 +133,7 @@ def verify_pull_request(
         }
     patch = sh(["git", "diff", "--binary", "--no-renames", base, head], repo).stdout
     result["patch_hash"] = digest(patch)
+    config = {**config, "protect_tests": protect_tests}  # replay reuses this policy
     with tempfile.TemporaryDirectory(prefix="bitswarm-contract-") as tmp:
         try:
             contract = export_contract(repo, contract_ref, contract_path, Path(tmp))

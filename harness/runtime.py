@@ -493,7 +493,13 @@ def replay(directory: Path) -> dict:
         with tempfile.TemporaryDirectory(prefix="bitswarm-replay-") as tmp:
             candidate = Path(tmp) / "candidate"
             shutil.copytree(runtime.root / "baseline", candidate)
-            apply_patch(candidate, patch, state["allowed"])
+            # Re-apply under the same policy the original verdict used.
+            apply_patch(
+                candidate,
+                patch,
+                state["allowed"],
+                protect=state["config"].get("protect_tests", True),
+            )
             result = verifier.verify(
                 runtime.root / "baseline", candidate, runtime.root / "contract"
             )
