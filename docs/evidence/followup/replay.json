@@ -1,0 +1,20 @@
+[
+  {
+    "task": "retry-delay",
+    "condition": "reviewed-fable",
+    "original_phase": "failed",
+    "replay_outcome": "FAIL",
+    "baseline_hash": "2b9b0e6fb40011e045ad5ca4e7b7721b3f6f9905620b21ac9cd51221fa7f187f",
+    "candidate_hash": "d093ba12e1ffaa588333b01fdffd0bac0d03c33b3439d8e955946ab034031d3c",
+    "contract_hash": "e4e1e62c9371aaa178f1ceebf8eb65680e9845542556c6a76c9f7819a38470f0"
+  },
+  {
+    "task": "retry-delay",
+    "condition": "solo-fable",
+    "original_phase": "failed",
+    "replay_outcome": "FAIL",
+    "baseline_hash": "2b9b0e6fb40011e045ad5ca4e7b7721b3f6f9905620b21ac9cd51221fa7f187f",
+    "candidate_hash": "78e9ab0fa1fc35435596f13306162aa583a6ce8f03d9d08a2a3cb82339ec06d7",
+    "contract_hash": "e4e1e62c9371aaa178f1ceebf8eb65680e9845542556c6a76c9f7819a38470f0"
+  }
+]

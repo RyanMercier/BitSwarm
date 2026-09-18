@@ -1,0 +1,20 @@
+{
+  "reviewed-fable": {
+    "attempts": 3,
+    "passed": 3,
+    "median_seconds": 78.1079951709944,
+    "model_calls": 29,
+    "estimated_usd": 4.110403999999999,
+    "cost_complete": true,
+    "estimated_usd_per_pass": 1.3701346666666663
+  },
+  "solo-fable": {
+    "attempts": 3,
+    "passed": 3,
+    "median_seconds": 45.90533607299585,
+    "model_calls": 17,
+    "estimated_usd": 2.339009,
+    "cost_complete": true,
+    "estimated_usd_per_pass": 0.7796696666666666
+  }
+}

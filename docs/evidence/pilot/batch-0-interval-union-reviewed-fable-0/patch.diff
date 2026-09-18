@@ -1,0 +1,36 @@
+diff --git a/solution.py b/solution.py
+index fefc404..8cc64b8 100644
+--- a/solution.py
++++ b/solution.py
+@@ -1,2 +1,30 @@
+ def merge_intervals(intervals):
+-    return list(intervals)
++    """Merge overlapping or touching closed numeric intervals.
++
++    Accepts any iterable of (start, end) pairs, returns a sorted list of
++    tuples. The caller's data is never mutated. Empty input yields [].
++    Raises ValueError for any interval whose start exceeds its end.
++    """
++    normalized = []
++    for interval in intervals:
++        try:
++            start, end = interval
++        except (TypeError, ValueError):
++            raise ValueError("each interval must be a (start, end) pair")
++        if start > end:
++            raise ValueError(
++                "interval start must not exceed end: %r" % ((start, end),)
++            )
++        normalized.append((start, end))
++    if not normalized:
++        return []
++    normalized.sort()
++    merged = [normalized[0]]
++    for start, end in normalized[1:]:
++        last_start, last_end = merged[-1]
++        if start <= last_end:
++            if end > last_end:
++                merged[-1] = (last_start, end)
++        else:
++            merged.append((start, end))
++    return merged

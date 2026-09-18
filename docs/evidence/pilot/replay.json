@@ -1,0 +1,56 @@
+[
+  {
+    "task": "interval-union",
+    "condition": "solo-fable",
+    "original_phase": "passed",
+    "replay_outcome": "PASS",
+    "baseline_hash": "e184351c247e231edc0185221b82ce5b7f08c8c854f826b0666c3b0f5da85ef8",
+    "candidate_hash": "e8df479e74d29b164e9d2f6a71f6af72dd41f4477448c471b867bdc26d5287ef",
+    "contract_hash": "f2d48c5e0049e213c0f64d65971968e084230a0dab3efb88550bf9e6c8e7acc5"
+  },
+  {
+    "task": "interval-union",
+    "condition": "reviewed-fable",
+    "original_phase": "passed",
+    "replay_outcome": "PASS",
+    "baseline_hash": "e184351c247e231edc0185221b82ce5b7f08c8c854f826b0666c3b0f5da85ef8",
+    "candidate_hash": "546fa02cedac2da8404e1194b16548ff0a7e0d1d8091f7bbea2b08ca3ce38573",
+    "contract_hash": "f2d48c5e0049e213c0f64d65971968e084230a0dab3efb88550bf9e6c8e7acc5"
+  },
+  {
+    "task": "dependency-order",
+    "condition": "solo-fable",
+    "original_phase": "passed",
+    "replay_outcome": "PASS",
+    "baseline_hash": "147aad37c7a808ca21c472de2515bb29537407892228188b98a0bb71e8196c2c",
+    "candidate_hash": "e6b603e7b69c0725dd0cf47347250bd10b24ae57d04430cda9364078ed76378c",
+    "contract_hash": "6493157570e55deb3e9234afdf480ffa93be379f32f8e9990232296604e3ea73"
+  },
+  {
+    "task": "dependency-order",
+    "condition": "reviewed-fable",
+    "original_phase": "passed",
+    "replay_outcome": "PASS",
+    "baseline_hash": "147aad37c7a808ca21c472de2515bb29537407892228188b98a0bb71e8196c2c",
+    "candidate_hash": "dd8606d767f175cef89642f543da099aefbee295c0e574175ca5e0ecb0de1487",
+    "contract_hash": "6493157570e55deb3e9234afdf480ffa93be379f32f8e9990232296604e3ea73"
+  },
+  {
+    "task": "retry-delay",
+    "condition": "solo-fable",
+    "original_phase": "passed",
+    "replay_outcome": "PASS",
+    "baseline_hash": "2b9b0e6fb40011e045ad5ca4e7b7721b3f6f9905620b21ac9cd51221fa7f187f",
+    "candidate_hash": "37ae594675efd8933f70ac60d19b6a826079819bab771b1521f2cd2876feacbb",
+    "contract_hash": "1aef1608ae2c74e55a38a4d9e305af010883677513c8284070f545f2f27e3299"
+  },
+  {
+    "task": "retry-delay",
+    "condition": "reviewed-fable",
+    "original_phase": "passed",
+    "replay_outcome": "PASS",
+    "baseline_hash": "2b9b0e6fb40011e045ad5ca4e7b7721b3f6f9905620b21ac9cd51221fa7f187f",
+    "candidate_hash": "6d2e0223f7c17adb7935c7a4bfd68d237dc8fb810f9727174d114c1d1abbc32a",
+    "contract_hash": "1aef1608ae2c74e55a38a4d9e305af010883677513c8284070f545f2f27e3299"
+  }
+]

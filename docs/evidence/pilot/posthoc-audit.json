@@ -1,0 +1,65 @@
+{
+  "note": "Post-hoc tests added after reviewing the first pilot; original scores unchanged.",
+  "results": [
+    {
+      "condition": "solo-fable",
+      "original_outcome": "passed",
+      "audit_outcome": "FAIL",
+      "tests": {
+        "test_contract::test_valid[ 12 -12.0]": "passed",
+        "test_contract::test_valid[0-0.0]": "passed",
+        "test_contract::test_valid[999-60.0]": "passed",
+        "test_contract::test_valid[Thu, 01 Jan 2026 00:00:30 GMT-30.0]": "passed",
+        "test_contract::test_valid[Wed, 31 Dec 2025 23:59:59 GMT-0.0]": "passed",
+        "test_contract::test_invalid[None]": "passed",
+        "test_contract::test_invalid[]": "passed",
+        "test_contract::test_invalid[-1]": "passed",
+        "test_contract::test_invalid[1.5]": "passed",
+        "test_contract::test_invalid[+2]": "passed",
+        "test_contract::test_invalid[\\u0661\\u0662]": "passed",
+        "test_contract::test_invalid[nonsense]": "passed",
+        "test_contract::test_invalid[Thu, 01 Jan 2026 00:00:30]": "passed",
+        "test_contract::test_bad_cap[-1]": "passed",
+        "test_contract::test_bad_cap[inf]": "passed",
+        "test_contract::test_bad_cap[nan]": "passed",
+        "test_contract::test_cap": "passed",
+        "test_contract::test_large_numeric_values[many-zeroes]": "failed",
+        "test_contract::test_large_numeric_values[leading-zeroes]": "failed",
+        "test_contract::test_large_numeric_values[huge-integer]": "failed",
+        "test_contract::test_large_numeric_values[float-overflow]": "failed",
+        "test_contract::test_large_numeric_values[large-cap]": "passed"
+      },
+      "reason": ""
+    },
+    {
+      "condition": "reviewed-fable",
+      "original_outcome": "passed",
+      "audit_outcome": "FAIL",
+      "tests": {
+        "test_contract::test_valid[ 12 -12.0]": "passed",
+        "test_contract::test_valid[0-0.0]": "passed",
+        "test_contract::test_valid[999-60.0]": "passed",
+        "test_contract::test_valid[Thu, 01 Jan 2026 00:00:30 GMT-30.0]": "passed",
+        "test_contract::test_valid[Wed, 31 Dec 2025 23:59:59 GMT-0.0]": "passed",
+        "test_contract::test_invalid[None]": "passed",
+        "test_contract::test_invalid[]": "passed",
+        "test_contract::test_invalid[-1]": "passed",
+        "test_contract::test_invalid[1.5]": "passed",
+        "test_contract::test_invalid[+2]": "passed",
+        "test_contract::test_invalid[\\u0661\\u0662]": "passed",
+        "test_contract::test_invalid[nonsense]": "passed",
+        "test_contract::test_invalid[Thu, 01 Jan 2026 00:00:30]": "passed",
+        "test_contract::test_bad_cap[-1]": "passed",
+        "test_contract::test_bad_cap[inf]": "passed",
+        "test_contract::test_bad_cap[nan]": "passed",
+        "test_contract::test_cap": "passed",
+        "test_contract::test_large_numeric_values[many-zeroes]": "failed",
+        "test_contract::test_large_numeric_values[leading-zeroes]": "failed",
+        "test_contract::test_large_numeric_values[huge-integer]": "passed",
+        "test_contract::test_large_numeric_values[float-overflow]": "passed",
+        "test_contract::test_large_numeric_values[large-cap]": "passed"
+      },
+      "reason": ""
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "contract_version": "v1",
+  "task": "Implement merge_intervals(intervals) for finite numeric closed intervals. Return sorted tuples merging overlapping or touching intervals transitively. Accept iterable input, preserve the caller's data, return [] for empty input, and raise ValueError for any interval whose start exceeds its end.",
+  "base_commit": "bcf6596f25be3570af0ddce9fe5ff70141edf1bb",
+  "environment": {
+    "mode": "docker",
+    "verifier_hash": "c7e7a890fe369348f2644ce14a3c5fe5812f02834bc395b562ae804680d14234",
+    "image": "sha256:15a6fa48ed5a7640677e2c5e81d4073c98a233abe78de433c9619beb7739acac"
+  },
+  "models": {
+    "implementer": {
+      "kind": "claude-cli",
+      "model": "claude-fable-5-1",
+      "call_budget": 1.0
+    },
+    "reviewer": {
+      "kind": "claude-cli",
+      "model": "claude-fable-5-1",
+      "call_budget": 1.0
+    }
+  },
+  "limits": {
+    "max_turns": 12,
+    "max_seconds": 600,
+    "call_timeout": 120
+  },
+  "baseline_hash": "e184351c247e231edc0185221b82ce5b7f08c8c854f826b0666c3b0f5da85ef8",
+  "contract_hash": "f2d48c5e0049e213c0f64d65971968e084230a0dab3efb88550bf9e6c8e7acc5",
+  "trace_note": "Prompts, stdout and host paths omitted; this is a selected action trace."
+}

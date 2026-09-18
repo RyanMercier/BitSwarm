@@ -1,0 +1,58 @@
+diff --git a/solution.py b/solution.py
+index f10a702..c5ba352 100644
+--- a/solution.py
++++ b/solution.py
+@@ -1,2 +1,52 @@
++import math
++import re
++from email.utils import parsedate_to_datetime
++
++_DIGITS = re.compile(r"[0-9]+")
++_WS = " \t\r\n"
++
++
++def _is_aware(dt):
++    return dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None
++
++
+ def retry_delay(value, now, cap=60.0):
+-    return None
++    try:
++        cap = float(cap)
++    except (TypeError, ValueError):
++        raise ValueError("cap must be a finite, non-negative number")
++    if not math.isfinite(cap) or cap < 0:
++        raise ValueError("cap must be a finite, non-negative number")
++    if value is None:
++        return None
++    if isinstance(value, (bytes, bytearray)):
++        try:
++            value = bytes(value).decode("ascii")
++        except UnicodeDecodeError:
++            return None
++    if not isinstance(value, str):
++        return None
++    text = value.strip(_WS)
++    if not text or not text.isascii():
++        return None
++    if _DIGITS.fullmatch(text):
++        try:
++            seconds = int(text)
++        except ValueError:
++            return cap
++        if seconds >= cap:
++            return cap
++        return float(seconds)
++    try:
++        when = parsedate_to_datetime(text)
++    except (TypeError, ValueError, IndexError, OverflowError):
++        return None
++    if when is None or not _is_aware(when) or not _is_aware(now):
++        return None
++    try:
++        delta = (when - now).total_seconds()
++    except (TypeError, OverflowError):
++        return None
++    if delta <= 0:
++        return 0.0
++    return min(delta, cap)

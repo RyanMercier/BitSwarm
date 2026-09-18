@@ -1,0 +1,25 @@
+{
+  "contract_version": "v1",
+  "task": "Implement dependency_order(graph), a mapping from string node names to iterables of prerequisite names. Return every key and prerequisite-only node exactly once, prerequisites before dependents. At each step choose the lexicographically smallest currently eligible node. Deduplicate edges, do not mutate inputs, return [] for empty input, and raise ValueError on any cycle including a disconnected cycle or self-edge.",
+  "base_commit": "4fcb6b87123ccea261f08045f5a7eb83f114cbad",
+  "environment": {
+    "mode": "docker",
+    "verifier_hash": "c7e7a890fe369348f2644ce14a3c5fe5812f02834bc395b562ae804680d14234",
+    "image": "sha256:15a6fa48ed5a7640677e2c5e81d4073c98a233abe78de433c9619beb7739acac"
+  },
+  "models": {
+    "implementer": {
+      "kind": "claude-cli",
+      "model": "claude-fable-5-1",
+      "call_budget": 1.0
+    }
+  },
+  "limits": {
+    "max_turns": 12,
+    "max_seconds": 600,
+    "call_timeout": 120
+  },
+  "baseline_hash": "147aad37c7a808ca21c472de2515bb29537407892228188b98a0bb71e8196c2c",
+  "contract_hash": "6493157570e55deb3e9234afdf480ffa93be379f32f8e9990232296604e3ea73",
+  "trace_note": "Prompts, stdout and host paths omitted; this is a selected action trace."
+}

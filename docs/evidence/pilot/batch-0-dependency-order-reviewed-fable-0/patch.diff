@@ -1,0 +1,36 @@
+diff --git a/solution.py b/solution.py
+index 738a5ae..94f5ce6 100644
+--- a/solution.py
++++ b/solution.py
+@@ -1,2 +1,30 @@
++import heapq
++
++
+ def dependency_order(graph):
+-    return sorted(graph)
++    if not graph:
++        return []
++    deps = {}
++    for node, prereqs in graph.items():
++        node_deps = deps.setdefault(node, set())
++        for p in prereqs:
++            node_deps.add(p)
++            deps.setdefault(p, set())
++    indegree = {n: len(ps) for n, ps in deps.items()}
++    dependents = {n: [] for n in deps}
++    for n, ps in deps.items():
++        for p in ps:
++            dependents[p].append(n)
++    heap = [n for n, d in indegree.items() if d == 0]
++    heapq.heapify(heap)
++    order = []
++    while heap:
++        n = heapq.heappop(heap)
++        order.append(n)
++        for d in dependents[n]:
++            indegree[d] -= 1
++            if indegree[d] == 0:
++                heapq.heappush(heap, d)
++    if len(order) != len(deps):
++        raise ValueError("cycle detected")
++    return order

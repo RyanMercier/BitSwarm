@@ -1,0 +1,39 @@
+diff --git a/solution.py b/solution.py
+index 738a5ae..1f74a04 100644
+--- a/solution.py
++++ b/solution.py
+@@ -1,2 +1,33 @@
++import heapq
++
++
+ def dependency_order(graph):
+-    return sorted(graph)
++    if not graph:
++        return []
++    prereqs = {}
++    for node, deps in graph.items():
++        prereqs.setdefault(node, set())
++        for dep in deps:
++            prereqs.setdefault(dep, set())
++            if dep == node:
++                raise ValueError("cycle detected: self-edge on %r" % (node,))
++            prereqs[node].add(dep)
++    dependents = {n: [] for n in prereqs}
++    indegree = {}
++    for node, deps in prereqs.items():
++        indegree[node] = len(deps)
++        for dep in deps:
++            dependents[dep].append(node)
++    heap = [n for n, d in indegree.items() if d == 0]
++    heapq.heapify(heap)
++    order = []
++    while heap:
++        node = heapq.heappop(heap)
++        order.append(node)
++        for child in dependents[node]:
++            indegree[child] -= 1
++            if indegree[child] == 0:
++                heapq.heappush(heap, child)
++    if len(order) != len(prereqs):
++        raise ValueError("cycle detected")
++    return order

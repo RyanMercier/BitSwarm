@@ -1,0 +1,58 @@
+{
+  "outcome": "FAIL",
+  "gates": {
+    "baseline": {
+      "outcome": "PASS",
+      "tests": {
+        "tests.test_existing::test_missing": "passed"
+      },
+      "reason": ""
+    },
+    "regression": {
+      "outcome": "PASS",
+      "tests": {
+        "tests.test_existing::test_missing": "passed"
+      },
+      "reason": ""
+    },
+    "acceptance": {
+      "outcome": "FAIL",
+      "tests": {
+        "test_contract::test_valid[ 12 -12.0]": "passed",
+        "test_contract::test_valid[0-0.0]": "passed",
+        "test_contract::test_valid[999-60.0]": "passed",
+        "test_contract::test_valid[Thu, 01 Jan 2026 00:00:30 GMT-30.0]": "passed",
+        "test_contract::test_valid[Wed, 31 Dec 2025 23:59:59 GMT-0.0]": "passed",
+        "test_contract::test_invalid[None]": "passed",
+        "test_contract::test_invalid[]": "passed",
+        "test_contract::test_invalid[-1]": "passed",
+        "test_contract::test_invalid[1.5]": "passed",
+        "test_contract::test_invalid[+2]": "passed",
+        "test_contract::test_invalid[\\u0661\\u0662]": "passed",
+        "test_contract::test_invalid[nonsense]": "passed",
+        "test_contract::test_invalid[Thu, 01 Jan 2026 00:00:30]": "passed",
+        "test_contract::test_bad_cap[-1]": "passed",
+        "test_contract::test_bad_cap[inf]": "passed",
+        "test_contract::test_bad_cap[nan]": "passed",
+        "test_contract::test_cap": "passed",
+        "test_contract::test_large_numeric_values[many-zeroes]": "failed",
+        "test_contract::test_large_numeric_values[leading-zeroes]": "failed",
+        "test_contract::test_large_numeric_values[huge-integer]": "passed",
+        "test_contract::test_large_numeric_values[float-overflow]": "passed",
+        "test_contract::test_large_numeric_values[large-cap]": "passed"
+      },
+      "reason": ""
+    }
+  },
+  "lost_passing_tests": [],
+  "baseline_hash": "2b9b0e6fb40011e045ad5ca4e7b7721b3f6f9905620b21ac9cd51221fa7f187f",
+  "candidate_hash": "78e9ab0fa1fc35435596f13306162aa583a6ce8f03d9d08a2a3cb82339ec06d7",
+  "contract_hash": "e4e1e62c9371aaa178f1ceebf8eb65680e9845542556c6a76c9f7819a38470f0",
+  "mode": "docker",
+  "patch_hash": "c516652adec4849359f46cbb501fe318523ac96c575cb2c931bf925dd942e89c",
+  "environment": {
+    "mode": "docker",
+    "verifier_hash": "c7e7a890fe369348f2644ce14a3c5fe5812f02834bc395b562ae804680d14234",
+    "image": "sha256:15a6fa48ed5a7640677e2c5e81d4073c98a233abe78de433c9619beb7739acac"
+  }
+}
