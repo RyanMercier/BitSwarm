@@ -1,0 +1,154 @@
+name: BitSwarm Verify
+description: >-
+  Verify a pull request against held-out acceptance tests in a network-less
+  container, with scope enforcement and a replayable verdict. No model in the loop.
+author: Ryan Mercier
+branding:
+  icon: shield
+  color: green
+
+inputs:
+  base:
+    description: Baseline commit. Defaults to the pull request base.
+    default: ${{ github.event.pull_request.base.sha }}
+  head:
+    description: Candidate commit. Defaults to the commit being built (the merge result on pull_request events).
+    default: ${{ github.sha }}
+  contract-path:
+    description: Directory of pytest acceptance tests, read from contract-ref, never from the working tree.
+    default: acceptance
+  contract-ref:
+    description: Commit or branch to read the acceptance directory from. Defaults to base.
+    default: ''
+  allow:
+    description: Whitespace-separated fnmatch patterns the changed paths must match. Tests and configuration are always refused.
+    default: '*'
+  image:
+    description: Sandbox image tag. Built from dockerfile before verification.
+    default: bitswarm-verify:local
+  dockerfile:
+    description: Dockerfile for the sandbox image, relative to the repository. Empty uses the action's stdlib-plus-pytest image.
+    default: ''
+  gate-timeout:
+    description: Seconds allowed for each test gate (1 to 600).
+    default: '300'
+  max-repo-files:
+    description: Maximum tracked files in the repository snapshot.
+    default: '3000'
+  max-repo-mb:
+    description: Maximum total megabytes in the repository snapshot.
+    default: '30'
+  fail-on-inconclusive:
+    description: Fail the step when the verdict is INCONCLUSIVE (recommended).
+    default: 'true'
+  comment:
+    description: Post the summary as a pull request comment (needs pull-requests write).
+    default: 'false'
+  github-token:
+    description: Token used for the optional comment.
+    default: ${{ github.token }}
+  artifact:
+    description: What to upload. full (replayable run directory), summary (report, patch, verdict), or none.
+    default: full
+  python-version:
+    default: '3.12'
+  out:
+    description: Run directory, relative to the workspace.
+    default: bitswarm-verify
+
+outputs:
+  outcome:
+    description: PASS, FAIL, or INCONCLUSIVE.
+    value: ${{ steps.verify.outputs.outcome }}
+  patch-hash:
+    description: sha256 of the verified patch.
+    value: ${{ steps.verify.outputs.patch-hash }}
+  run:
+    description: Absolute path of the run directory.
+    value: ${{ steps.verify.outputs.run }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install BitSwarm
+      shell: bash
+      run: python -m pip install --quiet "${{ github.action_path }}"
+
+    - name: Build sandbox image
+      shell: bash
+      env:
+        INPUT_DOCKERFILE: ${{ inputs.dockerfile }}
+        INPUT_IMAGE: ${{ inputs.image }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        if [ -n "$INPUT_DOCKERFILE" ]; then
+          docker build -f "$GITHUB_WORKSPACE/$INPUT_DOCKERFILE" -t "$INPUT_IMAGE" "$GITHUB_WORKSPACE"
+        else
+          docker build -f "$ACTION_PATH/docker/Dockerfile.harness" -t "$INPUT_IMAGE" "$ACTION_PATH"
+        fi
+
+    - name: Verify
+      id: verify
+      shell: bash
+      env:
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_HEAD: ${{ inputs.head }}
+        INPUT_CONTRACT_PATH: ${{ inputs.contract-path }}
+        INPUT_CONTRACT_REF: ${{ inputs.contract-ref }}
+        INPUT_ALLOW: ${{ inputs.allow }}
+        INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_GATE_TIMEOUT: ${{ inputs.gate-timeout }}
+        INPUT_MAX_REPO_FILES: ${{ inputs.max-repo-files }}
+        INPUT_MAX_REPO_MB: ${{ inputs.max-repo-mb }}
+        INPUT_FAIL_ON_INCONCLUSIVE: ${{ inputs.fail-on-inconclusive }}
+        INPUT_OUT: ${{ inputs.out }}
+      run: |
+        python -m harness.action \
+          --repo "$GITHUB_WORKSPACE" \
+          --base "$INPUT_BASE" \
+          --head "$INPUT_HEAD" \
+          --contract-path "$INPUT_CONTRACT_PATH" \
+          --contract-ref "$INPUT_CONTRACT_REF" \
+          --allow "$INPUT_ALLOW" \
+          --image "$INPUT_IMAGE" \
+          --gate-timeout "$INPUT_GATE_TIMEOUT" \
+          --max-repo-files "$INPUT_MAX_REPO_FILES" \
+          --max-repo-mb "$INPUT_MAX_REPO_MB" \
+          --fail-on-inconclusive "$INPUT_FAIL_ON_INCONCLUSIVE" \
+          --out "$GITHUB_WORKSPACE/$INPUT_OUT"
+
+    - name: Comment on pull request
+      if: always() && inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_OUT: ${{ inputs.out }}
+      run: |
+        gh pr comment "${{ github.event.pull_request.number }}" \
+          --repo "$GITHUB_REPOSITORY" \
+          --body-file "$GITHUB_WORKSPACE/$INPUT_OUT/summary.md"
+
+    - name: Upload run directory
+      if: always() && inputs.artifact == 'full'
+      uses: actions/upload-artifact@v4
+      with:
+        name: bitswarm-verify-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ github.workspace }}/${{ inputs.out }}
+        if-no-files-found: ignore
+
+    - name: Upload summary
+      if: always() && inputs.artifact == 'summary'
+      uses: actions/upload-artifact@v4
+      with:
+        name: bitswarm-verify-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          ${{ github.workspace }}/${{ inputs.out }}/summary.md
+          ${{ github.workspace }}/${{ inputs.out }}/action.json
+          ${{ github.workspace }}/${{ inputs.out }}/result.json
+          ${{ github.workspace }}/${{ inputs.out }}/patch.diff
+          ${{ github.workspace }}/${{ inputs.out }}/report.html
+        if-no-files-found: ignore

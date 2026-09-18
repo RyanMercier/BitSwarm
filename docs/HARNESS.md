@@ -106,6 +106,7 @@ Example `models.json`:
   "max_review_turns": 8,
   "max_seconds": 600,
   "call_timeout": 90,
+  "gate_timeout": 60,
   "max_repo_files": 3000,
   "max_repo_mb": 30,
   "implementer": {"kind": "claude-cli", "binary": "claude", "call_budget": 0.5},

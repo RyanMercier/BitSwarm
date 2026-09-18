@@ -62,6 +62,7 @@ def create_run(
         ("max_review_turns", 8, 200),
         ("max_seconds", 600, 7200),
         ("call_timeout", 90, 300),
+        ("gate_timeout", 60, 600),
         ("max_repo_files", 3000, 200_000),
         ("max_repo_mb", 30, 2000),
     ]:
@@ -253,7 +254,7 @@ class Runtime:
                     state["environment"].get(
                         "image", cfg.get("image", "bitswarm-harness:local")
                     ),
-                    timeout=min(60, cfg["call_timeout"]),
+                    timeout=min(cfg.get("gate_timeout", 60), cfg["call_timeout"]),
                 ).gate(root)
             )
         raise PolicyError(f"unsupported tool: {kind}")
@@ -442,6 +443,7 @@ class Runtime:
             state["environment"].get(
                 "image", cfg.get("image", "bitswarm-harness:local")
             ),
+            timeout=cfg.get("gate_timeout", 60),
         ).verify(
             self.root / "baseline", self.root / "candidate", self.root / "contract"
         )
@@ -478,6 +480,7 @@ def replay(directory: Path) -> dict:
         verifier = Verifier(
             state["config"].get("sandbox", "docker"),
             state["environment"].get("image", "bitswarm-harness:local"),
+            timeout=state["config"].get("gate_timeout", 60),
         )
         # A changed verifier or image does not make a replay worthless; it
         # makes it a fresh verification under a different environment. Record
