@@ -50,20 +50,22 @@ def _select_repair_backend():
     """
     explicit = os.environ.get("REPAIR_BACKEND", "").strip().lower()
     if explicit == "claude_code":
-        from validator.repair_cc import repair_miner, repair_integration_tests
-        return repair_miner, repair_integration_tests
+        from validator.repair_cc import repair_miner
+        return repair_miner
     if explicit in ("sdk", "anthropic"):
-        from validator.repair import repair_miner, repair_integration_tests
-        return repair_miner, repair_integration_tests
+        from validator.repair import repair_miner
+        return repair_miner
     miner_backend = os.environ.get("MINER_BACKEND", "").strip().lower()
     if miner_backend == "claude_code" and not os.environ.get("ANTHROPIC_API_KEY"):
-        from validator.repair_cc import repair_miner, repair_integration_tests
-        return repair_miner, repair_integration_tests
-    from validator.repair import repair_miner, repair_integration_tests
-    return repair_miner, repair_integration_tests
+        from validator.repair_cc import repair_miner
+        return repair_miner
+    from validator.repair import repair_miner
+    return repair_miner
 
 
-repair_miner, repair_integration_tests = _select_repair_backend()
+# Integration tests are the acceptance contract and are never repaired;
+# only the failing miner's implementation is.
+repair_miner = _select_repair_backend()
 
 
 def compute_tiers(subtasks):
@@ -103,17 +105,8 @@ def compute_tiers(subtasks):
 
 def validate_patch_scope(patch_text, allowed_files):
     """Check that a patch only touches allowed files. Returns list of unauthorized files."""
-    unauthorized = []
-    for line in patch_text.split("\n"):
-        if line.startswith("diff --git"):
-            parts = line.split(" ")
-            if len(parts) >= 4:
-                b_path = parts[3]
-                if b_path.startswith("b/"):
-                    b_path = b_path[2:]
-                if b_path not in allowed_files:
-                    unauthorized.append(b_path)
-    return unauthorized
+    from validator.patch_scope import unauthorized_paths
+    return unauthorized_paths(patch_text, allowed_files)
 
 
 def _apply_patch(sid, result, subtask, merge_repo, merge_dir):
@@ -352,32 +345,10 @@ async def merge_and_test(decomposition, miner_results, base_repo_path):
 
     if integration_passed:
         print(f"  Integration tests: PASSED")
-    elif _REPAIR_DISABLED:
-        pct = int(integration_ratio * 100)
-        print(f"  Integration tests: FAILED ({pct}% passed) (repair disabled)")
-        repairs_made["_integration"] = False
     else:
         pct = int(integration_ratio * 100)
-        print(f"  Integration tests: FAILED ({pct}% passed)  -  repairing")
-
-        # ── Phase 4b: Repair integration tests ────────────────────────
-        integration_passed, integration_output, integration_ratio = \
-            await repair_integration_tests(
-                integration_files, merge_repo, integration_output
-            )
-
-        if integration_passed:
-            subprocess.run(["git", "add", "-A"], cwd=merge_repo, capture_output=True)
-            subprocess.run(
-                ["git", "commit", "-m", "repair integration tests"],
-                cwd=merge_repo, capture_output=True,
-            )
-            repairs_made["_integration"] = True
-        else:
-            repairs_made["_integration"] = False
-            pct = int(integration_ratio * 100)
-            print(f"  Integration tests after repair: FAILED ({pct}% passed)")
-
+        print(f"  Integration tests: FAILED ({pct}% passed) (acceptance contract is immutable)")
+        repairs_made["_integration"] = False
     # ── Phase 5: Score ──────────────────────────────────────────────────
     scores = compute_scores(
         subtasks, miner_results, stub_results, integration_passed,

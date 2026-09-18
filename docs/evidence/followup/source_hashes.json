@@ -1,0 +1,13 @@
+{
+  "harness/__init__.py": "7f00ba3f9d06f646f2326ae377adcba5df320250571715086ffbc7d04e883084",
+  "harness/__main__.py": "bc04296bf38454664b1b526e1c974717cdbe18d703698326c91fcb818dffe211",
+  "harness/demo.py": "8b61f408bf3555ed544596a9b0a084e53196d31345e507ec601b0d4cc9d3add6",
+  "harness/evaluate.py": "1eea563dce9d38fdd7c7b0c183585e48eb44f64ee58db555de63b8d5fb0c5a7a",
+  "harness/gate_worker.py": "23126cb9491b35c46ae282f2ad13071dfd126cc8bb33dab1f847b6f30853be90",
+  "harness/models.py": "fe4a31762a4f6f02ee3d600f06464389b3eeb6393b7f47f7fe23eea72c8ef124",
+  "harness/report.py": "07c1c18d25af7275244eb191649e2805fe9f48ba922c7461014331c86563dfe3",
+  "harness/runtime.py": "0849a6b0c357ddb36c07c73a854d290fae37e37feaafd988425426d87a00e59a",
+  "harness/store.py": "88f389f195c111ec25063eb32611b31647ca2687996082a922623b970e07cd56",
+  "harness/verify.py": "870600b1f06c311161c73d2214b82dd8db886423d2cc3d0af4f3f966975f9a97",
+  "harness/workspace.py": "494b2c6963d1aa1f149f65ed9b640fde1009ee5c7c2e1961685ef8672a11afa2"
+}

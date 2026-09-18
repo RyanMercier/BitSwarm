@@ -1,0 +1,35 @@
+diff --git a/solution.py b/solution.py
+index fefc404..65d7f7d 100644
+--- a/solution.py
++++ b/solution.py
+@@ -1,2 +1,29 @@
+ def merge_intervals(intervals):
+-    return list(intervals)
++    """Merge overlapping or touching closed intervals.
++
++    Accepts any iterable of (start, end) pairs, leaves the caller's data
++    untouched, and returns a new sorted list of tuples. Raises ValueError
++    if any interval has start > end.
++    """
++    pairs = []
++    for item in intervals:
++        start, end = item
++        if start > end:
++            raise ValueError(
++                "invalid interval: start %r exceeds end %r" % (start, end)
++            )
++        pairs.append((start, end))
++    if not pairs:
++        return []
++    pairs.sort(key=lambda p: (p[0], p[1]))
++    merged = []
++    cur_start, cur_end = pairs[0]
++    for start, end in pairs[1:]:
++        if start <= cur_end:
++            if end > cur_end:
++                cur_end = end
++        else:
++            merged.append((cur_start, cur_end))
++            cur_start, cur_end = start, end
++    merged.append((cur_start, cur_end))
++    return merged

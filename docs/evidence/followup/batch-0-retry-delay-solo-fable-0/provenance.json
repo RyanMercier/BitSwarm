@@ -1,0 +1,25 @@
+{
+  "contract_version": "v2-large-numerics",
+  "task": "Implement retry_delay(value, now, cap=60.0). Parse an HTTP Retry-After value as either ASCII decimal integer seconds (surrounding whitespace allowed) or an RFC HTTP date via email.utils.parsedate_to_datetime. now is an aware datetime. Return seconds clamped to [0, cap] as a float. Missing, malformed, negative, fractional or naive-date values return None. A nonfinite or negative cap raises ValueError even when value is missing. Past valid dates return 0.0. Do not read the wall clock; use the supplied now.",
+  "base_commit": "cb2fe93f287188442adaf006315522421fbf83be",
+  "environment": {
+    "mode": "docker",
+    "verifier_hash": "c7e7a890fe369348f2644ce14a3c5fe5812f02834bc395b562ae804680d14234",
+    "image": "sha256:15a6fa48ed5a7640677e2c5e81d4073c98a233abe78de433c9619beb7739acac"
+  },
+  "models": {
+    "implementer": {
+      "kind": "claude-cli",
+      "model": "claude-fable-5-1",
+      "call_budget": 1.0
+    }
+  },
+  "limits": {
+    "max_turns": 12,
+    "max_seconds": 600,
+    "call_timeout": 120
+  },
+  "baseline_hash": "2b9b0e6fb40011e045ad5ca4e7b7721b3f6f9905620b21ac9cd51221fa7f187f",
+  "contract_hash": "e4e1e62c9371aaa178f1ceebf8eb65680e9845542556c6a76c9f7819a38470f0",
+  "trace_note": "Prompts, stdout and host paths omitted; this is a selected action trace."
+}
