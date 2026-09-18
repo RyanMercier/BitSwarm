@@ -1,0 +1,22 @@
+name: Verify pull request
+on:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          # Bootstrap: read the contract from the merge commit until acceptance/
+          # exists on the base branch, then remove this line so the contract is
+          # held out from the pull request by default.
+          contract-ref: ${{ github.sha }}
+          dockerfile: docker/Dockerfile.self
+          image: bitswarm-self:local
+          gate-timeout: '600'
+          comment: 'true'
+          artifact: summary

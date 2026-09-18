@@ -15,7 +15,7 @@ That is the project in one paragraph: the interesting engineering is not getting
 ## What it is for
 
 - **Measuring whether a second agent is worth it.** Run the same task with a solo implementer and with an implementer plus an independent reviewer, under equal budgets, and get acceptance rate, model calls, latency, and cost per accepted task with failures kept in the denominator.
-- **Verifying a patch without a model.** `bitswarm verify` takes a repository commit, a patch, an allow list, and a directory of acceptance tests, and returns PASS, FAIL, or INCONCLUSIVE from a network-less container. This is the reusable slice: it does not care who or what wrote the patch.
+- **Verifying a patch without a model.** `bitswarm verify` takes a repository commit, a patch, an allow list, and a directory of acceptance tests, and returns PASS, FAIL, or INCONCLUSIVE from a network-less container. The same gate ships as a GitHub Action for agent-written pull requests. This is the reusable slice: it does not care who or what wrote the patch.
 - **Studying harness design.** Scoped JSON tools instead of a shell, transactional state, fail-closed recovery, three-way verification outcomes, and hash-pinned replay, in about 1,500 lines with tests for each property.
 
 ## Five-minute demo
@@ -74,6 +74,18 @@ uv run bitswarm evaluate --manifest out/pilot-tasks/manifest.json --out out/pilo
 uv run python benchmarks/export_evidence.py out/pilot --out out/public-evidence
 ```
 
+## Use it as a GitHub Action
+
+```yaml
+- uses: actions/checkout@v4
+- uses: RyanMercier/BitSwarm@main
+  with:
+    contract-path: acceptance      # pytest files, read from the base branch
+    allow: 'src/* README.md'       # everything else fails the gate
+```
+
+The pull request cannot edit the tests it is judged against, cannot touch test files or configuration at all, and gets a PASS, FAIL, or INCONCLUSIVE verdict with per-test detail in the job summary. The uploaded run directory replays with `bitswarm replay`. This repository verifies its own pull requests this way. Inputs, limits, and a local invocation are in [docs/ACTION.md](docs/ACTION.md).
+
 ## Verify any patch
 
 ```bash
@@ -105,6 +117,8 @@ BitSwarm began as a Bittensor subnet: a coordinator decomposed feature specs int
 ## Repository map
 
 ```
+action.yml      GitHub Action: verify a pull request against held-out tests
+acceptance/     this repository's own held-out contract
 harness/        runtime, verifier, workspace, adapters, store, CLI   (the project)
 benchmarks/     task preparation, evidence export, replay, post-hoc audit
 docs/evidence/  retained pilot and follow-up runs: traces, patches, hashes
