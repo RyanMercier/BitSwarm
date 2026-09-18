@@ -61,7 +61,10 @@ is held constant within each verifier instance; it is not forwarded into tests.
   implementer justification is injected into initial review.
 - One review/repair cycle; immutable final acceptance tests withheld from models.
 - Independent baseline/regression/acceptance gates using pytest JUnit XML.
-- Missing, newly skipped, or failed previously passing tests reject the candidate.
+- Previously passing tests that go missing, become skipped, or fail reject the
+  candidate. A newly added test that skips is recorded, not treated as a
+  regression. Every acceptance test must run and pass; a skipped contract test
+  is a failure.
 - Per-test errors (fixture setup, teardown) count against that test only, so a
   baseline with a few broken tests can still be evaluated by set difference.
 - Missing runners, timeouts, collection errors, empty collections, invalid

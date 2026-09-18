@@ -41,6 +41,9 @@ inputs:
   fail-on-inconclusive:
     description: Fail the step when the verdict is INCONCLUSIVE (recommended).
     default: 'true'
+  protect-tests:
+    description: Refuse changes to test files, test directories, dotfiles, and Python configuration. Keep on for agent pull requests; turn off for repositories whose human pull requests edit tests. The acceptance contract is held out either way.
+    default: 'true'
   comment:
     description: Post the summary as a pull request comment (needs pull-requests write).
     default: 'false'
@@ -105,6 +108,7 @@ runs:
         INPUT_MAX_REPO_FILES: ${{ inputs.max-repo-files }}
         INPUT_MAX_REPO_MB: ${{ inputs.max-repo-mb }}
         INPUT_FAIL_ON_INCONCLUSIVE: ${{ inputs.fail-on-inconclusive }}
+        INPUT_PROTECT_TESTS: ${{ inputs.protect-tests }}
         INPUT_OUT: ${{ inputs.out }}
       run: |
         python -m harness.action \
@@ -119,6 +123,7 @@ runs:
           --max-repo-files "$INPUT_MAX_REPO_FILES" \
           --max-repo-mb "$INPUT_MAX_REPO_MB" \
           --fail-on-inconclusive "$INPUT_FAIL_ON_INCONCLUSIVE" \
+          --protect-tests "$INPUT_PROTECT_TESTS" \
           --out "$GITHUB_WORKSPACE/$INPUT_OUT"
 
     - name: Comment on pull request

@@ -59,3 +59,23 @@ The live Docker suite and the pilot were not rerun after these changes. The
 evidence directories still carry the hashes of the runtime that produced them,
 so a replay under the current verifier reports `environment_match: false` and
 records both environments. See `docs/HARNESS_REVIEW.md` for the fixes.
+
+## GitHub Action (same day)
+
+| Check | Observed result |
+|---|---|
+| Action unit tests (`tests/test_action.py`) | 10 passed; harness suite 45, regression suite 7 |
+| End-to-end on this repository, host sandbox | PASS: baseline 341 passed and 1 skipped, regression 400 passed and 7 skipped, acceptance 8 passed |
+| Same run with `protect-tests` on | FAIL before any gate, naming `.github/workflows/harness.yml` as a protected path |
+
+The end-to-end run used base `c9fb5db` (the last commit before the harness),
+head `5fb32d6`, the contract read from head (bootstrap mode), and
+`--sandbox unsafe-local` because this workstation's Docker socket is not
+available to the normal user. The Docker path of the Action, the composite
+steps on a GitHub runner, and `docker/Dockerfile.self` have not been executed
+here; the first pull request will exercise them.
+
+That first run also changed two behaviours. Newly added tests that skip are no
+longer counted as regressions (six opt-in Docker tests skip on the candidate),
+and the protected-path policy became the `protect-tests` input, because this
+repository's own pull requests edit tests and workflows.

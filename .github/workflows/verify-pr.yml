@@ -15,6 +15,10 @@ jobs:
           # exists on the base branch, then remove this line so the contract is
           # held out from the pull request by default.
           contract-ref: ${{ github.sha }}
+          # This repository's own pull requests edit tests and workflows, so
+          # the agent-oriented protected-path policy is off here. The held-out
+          # contract and the regression gate still apply.
+          protect-tests: 'false'
           dockerfile: docker/Dockerfile.self
           image: bitswarm-self:local
           gate-timeout: '600'
