@@ -85,7 +85,7 @@ uv run python benchmarks/export_evidence.py out/pilot --out out/public-evidence
     allow: 'src/* README.md'       # everything else fails the gate
 ```
 
-The pull request cannot edit the tests it is judged against, cannot touch test files or configuration at all, and gets a PASS, FAIL, or INCONCLUSIVE verdict with per-test detail in the job summary. The uploaded run directory replays with `bitswarm replay`. This repository verifies its own pull requests this way. Inputs, limits, and a local invocation are in [docs/ACTION.md](docs/ACTION.md).
+The pull request cannot edit the tests it is judged against, is refused by default if it touches test files or configuration, and gets a PASS, FAIL, or INCONCLUSIVE verdict with per-test detail in the job summary. The uploaded run directory replays with `bitswarm replay`. This repository verifies its own pull requests this way. Inputs, limits, and a local invocation are in [docs/ACTION.md](docs/ACTION.md).
 
 ## Verify any patch
 
@@ -147,6 +147,7 @@ validator/ miner/ neurons/ protocol/ demo/ BITSWARM_SPEC.md   archived subnet pr
 ```
 
 ```bash
-uv run python -m pytest tests/test_harness.py -q
+uv sync --extra dev
+uv run python -m pytest tests/test_harness.py tests/test_action.py -q
 BITSWARM_DOCKER_TESTS=1 uv run python -m pytest tests/test_harness_docker.py -q
 ```
