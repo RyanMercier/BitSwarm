@@ -75,7 +75,30 @@ several robustness gaps. All were fixed with regression tests in
     acceptance contract is never repaired.
 12. CI now installs the provider SDKs and runs the validator regression tests.
 
-After these changes the harness suite has 43 tests and the regression suite 7.
+After these changes the harness suite had 43 tests and the regression suite 7.
 The evidence directories record the runtime hashes that produced them; those
 hashes no longer match the current source, and replays under the current
 verifier will report `environment_match: false` with both environments kept.
+
+## Third pass: what the GitHub Action's first run found
+
+Running the Action end to end on this repository (base: the last commit before
+the harness; head: the Action commit) surfaced three more issues, each fixed
+with a test:
+
+1. **The protected-path policy blocked every tooling pull request.** Refusing
+   changes to tests and configuration is right for agent-authored patches and
+   wrong for a repository whose own pull requests edit tests and workflows. It
+   is now the `protect-tests` input, on by default; the held-out contract and
+   the regression gate apply either way.
+2. **Newly added opt-in tests that skip were counted as regressions.** Six
+   Docker-only tests skip on the candidate and failed the verdict. Skips are
+   now recorded per test: a previously passing test that becomes skipped is a
+   loss, a new skipped test is not a regression, and a skipped acceptance test
+   is a failure.
+3. **Replay forced protection back on**, so a verdict made with protection off
+   could not be replayed. The policy is stored in the run config and reused.
+
+With those fixes the self-verification passes (341 baseline, 403 regression,
+8 acceptance) and replays with `environment_match: true`. The harness suite has
+45 tests, the Action suite 10, and the regression suite 7.

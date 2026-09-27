@@ -6,7 +6,7 @@ on-chain weights. It is also the component that executes
 miner-supplied code, so its security posture matters most. This guide
 covers deployment, the sandbox, the user-facing API, and operations.
 
-Registration and wallet steps live in docs/TESTNET.md; this guide is
+Registration and wallet steps live in docs/legacy/TESTNET.md; this guide is
 what you run after your hotkey is on the subnet.
 
 ## What you need
@@ -74,7 +74,7 @@ so a misconfigured host fails fast instead of failing open.
 
 What the sandbox does not cover: the coordinator's own LLM calls
 (your trusted code), and miners' agents (their machines, their
-risk; see docs/MINING.md).
+risk; see docs/legacy/MINING.md).
 
 ## Serving users
 

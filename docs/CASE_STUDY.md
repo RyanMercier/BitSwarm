@@ -134,8 +134,8 @@ tests.
 
 Six container integration tests exercise nonroot execution, network denial,
 read-only mounts, timeout handling, candidate mutation, collection errors,
-assertion failures, and a report containing 500 test records. The focused
-harness suite has 43 passing unit tests.
+assertion failures, and a report containing 500 test records. The harness and
+Action suites together hold 55 unit tests.
 
 ## What I can claim from the pilot
 
@@ -168,13 +168,25 @@ project where every claim points at a saved patch, a trace, a hash, and a
 verifier that anyone can rerun.
 
 Will anyone use it? Honestly: the harness as it stands is a research
-instrument. It runs on one host, supports stdlib Python, and expects tests in
-one directory. The piece with a real audience is the verifier: hand it a
-commit, a patch, an allow list, and a directory of acceptance tests, and it
-returns a replayable verdict with no model involved. Wrapped in a CI action
-with per-repository dependency images, that is a product a team adopting
-coding agents would recognize. That is the path to monetization I did not
-have in the meeting, and it is now the roadmap.
+instrument. It runs on one host, supports Python, and expects tests in one
+directory. The piece with a real audience is the verifier: hand it a commit, a
+patch, an allow list, and a directory of acceptance tests, and it returns a
+replayable verdict with no model involved. So I wrapped it in a GitHub Action.
+A pull request is verified against acceptance tests read from the base branch,
+which the pull request cannot edit; changes to test files and configuration are
+refused by default; the verdict and its hashes are uploaded so anyone can
+replay it. The repository now verifies its own pull requests this way.
+
+The Action's first run on this repository was a small lesson of its own. The
+verdict was correct and useless: it refused the pull request for touching
+tests and workflows, which every pull request to a tooling repository does.
+The policy that protects against an agent weakening its own tests is wrong for
+a human maintainer. It became a switch, on by default. The same run counted six
+newly added opt-in tests that skip as regressions, and replay could not
+reproduce a verdict made with the switch off. Each fix has a test. This is the
+path to monetization I did not have in the meeting: a free Action first, then,
+if anyone uses it, hosted verification with managed runners, held-out test
+storage, and signed verdicts.
 
 The next experiment needs a broader repository-task corpus, repeated trials,
 and an explicit comparison between solo execution, always-on review, and
@@ -183,11 +195,9 @@ which failures an additional agent actually prevents. If that evidence holds
 up, the subnet version has a much better product to sell than the one I
 pitched.
 
-The repository includes the runtime, reproducible task preparation, tests,
-selected live traces, saved patches, and the post-hoc audit. The earlier
-subnet code and its documentation are archived alongside it. I used coding
-assistants during development and keep their contributions tied to reviewable
-code and test results.
-
-*Repository and evidence: add the public project URL when publishing. This
-draft has not been posted.*
+The repository includes the runtime, the Action, reproducible task
+preparation, tests, selected live traces, saved patches, and the post-hoc
+audit. The earlier subnet code and its documentation are archived alongside
+it. I used coding assistants during development and keep their contributions
+tied to reviewable code and test results; the review log in the repository
+records every defect they and I found in the harness and how each was fixed.

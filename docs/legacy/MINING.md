@@ -22,7 +22,7 @@ emissions.
   | `openai` | any OpenAI-compatible endpoint (DeepSeek, OpenRouter, Chutes, local vLLM/Ollama) | provider-dependent, can be near-zero on local GPUs |
 
 - A registered hotkey on the subnet and an open port for your axon
-  (registration steps in docs/TESTNET.md).
+  (registration steps in docs/legacy/TESTNET.md).
 
 ## Start it
 

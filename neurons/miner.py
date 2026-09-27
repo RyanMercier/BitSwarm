@@ -7,7 +7,7 @@ miner/runtime.py the HTTP server uses. One task at a time, gated by
 an asyncio.Lock; a busy miner answers a TaskSynapse immediately with
 stop_reason="busy" so validators can reroute rather than block.
 
-Usage (see docs/TESTNET.md for the full runbook):
+Usage (see docs/legacy/TESTNET.md for the full runbook):
 
     python -m neurons.miner \
         --netuid 999 \

@@ -163,13 +163,13 @@ design document:
   rolling per-miner score book that becomes the on-chain weight
   vector, hidden-test commit-reveal, and the miner and validator
   neuron entry points. The step-by-step path to running on the test
-  network is docs/TESTNET.md.
+  network is docs/legacy/TESTNET.md.
 - The product surface is built: users submit a spec and a repo
   bundle to a validator's authenticated HTTP API, poll status, and
   fetch back one verified unified diff. On the validator, gate tests
   execute inside a network-less docker sandbox with an allowlisted
   environment, so miner-supplied code never runs bare on the host.
-  Operator guides: docs/MINING.md and docs/VALIDATING.md.
+  Operator guides: docs/legacy/MINING.md and docs/legacy/VALIDATING.md.
 
 ## What BitSwarm is not
 
@@ -197,8 +197,8 @@ Honesty about limits, because the claims above only hold inside them:
   access to the host environment. The one exception is the
   claude_code miner backend, where the agent is the Claude CLI and
   confinement is deployment-level (run the miner containerized, per
-  docs/MINING.md) rather than code-enforced; disclosed in
-  docs/STATUS.md.
+  docs/legacy/MINING.md) rather than code-enforced; disclosed in
+  docs/legacy/STATUS.md.
 
 ## The one-sentence version
 

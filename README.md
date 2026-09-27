@@ -4,19 +4,20 @@
 
 Python 3.11+ | Linux/WSL | Docker | SQLite | Git | Claude CLI and OpenAI-compatible adapters
 
-[![Local harness](https://github.com/RyanMercier/BitSwarm/actions/workflows/harness.yml/badge.svg)](https://github.com/RyanMercier/BitSwarm/actions/workflows/harness.yml)
+[![CI](https://github.com/RyanMercier/BitSwarm/actions/workflows/harness.yml/badge.svg)](https://github.com/RyanMercier/BitSwarm/actions/workflows/harness.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## The result that matters
 
 Six coding-agent runs passed every acceptance test. Then I audited the reviewer's repair on one of them and found it was wrong for inputs the tests never covered. Five extra probes failed four times on the solo patch and twice on the reviewed patch. Both had been "verified."
 
-That is the project in one paragraph: the interesting engineering is not getting an agent to pass tests. It is knowing what a passing test proves, keeping the evidence when it proves less than you hoped, and making the whole chain replayable. Read the [case study](docs/LINKEDIN_ARTICLE.md), the [post-hoc audit](docs/evidence/pilot/posthoc-audit.json), and the [follow-up under a stronger contract](docs/evidence/followup/README.md).
+That is the project in one paragraph: the interesting engineering is not getting an agent to pass tests. It is knowing what a passing test proves, keeping the evidence when it proves less than you hoped, and making the whole chain replayable. Read the [case study](docs/CASE_STUDY.md), the [post-hoc audit](docs/evidence/pilot/posthoc-audit.json), and the [follow-up under a stronger contract](docs/evidence/followup/README.md).
 
 ## What it is for
 
 - **Measuring whether a second agent is worth it.** Run the same task with a solo implementer and with an implementer plus an independent reviewer, under equal budgets, and get acceptance rate, model calls, latency, and cost per accepted task with failures kept in the denominator.
 - **Verifying a patch without a model.** `bitswarm verify` takes a repository commit, a patch, an allow list, and a directory of acceptance tests, and returns PASS, FAIL, or INCONCLUSIVE from a network-less container. The same gate ships as a GitHub Action for agent-written pull requests. This is the reusable slice: it does not care who or what wrote the patch.
-- **Studying harness design.** Scoped JSON tools instead of a shell, transactional state, fail-closed recovery, three-way verification outcomes, and hash-pinned replay, in about 1,500 lines with tests for each property.
+- **Studying harness design.** Scoped JSON tools instead of a shell, transactional state, fail-closed recovery, three-way verification outcomes, and hash-pinned replay, in about 2,000 lines with tests for each property.
 
 ## Five-minute demo
 
@@ -110,6 +111,20 @@ Single host, trusted operator, trusted Docker daemon. The provided image support
 
 Open: repository-scale task corpora, mixed-provider comparisons, external-process oracles, selective review routing, and automatic recovery of uncertain actions.
 
+## Status
+
+Version 0. What has been executed and where:
+
+| Piece | Verified |
+|---|---|
+| Harness runtime, verifier, Action module | 45 + 10 unit tests on Linux/WSL, run on every pull request by CI |
+| Validator regression fixes | 7 tests, run in CI with the provider SDKs installed |
+| Container isolation | 6 opt-in Docker tests, run in CI and locally on a Snap Docker daemon |
+| Live model pilot | 8 retained runs of Fable 5.1 through the Claude CLI, replayed |
+| GitHub Action end to end | On this repository with the host sandbox; the Docker path on a GitHub runner runs on the first pull request |
+
+Not done: a real-repository task corpus, a second model provider, external-process oracles, and any statistical claim. The [validation record](docs/VALIDATION.md) lists every check with its observed result, and the [review log](docs/HARNESS_REVIEW.md) lists every defect found in the harness so far and how it was fixed.
+
 ## Where it came from
 
 BitSwarm began as a Bittensor subnet: a coordinator decomposed feature specs into scaffolded subtasks, independent miners implemented them in parallel, and a validator merged, tested, and set on-chain weights. It ran one spec end to end in seven languages and added a feature to pallets/click from a four-sentence request. A pitch meeting with Yuma Labs made the gap clear: there was no crisp answer to who would pay, for what, and why a network rather than a vendor. The one piece with an obvious buyer was verification, and before selling verification I needed to know what the verification signal was worth. This harness is the result. The subnet code and its [archived documentation](LEGACY_README.md) remain in the repository; its historical results predate the scoring fixes made during this work and are not evidence for the harness.
@@ -117,14 +132,18 @@ BitSwarm began as a Bittensor subnet: a coordinator decomposed feature specs int
 ## Repository map
 
 ```
-action.yml      GitHub Action: verify a pull request against held-out tests
-acceptance/     this repository's own held-out contract
-harness/        runtime, verifier, workspace, adapters, store, CLI   (the project)
-benchmarks/     task preparation, evidence export, replay, post-hoc audit
-docs/evidence/  retained pilot and follow-up runs: traces, patches, hashes
-docs/HARNESS.md operating guide and trust boundaries
-tests/          test_harness.py, test_harness_docker.py (opt-in), test_review_regressions.py
-validator/, miner/, neurons/, protocol/   archived subnet prototype
+action.yml          GitHub Action: verify a pull request against held-out tests
+acceptance/         this repository's own held-out contract
+harness/            runtime, verifier, workspace, adapters, store, Action, CLI   (the project)
+benchmarks/         task preparation, evidence export, replay, post-hoc audit
+docs/CASE_STUDY.md  the subnet, the pivot, and the reviewer repair that passed and was wrong
+docs/HARNESS.md     operating guide and trust boundaries
+docs/ACTION.md      GitHub Action inputs, semantics, limits
+docs/VALIDATION.md  every check run, with observed results
+docs/evidence/      retained pilot and follow-up runs: traces, patches, hashes
+docs/legacy/        subnet-era docs: mining, validating, testnet runbook, status
+tests/              test_harness.py, test_action.py, test_harness_docker.py (opt-in), test_review_regressions.py
+validator/ miner/ neurons/ protocol/ demo/ BITSWARM_SPEC.md   archived subnet prototype
 ```
 
 ```bash

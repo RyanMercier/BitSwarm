@@ -26,3 +26,6 @@ docs/YUMA_*.md
 .npm/
 .nuget/
 .commit_msg.txt
+
+# Personal notes (resume bullets, interview prep), never tracked
+docs/private/
