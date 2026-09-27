@@ -188,7 +188,7 @@ testing; production tracks the real ~72-minute tempo).
 ## 8. Submit a task
 
 Two intakes, same inbox. The HTTP API is what real users hit
-(details in docs/VALIDATING.md):
+(details in docs/legacy/VALIDATING.md):
 
 ```bash
 export BITSWARM_API_KEYS=testkey
@@ -308,4 +308,4 @@ Does not prove yet (Phase B/C work): multi-validator consensus under
 real disagreement, economic equilibrium (do miners profit at the
 chosen emission rate), the challenge market, and the Attested-CI
 product surface. Those are the testnet-to-mainnet roadmap in
-docs/STATUS.md.
+docs/legacy/STATUS.md.

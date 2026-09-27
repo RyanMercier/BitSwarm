@@ -3,7 +3,7 @@
 **Audit caveat:** both retry-delay candidates passed this original contract but
 failed additional numerical probes. See [post-hoc audit](posthoc-audit.json),
 [strengthened-contract follow-up](../followup/README.md), and
-[case study](../../LINKEDIN_ARTICLE.md). Original scores below are preserved;
+[case study](../../CASE_STUDY.md). Original scores below are preserved;
 they are not a claim that either implementation is correct for every valid input.
 
 Synthetic pilot: 3 authored Python tasks, contract v1, one model family, deterministic condition order, no statistical superiority claim. Equal maximum budgets do not mean equal actual spend. Dollar figures are Claude CLI estimates, not subscription invoices. Acceptance tests are withheld during each run, but public in the benchmark source. Passing these contracts does not establish general repository-editing capability.

@@ -15,7 +15,7 @@ The validator's job, per loop iteration:
   4. Record per-HOTKEY scores into the ScoreBook (rolling EMA).
   5. At each tempo boundary, submit the normalized weight vector.
 
-Usage (full runbook in docs/TESTNET.md):
+Usage (full runbook in docs/legacy/TESTNET.md):
 
     python -m neurons.validator \
         --netuid 999 \
@@ -102,7 +102,7 @@ class ValidatorNeuron:
         if my_hotkey not in self.metagraph.hotkeys:
             raise SystemExit(
                 f"validator hotkey {my_hotkey} is not registered on netuid "
-                f"{config.netuid}; see docs/TESTNET.md"
+                f"{config.netuid}; see docs/legacy/TESTNET.md"
             )
         bt.logging.info(f"validator hotkey={my_hotkey} "
                          f"netuid={config.netuid}")

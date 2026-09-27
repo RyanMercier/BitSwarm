@@ -17,7 +17,7 @@ This is the v2 revision of the spec. The core architecture (coordinator decompos
 - **Open Research Questions (S13)**: Q6 (language generalization) is answered inline.
 - **Configuration (S15)**: env vars and defaults updated to match `config.py` and the language profile registry.
 
-For the lighter-weight, presentation-oriented summary of current state, see `docs/STATUS.md`.
+For the lighter-weight, presentation-oriented summary of current state, see `docs/legacy/STATUS.md`.
 
 ---
 
@@ -2789,7 +2789,7 @@ The original single-machine Python prototype has shipped. It has since generaliz
 5. Iterate on coordinator prompts and language profiles based on failure modes
 6. Launch on mainnet
 
-Items 2 onward are tracked in `docs/STATUS.md` under the roadmap section.
+Items 2 onward are tracked in `docs/legacy/STATUS.md` under the roadmap section.
 
 ---
 
@@ -2858,7 +2858,7 @@ The v1 design parameters (left as-is below) describe the protocol-level knobs th
 
 ### Runtime env vars (implementation)
 
-The full list lives in `docs/STATUS.md` and the inline comments in `config.py`. The most operationally important:
+The full list lives in `docs/legacy/STATUS.md` and the inline comments in `config.py`. The most operationally important:
 
 | Env var | Default | Description |
 |---|---|---|

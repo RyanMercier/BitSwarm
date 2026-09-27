@@ -5,9 +5,26 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bitswarm-harness"
 version = "0.1.0"
-description = "A durable, observable implementer-reviewer coding harness"
+description = "Coding-agent harness and patch verifier: scoped patches, held-out acceptance tests, sandboxed gates, replayable verdicts"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Ryan Mercier" }]
 requires-python = ">=3.11"
 dependencies = ["pytest==8.3.5"]
+keywords = ["coding-agents", "verification", "pytest", "docker", "github-actions", "evaluation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Software Development :: Testing",
+]
+
+[project.urls]
+Repository = "https://github.com/RyanMercier/BitSwarm"
+Documentation = "https://github.com/RyanMercier/BitSwarm/blob/main/docs/HARNESS.md"
+
+[project.optional-dependencies]
+dev = ["ruff"]
 
 [project.scripts]
 bitswarm = "harness.__main__:main"
@@ -18,3 +35,6 @@ include = ["harness*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["docker: requires a working Docker daemon and bitswarm-harness:local image"]
+
+[tool.ruff]
+line-length = 100

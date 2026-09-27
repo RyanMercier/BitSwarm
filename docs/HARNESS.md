@@ -218,6 +218,8 @@ powered repository benchmark, Windows-native execution, or multi-tenant hosting.
 uv run --no-project --with pytest==8.3.5 python -m pytest tests/test_harness.py
 ```
 
-The full legacy suite additionally needs the dependencies in `requirements.txt`.
-Dedicated regression tests in `tests/test_review_regressions.py` cover the earlier
-false-positive regression collector and patch-scope failures.
+`tests/test_action.py` covers the GitHub Action path end to end on a throwaway
+repository with the host sandbox. The full legacy suite additionally needs the
+dependencies in `requirements.txt`. Dedicated regression tests in
+`tests/test_review_regressions.py` cover the earlier false-positive regression
+collector and patch-scope failures. See [ACTION.md](ACTION.md) for the Action.

@@ -39,21 +39,21 @@ The miner's local success signal is byte-for-byte the same
 computation the validator runs at scoring time, which is the same
 computation any auditor's replay produces. No point in the trust
 chain asks anyone to take anyone's word. Read
-[docs/WHY_BITSWARM.md](docs/WHY_BITSWARM.md) for the case study (a
+[docs/legacy/WHY_BITSWARM.md](docs/legacy/WHY_BITSWARM.md) for the case study (a
 live false-positive class we caught and closed during diff-mode
 bring-up).
 
 ## Docs
 
-- [docs/WHY_BITSWARM.md](docs/WHY_BITSWARM.md) - the verification
+- [docs/legacy/WHY_BITSWARM.md](docs/legacy/WHY_BITSWARM.md) - the verification
   thesis, with the case study.
-- [docs/MINING.md](docs/MINING.md) - run a miner and earn: backends,
+- [docs/legacy/MINING.md](docs/legacy/MINING.md) - run a miner and earn: backends,
   economics, host protection.
-- [docs/VALIDATING.md](docs/VALIDATING.md) - run a validator: the
+- [docs/legacy/VALIDATING.md](docs/legacy/VALIDATING.md) - run a validator: the
   sandbox, the user API, scoring knobs, operations.
-- [docs/TESTNET.md](docs/TESTNET.md) - step-by-step runbook to
+- [docs/legacy/TESTNET.md](docs/legacy/TESTNET.md) - step-by-step runbook to
   register and run BitSwarm on the Bittensor test network.
-- [docs/STATUS.md](docs/STATUS.md) - engineering state, every env
+- [docs/legacy/STATUS.md](docs/legacy/STATUS.md) - engineering state, every env
   var, the full roadmap.
 - [BITSWARM_SPEC.md](BITSWARM_SPEC.md) - the v2 design spec.
 
@@ -65,11 +65,11 @@ This README is the quick-start and the multi-LLM cheat sheet.
 Three roles, three entry points:
 
 ```bash
-# Miner: earn by completing subtasks (see docs/MINING.md)
+# Miner: earn by completing subtasks (see docs/legacy/MINING.md)
 python -m neurons.miner --netuid <N> --subtensor.network test \
   --wallet.name miner --wallet.hotkey default --axon.port 8091
 
-# Validator: orchestrate, verify, set weights (see docs/VALIDATING.md)
+# Validator: orchestrate, verify, set weights (see docs/legacy/VALIDATING.md)
 export BITSWARM_SANDBOX=docker BITSWARM_API_KEYS=key1
 python -m neurons.validator --netuid <N> --subtensor.network test \
   --wallet.name validator --wallet.hotkey default \
@@ -243,8 +243,8 @@ neurons/               Bittensor entry points (miner.py, validator.py)
 docker/                Dockerfile.miner + Dockerfile.validator
 demo/                  in-process pipeline runner + specs
 tests/                 342 tests
-docs/STATUS.md         full status, architecture, roadmap
-docs/TESTNET.md        testnet runbook
+docs/legacy/STATUS.md         full status, architecture, roadmap
+docs/legacy/TESTNET.md        testnet runbook
 ```
 
 
@@ -280,4 +280,4 @@ vitest/jest, and mvn/gradle (JUnit XML), and suite-level comparison
 elsewhere. The live diff-mode run so far is Python (pallets/click);
 a non-Python diff run is on the roadmap.
 
-Roadmap and known limitations: [docs/STATUS.md](docs/STATUS.md).
+Roadmap and known limitations: [docs/legacy/STATUS.md](docs/legacy/STATUS.md).

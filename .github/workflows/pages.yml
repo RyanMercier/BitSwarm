@@ -1,0 +1,44 @@
+# Publishes docs/evidence as a static site so the pilot dashboards are
+# browsable without cloning. Manual trigger only: enable GitHub Pages with
+# "GitHub Actions" as the source in the repository settings, then run it.
+name: Publish evidence
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -r docs/evidence/pilot docs/evidence/followup site/
+          cat > site/index.html <<'EOF'
+          <!doctype html><html lang="en"><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>BitSwarm evidence</title>
+          <style>body{font:16px/1.6 system-ui;max-width:720px;margin:50px auto;padding:20px;color:#17263a}a{color:#125cb0}</style>
+          <h1>BitSwarm evidence</h1>
+          <p>Retained runs from the solo-versus-reviewed pilot and the strengthened-contract follow-up. Every row links to the action trace, the verification result, and the saved patch.</p>
+          <ul>
+            <li><a href="pilot/index.html">Original pilot (contract v1)</a></li>
+            <li><a href="followup/index.html">Strengthened-contract follow-up (v2, retry-delay only)</a></li>
+          </ul>
+          <p><a href="https://github.com/RyanMercier/BitSwarm">Repository and case study</a></p>
+          </html>
+          EOF
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

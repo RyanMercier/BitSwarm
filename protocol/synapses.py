@@ -43,7 +43,7 @@ class TaskSynapse(_Base):
     response fields are filled by the miner's forward handler.
     ``repo_bundle`` is a base64 git bundle and can be large; axon and
     dendrite body-size limits must be raised accordingly (see
-    docs/TESTNET.md).
+    docs/legacy/TESTNET.md).
     """
 
     # --- request (validator fills) ---
