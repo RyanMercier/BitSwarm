@@ -32,6 +32,12 @@ inputs:
   gate-timeout:
     description: Seconds allowed for each test gate (1 to 600).
     default: '300'
+  pids-limit:
+    description: Maximum processes plus threads inside each test container (16 to 4096).
+    default: '64'
+  memory-mb:
+    description: Memory limit for each test container, in megabytes.
+    default: '512'
   max-repo-files:
     description: Maximum tracked files in the repository snapshot.
     default: '3000'
@@ -107,6 +113,8 @@ runs:
         INPUT_GATE_TIMEOUT: ${{ inputs.gate-timeout }}
         INPUT_MAX_REPO_FILES: ${{ inputs.max-repo-files }}
         INPUT_MAX_REPO_MB: ${{ inputs.max-repo-mb }}
+        INPUT_PIDS_LIMIT: ${{ inputs.pids-limit }}
+        INPUT_MEMORY_MB: ${{ inputs.memory-mb }}
         INPUT_FAIL_ON_INCONCLUSIVE: ${{ inputs.fail-on-inconclusive }}
         INPUT_PROTECT_TESTS: ${{ inputs.protect-tests }}
         INPUT_OUT: ${{ inputs.out }}
@@ -122,6 +130,8 @@ runs:
           --gate-timeout "$INPUT_GATE_TIMEOUT" \
           --max-repo-files "$INPUT_MAX_REPO_FILES" \
           --max-repo-mb "$INPUT_MAX_REPO_MB" \
+          --pids-limit "$INPUT_PIDS_LIMIT" \
+          --memory-mb "$INPUT_MEMORY_MB" \
           --fail-on-inconclusive "$INPUT_FAIL_ON_INCONCLUSIVE" \
           --protect-tests "$INPUT_PROTECT_TESTS" \
           --out "$GITHUB_WORKSPACE/$INPUT_OUT"

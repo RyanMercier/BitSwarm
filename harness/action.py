@@ -27,6 +27,7 @@ from pathlib import Path
 
 from harness.report import report
 from harness.runtime import Runtime, create_run, write_json
+from harness.verify import DEFAULT_MEMORY_MB, DEFAULT_PIDS_LIMIT
 from harness.workspace import PolicyError, apply_patch, digest, safe_path, tree_hash
 
 
@@ -175,6 +176,23 @@ def _count(tests: dict) -> str:
     return ", ".join(f"{n} {s}" for s, n in sorted(counts.items())) or "none"
 
 
+def _usage(resources: dict) -> str:
+    """Peak processes and memory against their limits, when the sandbox reported them."""
+    if not resources:
+        return "n/a"
+    parts = []
+    if "pids.peak" in resources:
+        parts.append(f"{resources['pids.peak']}/{resources.get('pids.max', '?')} pids")
+    try:
+        peak = int(resources["memory.peak"]) // 1_000_000
+        limit = str(resources.get("memory.max", "?"))
+        limit = str(int(limit) // 1_000_000) if limit.isdigit() else limit
+        parts.append(f"{peak}/{limit} MB")
+    except (KeyError, ValueError):
+        pass
+    return ", ".join(parts) or "n/a"
+
+
 def summary_markdown(result: dict) -> str:
     outcome = result.get("outcome", "INCONCLUSIVE")
     lines = [f"## BitSwarm verify: {outcome}", ""]
@@ -197,12 +215,15 @@ def summary_markdown(result: dict) -> str:
         lines.append("")
     gates = result.get("gates")
     if gates:
-        lines += ["| Gate | Outcome | Tests | Reason |", "|---|---|---|---|"]
+        lines += [
+            "| Gate | Outcome | Tests | Sandbox peak | Reason |",
+            "|---|---|---|---|---|",
+        ]
         for name in ("baseline", "regression", "acceptance"):
             gate = gates.get(name, {})
             lines.append(
                 f"| {name} | {gate.get('outcome', '')} | {_count(gate.get('tests', {}))} "
-                f"| {gate.get('reason', '')} |"
+                f"| {_usage(gate.get('resources', {}))} | {gate.get('reason', '')} |"
             )
         lines.append("")
         failing = sorted(
@@ -250,6 +271,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-repo-files", type=int, default=3000)
     parser.add_argument("--max-repo-mb", type=int, default=30)
     parser.add_argument("--fail-on-inconclusive", default="true")
+    parser.add_argument("--pids-limit", type=int, default=DEFAULT_PIDS_LIMIT)
+    parser.add_argument("--memory-mb", type=int, default=DEFAULT_MEMORY_MB)
     parser.add_argument(
         "--protect-tests",
         default="true",
@@ -262,6 +285,8 @@ def main(argv: list[str] | None = None) -> int:
         "gate_timeout": args.gate_timeout,
         "max_repo_files": args.max_repo_files,
         "max_repo_mb": args.max_repo_mb,
+        "pids_limit": args.pids_limit,
+        "memory_mb": args.memory_mb,
     }
     result = verify_pull_request(
         args.repo,

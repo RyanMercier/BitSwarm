@@ -23,9 +23,70 @@ class Gate:
     tests: dict[str, str] = field(default_factory=dict)
     reason: str = ""
     output: str = ""
+    resources: dict = field(default_factory=dict)
 
 
 MUTATION_EXIT = 86
+DEFAULT_PIDS_LIMIT = 64
+DEFAULT_MEMORY_MB = 512
+RESOURCES_MARKER = "\nBITSWARM_RESOURCES "
+
+
+def parse_resources(full_output: str) -> dict:
+    """Read the cgroup snapshot the container worker prints after pytest."""
+    import json
+
+    if full_output.count(RESOURCES_MARKER) != 1:
+        return {}
+    line = full_output.split(RESOURCES_MARKER, 1)[1].split("\n", 1)[0]
+    try:
+        data = json.loads(line)
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def resource_limit_hit(resources: dict) -> str:
+    """Describe any sandbox limit the run ran into, or return ''."""
+
+    def count(events, key):
+        try:
+            return int((events or {}).get(key, 0))
+        except (TypeError, ValueError):
+            return 0
+
+    reasons = []
+    pids_hits = count(resources.get("pids.events"), "max")
+    if pids_hits:
+        reasons.append(
+            f"process limit refused {pids_hits} fork or thread attempts "
+            f"(peak {resources.get('pids.peak', '?')} of {resources.get('pids.max', '?')})"
+        )
+    for key in ("oom", "oom_kill"):
+        hits = count(resources.get("memory.events"), key)
+        if hits:
+            reasons.append(
+                f"memory {key} {hits} "
+                f"(peak {resources.get('memory.peak', '?')} of {resources.get('memory.max', '?')})"
+            )
+    return "; ".join(reasons)
+
+
+def with_resources(gate: Gate, resources: dict) -> Gate:
+    """Attach the snapshot and refuse to blame code for an exhausted sandbox.
+
+    A test that fails because the container ran out of processes or memory is
+    evidence about the sandbox, not about the patch. A run that passed
+    everything despite a refused fork keeps its PASS: every assertion ran.
+    """
+    gate.resources = resources
+    hit = resource_limit_hit(resources)
+    if hit and gate.outcome != "PASS":
+        gate.outcome = "INCONCLUSIVE"
+        gate.reason = f"sandbox resource limit reached: {hit}" + (
+            f"; {gate.reason}" if gate.reason else ""
+        )
+    return gate
 
 
 def parse_report(path: Path, returncode: int, output: str) -> Gate:
@@ -105,12 +166,24 @@ def run_process(
 
 
 class Verifier:
-    def __init__(self, mode="docker", image="bitswarm-harness:local", timeout=60):
+    def __init__(
+        self,
+        mode="docker",
+        image="bitswarm-harness:local",
+        timeout=60,
+        pids_limit=DEFAULT_PIDS_LIMIT,
+        memory_mb=DEFAULT_MEMORY_MB,
+    ):
         if mode not in ("docker", "unsafe-local"):
             raise ValueError("mode must be docker or unsafe-local")
         if not 1 <= timeout <= 600:
             raise ValueError("timeout must be 1..600 seconds")
+        if type(pids_limit) is not int or not 16 <= pids_limit <= 4096:
+            raise ValueError("pids_limit must be 16..4096")
+        if type(memory_mb) is not int or not 64 <= memory_mb <= 16384:
+            raise ValueError("memory_mb must be 64..16384")
         self.mode, self.image, self.timeout = mode, image, timeout
+        self.pids_limit, self.memory_mb = pids_limit, memory_mb
         self.docker_env = dict(os.environ)
 
     def environment(self) -> dict:
@@ -144,6 +217,8 @@ class Verifier:
             "mode": self.mode,
             "verifier_hash": code_hash,
             "image": result.stdout.strip(),
+            "pids_limit": self.pids_limit,
+            "memory_mb": self.memory_mb,
         }
 
     def gate(self, source: Path, contract: Path | None = None) -> Gate:
@@ -198,8 +273,8 @@ class Verifier:
                     "--cap-drop=ALL",
                     "--security-opt=no-new-privileges",
                     "--cpus=1",
-                    "--memory=512m",
-                    "--pids-limit=64",
+                    f"--memory={self.memory_mb}m",
+                    f"--pids-limit={self.pids_limit}",
                     "--user=65534:65534",
                     "--tmpfs",
                     "/tmp:rw,nosuid,nodev,size=128m",
@@ -239,7 +314,9 @@ class Verifier:
                     start, end = "\nBITSWARM_JUNIT_BEGIN\n", "\nBITSWARM_JUNIT_END"
                     if full_output.count(start) == 1 and full_output.count(end) == 1:
                         report.write_text(full_output.split(start)[1].split(end)[0])
-                elif tree_hash(work) != before:
+                    resources = parse_resources(full_output.split(start, 1)[0])
+                    return with_resources(parse_report(report, code, output), resources)
+                if tree_hash(work) != before:
                     # Same classification as the container worker: a run that
                     # rewrote its own source produced an untrustworthy report.
                     return parse_report(report, MUTATION_EXIT, output)

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from harness.models import model_from
 from harness.store import Store
-from harness.verify import Verifier
+from harness.verify import DEFAULT_MEMORY_MB, DEFAULT_PIDS_LIMIT, Verifier
 from harness.workspace import (
     PolicyError,
     apply_patch,
@@ -36,6 +36,23 @@ and then submits findings; it cannot patch. Acceptance tests are frozen and with
 Tests available via the test action are development tests, not final acceptance.
 Use read offset to page long files. Evidence must be grounded in actual code/tool results.
 """
+
+
+def verifier_for(cfg: dict, environment: dict | None = None, timeout: int | None = None) -> Verifier:
+    """Turn run config into a Verifier in one place.
+
+    Development tests, the final verdict, and replay must all run under the
+    same image and sandbox limits, or a replay could disagree for reasons that
+    have nothing to do with the patch.
+    """
+    image = (environment or {}).get("image", cfg.get("image", "bitswarm-harness:local"))
+    return Verifier(
+        cfg.get("sandbox", "docker"),
+        image,
+        timeout=cfg.get("gate_timeout", 60) if timeout is None else timeout,
+        pids_limit=cfg.get("pids_limit", DEFAULT_PIDS_LIMIT),
+        memory_mb=cfg.get("memory_mb", DEFAULT_MEMORY_MB),
+    )
 
 
 def write_json(path: Path, data):
@@ -74,9 +91,9 @@ def create_run(
     for role in ("implementer", "reviewer"):
         if role in config:
             model_from(config[role])
-    verifier = Verifier(
-        config.get("sandbox", "docker"), config.get("image", "bitswarm-harness:local")
-    )
+    config.setdefault("pids_limit", DEFAULT_PIDS_LIMIT)
+    config.setdefault("memory_mb", DEFAULT_MEMORY_MB)
+    verifier = verifier_for(config)  # also validates the sandbox limits
     environment = (
         verifier.environment()
     )  # fail before model spend when sandbox is absent
@@ -146,10 +163,7 @@ class Runtime:
 
     def environment_valid(self, state: dict) -> bool:
         cfg = state["config"]
-        verifier = Verifier(
-            cfg.get("sandbox", "docker"),
-            state["environment"].get("image", "bitswarm-harness:local"),
-        )
+        verifier = verifier_for(cfg, state["environment"])
         try:
             current = verifier.environment()
         except (OSError, subprocess.SubprocessError):
@@ -249,11 +263,9 @@ class Runtime:
         if kind == "test":
             cfg = state["config"]
             return asdict(
-                Verifier(
-                    cfg.get("sandbox", "docker"),
-                    state["environment"].get(
-                        "image", cfg.get("image", "bitswarm-harness:local")
-                    ),
+                verifier_for(
+                    cfg,
+                    state["environment"],
                     timeout=min(cfg.get("gate_timeout", 60), cfg["call_timeout"]),
                 ).gate(root)
             )
@@ -438,13 +450,7 @@ class Runtime:
         state["pending"] = {"kind": "verification"}
         self.store.save(state, "verification.started")
         cfg = state["config"]
-        result = Verifier(
-            cfg.get("sandbox", "docker"),
-            state["environment"].get(
-                "image", cfg.get("image", "bitswarm-harness:local")
-            ),
-            timeout=cfg.get("gate_timeout", 60),
-        ).verify(
+        result = verifier_for(cfg, state["environment"]).verify(
             self.root / "baseline", self.root / "candidate", self.root / "contract"
         )
         patch = export_patch(self.root / "candidate")
@@ -477,11 +483,7 @@ def replay(directory: Path) -> dict:
             runtime.root / "candidate"
         ):
             raise PolicyError("exported patch differs from verified patch")
-        verifier = Verifier(
-            state["config"].get("sandbox", "docker"),
-            state["environment"].get("image", "bitswarm-harness:local"),
-            timeout=state["config"].get("gate_timeout", 60),
-        )
+        verifier = verifier_for(state["config"], state["environment"])
         # A changed verifier or image does not make a replay worthless; it
         # makes it a fresh verification under a different environment. Record
         # the mismatch in the result instead of refusing to measure.

@@ -606,3 +606,70 @@ def test_docker_large_report_and_consistent_client_environment(tmp_path, monkeyp
     assert len(gate.tests) == 500
     assert len(gate.output) == 16000
     assert calls == ["image", "run", "rm"]
+
+
+def test_resource_snapshot_is_parsed_from_worker_output():
+    from harness.verify import parse_resources
+
+    out = 'noise\nBITSWARM_RESOURCES {"pids.max": "64", "pids.events": {"max": "3"}}\nmore'
+    assert parse_resources(out) == {"pids.max": "64", "pids.events": {"max": "3"}}
+    assert parse_resources("no marker here") == {}
+    assert parse_resources("\nBITSWARM_RESOURCES not json\n") == {}
+
+
+def test_exhausted_sandbox_is_inconclusive_not_a_regression():
+    from harness.verify import with_resources
+
+    hit = {"pids.max": "64", "pids.peak": "64", "pids.events": {"max": "2"}}
+    gate = with_resources(Gate("FAIL", {"t::bundle": "failed"}), hit)
+    assert gate.outcome == "INCONCLUSIVE"
+    assert "process limit refused 2" in gate.reason and "peak 64 of 64" in gate.reason
+    assert gate.tests == {"t::bundle": "failed"}  # per-test evidence is kept
+    oom = with_resources(Gate("FAIL"), {"memory.events": {"oom_kill": "1"}})
+    assert oom.outcome == "INCONCLUSIVE" and "oom_kill 1" in oom.reason
+
+
+def test_passing_run_keeps_pass_and_quiet_counters_change_nothing():
+    from harness.verify import with_resources
+
+    hit = {"pids.events": {"max": "1"}}
+    assert with_resources(Gate("PASS", {"a": "passed"}), hit).outcome == "PASS"
+    quiet = {"pids.events": {"max": "0"}, "memory.events": {"oom": "0", "max": "9"}}
+    failed = with_resources(Gate("FAIL", {"a": "failed"}), quiet)
+    assert failed.outcome == "FAIL" and failed.resources == quiet
+
+
+def test_sandbox_limits_are_validated_and_reach_the_container(tmp_path, monkeypatch):
+    import subprocess
+
+    import harness.verify as module
+
+    with pytest.raises(ValueError, match="pids_limit"):
+        Verifier("docker", pids_limit=8)
+    with pytest.raises(ValueError, match="memory_mb"):
+        Verifier("docker", memory_mb=10)
+    source = tmp_path / "source"
+    source.mkdir()
+    verifier = Verifier("docker", pids_limit=256, memory_mb=1024)
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout="sha256:test\n")
+
+    def fake_process(cmd, cwd, env, timeout, log_path):
+        seen["cmd"] = cmd
+        output = (
+            '\nBITSWARM_RESOURCES {"pids.max": "256", "pids.peak": "300",'
+            ' "pids.events": {"max": "4"}}'
+            '\nBITSWARM_JUNIT_BEGIN\n<testsuite><testcase classname="t" name="x">'
+            "<failure/></testcase></testsuite>\nBITSWARM_JUNIT_END\n"
+        )
+        log_path.write_text(output)
+        return 1, output
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    monkeypatch.setattr(module, "run_process", fake_process)
+    assert verifier.environment()["pids_limit"] == 256
+    gate = verifier.gate(source)
+    assert "--pids-limit=256" in seen["cmd"] and "--memory=1024m" in seen["cmd"]
+    assert gate.outcome == "INCONCLUSIVE" and gate.resources["pids.peak"] == "300"

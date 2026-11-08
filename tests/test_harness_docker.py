@@ -95,3 +95,25 @@ def test_assertion_failure_is_fail(tmp_path):
     gate = Verifier().gate(root)
     assert gate.outcome == "FAIL"
     assert list(gate.tests.values()) == ["failed"]
+
+
+def test_thread_exhaustion_is_inconclusive_with_counters(tmp_path):
+    root = source(
+        tmp_path,
+        """import threading
+import time
+
+def test_many_threads():
+    stop = threading.Event()
+    threads = [threading.Thread(target=stop.wait) for _ in range(80)]
+    try:
+        for thread in threads:
+            thread.start()
+    finally:
+        stop.set()
+""",
+    )
+    gate = Verifier(pids_limit=32).gate(root)
+    assert gate.outcome == "INCONCLUSIVE", gate
+    assert "process limit refused" in gate.reason
+    assert int(gate.resources["pids.events"]["max"]) > 0
