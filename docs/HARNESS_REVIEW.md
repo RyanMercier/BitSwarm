@@ -102,3 +102,30 @@ with a test:
 With those fixes the self-verification passes (341 baseline, 403 regression,
 8 acceptance) and replays with `environment_match: true`. The harness suite has
 45 tests, the Action suite 10, and the regression suite 7.
+
+## Fourth pass: the first run on a GitHub runner
+
+The Action's first execution in Docker on a GitHub runner failed the regression
+gate on two git-bundle tests that are unchanged from the base commit and pass
+there. Their output was `fatal: unable to create thread: Resource temporarily
+unavailable`. The container's `--pids-limit=64` had refused a thread, and the
+verifier reported the refusal as previously passing tests that no longer pass.
+
+1. **An exhausted sandbox was reported as a regression in the patch.** The
+   container worker now snapshots its own cgroup counters after pytest:
+   peak and current pids, limit refusals, peak memory, OOM events, visible
+   CPUs, and `RLIMIT_NPROC`. Every gate carries the snapshot, the job summary
+   shows peak use against each limit, and a non-passing gate that hit a limit
+   is INCONCLUSIVE with the counters in its reason. The limits are
+   configurable and recorded so replay uses the same ones.
+2. **The worker was PID 1 and never reaped.** The next run's counters showed
+   47 tasks alive in the baseline container and 61 in the candidate container
+   after pytest had exited. Two local probes had ruled out thread leaks in the
+   test process and orphans on the host; the difference was the container's
+   PID 1. Gate containers now run with `--init`. With the limit unchanged at
+   64, peak usage fell to 7 and the verdict passed.
+
+Ruled out along the way, with measurements rather than assumptions: the tests
+themselves (identical on both commits), CPU-scaled git threads (4 visible
+CPUs), and memory (187 of 536 MB). The harness suite has 49 tests, the Action
+suite 10, the opt-in Docker suite 7, and the regression suite 7.

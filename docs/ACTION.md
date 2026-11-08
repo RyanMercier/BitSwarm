@@ -69,6 +69,7 @@ job.
 | `dockerfile` | action's stdlib image | Dockerfile relative to the repository |
 | `gate-timeout` | `300` | Seconds per gate, up to 600 |
 | `max-repo-files`, `max-repo-mb` | `3000`, `30` | Snapshot limits |
+| `pids-limit`, `memory-mb` | `64`, `512` | Processes plus threads, and memory, per test container |
 | `fail-on-inconclusive` | `true` | Fail the step on INCONCLUSIVE |
 | `protect-tests` | `true` | Refuse changes to tests and configuration. Turn off for repositories whose human pull requests edit tests; the contract stays held out |
 | `comment` | `false` | Post the summary as a pull request comment (needs `pull-requests: write`) |
@@ -79,8 +80,11 @@ Outputs: `outcome`, `patch-hash`, `run`.
 ## What you get back
 
 - A job summary with the verdict, base and head, the contract ref, the patch
-  hash, the image ID, per-gate test counts, and the acceptance tests that did
-  not pass.
+  hash, the image ID, per-gate test counts, each gate's peak processes and
+  memory against its limits, and the acceptance tests that did not pass.
+- A gate that fails after its container hit the process or memory limit is
+  INCONCLUSIVE, with the cgroup counters in its reason. An exhausted sandbox is
+  never reported as a regression in the patch.
 - An artifact containing the run directory. Download it and run
   `bitswarm replay <dir>` to rebuild the candidate from the recorded baseline
   and patch and rerun the gates. The result says whether the verifier and image

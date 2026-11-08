@@ -72,11 +72,30 @@ records both environments. See `docs/HARNESS_REVIEW.md` for the fixes.
 The end-to-end run used base `c9fb5db` (the last commit before the harness),
 head `64d4d0b`, the contract read from head (bootstrap mode), and
 `--sandbox unsafe-local` because this workstation's Docker socket is not
-available to the normal user. The Docker path of the Action, the composite
-steps on a GitHub runner, and `docker/Dockerfile.self` have not been executed
-here; the first pull request will exercise them.
+available to the normal user. The Docker path on a GitHub runner is recorded
+in the next section.
 
 That first run also changed two behaviours. Newly added tests that skip are no
 longer counted as regressions (six opt-in Docker tests skip on the candidate),
 and the protected-path policy became the `protect-tests` input, because this
 repository's own pull requests edit tests and workflows.
+
+## The Action on a GitHub runner
+
+Pull request #1 ran the Action in Docker on `ubuntu-latest` (4 visible CPUs).
+Each row is one push to the pull request branch.
+
+| Run | Change under test | Verdict | Regression gate peak pids | Limit refusals |
+|---|---|---|---:|---:|
+| 1 | First runner execution | FAIL: two git-bundle tests reported as lost | not measured | not measured |
+| 2 | Containers report cgroup counters; limit hits are INCONCLUSIVE | INCONCLUSIVE | 64 of 64 | 84 |
+| 3 | Gate containers run with `--init`; limit unchanged | PASS | 7 of 64 | 0 |
+
+Run 1's failing tests printed `fatal: unable to create thread: Resource
+temporarily unavailable`. Run 2 showed 47 tasks still alive in the baseline
+container and 61 in the candidate container after pytest had exited; the
+baseline gate peaked at 51 of 64. Run 3 peaked at 7 on every gate with the
+same 64 limit, so the exhaustion was orphaned processes that the worker, as
+PID 1, never reaped. Memory peaked at 187 of 536 MB throughout. The harness CI
+job ran the seven opt-in Docker tests against the runner's daemon, including
+one that starts 80 threads under a 32-process limit and expects INCONCLUSIVE.

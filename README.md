@@ -117,11 +117,11 @@ Version 0. What has been executed and where:
 
 | Piece | Verified |
 |---|---|
-| Harness runtime, verifier, Action module | 45 + 10 unit tests on Linux/WSL, run on every pull request by CI |
+| Harness runtime, verifier, Action module | 49 + 10 unit tests on Linux/WSL, run on every pull request by CI |
 | Validator regression fixes | 7 tests, run in CI with the provider SDKs installed |
-| Container isolation | 6 opt-in Docker tests, run in CI and locally on a Snap Docker daemon |
+| Container isolation | 7 opt-in Docker tests, including real thread exhaustion, run in CI on a GitHub runner |
 | Live model pilot | 8 retained runs of Fable 5.1 through the Claude CLI, replayed |
-| GitHub Action end to end | On this repository with the host sandbox; the Docker path on a GitHub runner runs on the first pull request |
+| GitHub Action end to end | On this repository's own pull request, in Docker on a GitHub runner: PASS, 341 baseline, 407 regression, 8 acceptance |
 
 Not done: a real-repository task corpus, a second model provider, external-process oracles, and any statistical claim. The [validation record](docs/VALIDATION.md) lists every check with its observed result, and the [review log](docs/HARNESS_REVIEW.md) lists every defect found in the harness so far and how it was fixed.
 

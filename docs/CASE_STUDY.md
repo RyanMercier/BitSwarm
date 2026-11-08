@@ -135,7 +135,7 @@ tests.
 Six container integration tests exercise nonroot execution, network denial,
 read-only mounts, timeout handling, candidate mutation, collection errors,
 assertion failures, and a report containing 500 test records. The harness and
-Action suites together hold 55 unit tests.
+Action suites together hold 59 unit tests.
 
 ## What I can claim from the pilot
 
@@ -183,7 +183,16 @@ tests and workflows, which every pull request to a tooling repository does.
 The policy that protects against an agent weakening its own tests is wrong for
 a human maintainer. It became a switch, on by default. The same run counted six
 newly added opt-in tests that skip as regressions, and replay could not
-reproduce a verdict made with the switch off. Each fix has a test. This is the
+reproduce a verdict made with the switch off. Each fix has a test. The first run on a real GitHub runner taught the hardest lesson. The verdict
+failed two git tests that pass on the base commit, because git could not
+start a thread: the container's 64-process limit had been reached, and the
+verifier reported an exhausted sandbox as a regression in the patch. I made
+the container report its own process and memory counters with every verdict
+and classify a limit hit as inconclusive. The next run proved that
+classification on the real exhaustion, and its counters showed tasks still
+alive after pytest had exited. The worker ran as PID 1 and never reaped
+orphaned processes. With a reaping init in the container and the limit left
+at 64, peak usage fell from 64 to 7 and the verdict passed. This is the
 path to monetization I did not have in the meeting: a free Action first, then,
 if anyone uses it, hosted verification with managed runners, held-out test
 storage, and signed verdicts.
