@@ -182,25 +182,33 @@ def collect_failing_nodeids(repo_path: str, test_files: list,
     if not test_files:
         return set(), "(no tests to run)"
     env = isolated_test_env(repo_path)
+    # A path inside the mounted repo is visible to both host and Docker runners.
+    import uuid
+    report = os.path.join(os.path.abspath(repo_path), f".bitswarm-results-{uuid.uuid4().hex}.xml")
     args = [sys.executable, "-m", "pytest", *test_files,
-            "--tb=no", "-q", "--no-header", "-rN"]
+            "--tb=no", "-q", "--no-header", f"--junitxml={report}"]
     try:
         result = sandboxed_run(args, repo_path, env=env, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return set(), "[TIMEOUT]"
+        return {SUITE_SENTINEL}, "[TIMEOUT]"
     except Exception as exc:
-        return set(), f"[ERROR: {exc}]"
+        return {SUITE_SENTINEL}, f"[ERROR: {exc}]"
     output = (result.stdout or "") + (
         ("\n[stderr]\n" + result.stderr) if result.stderr else ""
     )
-    failing = set()
-    for line in output.splitlines():
-        line = line.strip()
-        if line.startswith("FAILED "):
-            failing.add(line[len("FAILED "):].split(" - ", 1)[0].strip())
-        elif line.startswith("ERROR "):
-            failing.add(line[len("ERROR "):].split(" - ", 1)[0].strip())
-    return failing, output
+    from pathlib import Path
+    from harness.verify import parse_report
+    try:
+        gate = parse_report(Path(report), result.returncode, output)
+        if gate.outcome == "INCONCLUSIVE":
+            return {SUITE_SENTINEL}, output
+        # Per-test failures and errors are node ids the regression gate can
+        # subtract against the baseline. Skips are not regressions.
+        return {name for name, status in gate.tests.items()
+                if status in ("failed", "error")}, output
+    finally:
+        if os.path.exists(report):
+            os.unlink(report)
 
 
 @contextlib.contextmanager
@@ -409,6 +417,14 @@ def discover_existing_tests(repo_path: str, exclude: list) -> list:
     exclude_abs = set(
         os.path.normpath(os.path.join(repo_path, p)) for p in exclude
     )
+    # The baseline's tests are tracked files, not scratch clones or generated
+    # output trees that happen to live underneath the working directory.
+    tracked = subprocess.run(["git", "ls-files", "-z"], cwd=repo_path,
+                             capture_output=True, timeout=30)
+    if tracked.returncode == 0:
+        return sorted(p for p in tracked.stdout.decode().split("\0")
+                      if os.path.basename(p).startswith("test_") and p.endswith(".py")
+                      and os.path.normpath(os.path.join(repo_path, p)) not in exclude_abs)
     found = []
     for root, dirs, files in os.walk(repo_path):
         dirs[:] = [d for d in dirs if d not in (
@@ -478,6 +494,14 @@ def apply_patches_in_order(decomp: dict, miner_results: dict,
         patch = getattr(result, "patch", "") if result else ""
         if not patch:
             print(f"  [merge] {sid}: empty patch, skipping")
+            applied[sid] = False
+            continue
+        from harness.workspace import normalize_diff_prefixes
+        from validator.patch_scope import unauthorized_paths
+        patch = normalize_diff_prefixes(patch)
+        unauthorized = unauthorized_paths(patch, st.get("modify_files", st.get("allowed_files", [])))
+        if unauthorized:
+            print(f"  [merge] {sid}: scope violation: {unauthorized}")
             applied[sid] = False
             continue
         patch_file = os.path.abspath(os.path.join(patch_dir, f"{sid}.diff"))
@@ -623,8 +647,16 @@ async def merge_and_test_diff(decomposition: dict, miner_results: dict,
                 print(f"      {line}")
             if patch_applied.get(sid):
                 passed = await _try_repair_subtask(st, merge_repo, output)
+                # Repair's local check is advisory; hidden tests remain mandatory.
+                passed, output = run_gate_tests(merge_repo, new_tests)
         additive_results[sid] = passed
         print(f"    {sid}: {'PASS' if passed else 'FAIL'}")
+
+    # Later repairs can affect earlier subtasks. Score only the final tree.
+    for st in subtasks:
+        sid = st["subtask_id"]
+        additive_results[sid], _ = run_gate_tests(
+            merge_repo, (st.get("new_test_files", []) or []) + holdback_paths)
 
     # Regression gate: only NEWLY failing tests count.
     post_failing, _ = collect_failing_tests(
@@ -639,7 +671,9 @@ async def merge_and_test_diff(decomposition: dict, miner_results: dict,
     if newly_failing:
         for nid in sorted(newly_failing)[:10]:
             print(f"    NEW REGRESSION: {nid}")
-    regression_passed = len(newly_failing) == 0
+    regression_passed = (len(newly_failing) == 0
+                         and SUITE_SENTINEL not in pre_failing
+                         and SUITE_SENTINEL not in post_failing)
     regression_mult = 1.0 if regression_passed else 0.5
 
     # Scoring with the empty-patch honesty override.
@@ -651,7 +685,7 @@ async def merge_and_test_diff(decomposition: dict, miner_results: dict,
         add_ok = additive_results.get(sid, False)
         result = miner_results.get(sid)
         patch_len = len(getattr(result, "patch", "") or "") if result else 0
-        if add_ok and patch_len == 0:
+        if add_ok and (patch_len == 0 or not patch_applied.get(sid, False)):
             add_ok = False  # empty patch shipped nothing; gate result is a false positive
         score = w * (1.0 if add_ok else 0.0) * regression_mult
         scores[sid] = score

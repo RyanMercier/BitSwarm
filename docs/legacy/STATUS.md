@@ -37,7 +37,7 @@ integration tests cover the contracts.
   signal is the same computation as the validator's scoring gate
   (patch applied to pristine baseline, tests run in an isolated
   environment). Closed a live false-positive class found during
-  diff-mode bring-up; see docs/WHY_BITSWARM.md for the case study.
+  diff-mode bring-up; see docs/legacy/WHY_BITSWARM.md for the case study.
 
 **What's wired but not live-tested:**
 - Drop-and-replace recovery (replace failing patches by re-mining
@@ -83,7 +83,7 @@ integration tests cover the contracts.
   (miner/runtime.py) shared by the HTTP server and the axon, and the
   two neuron entry points (neurons/miner.py, neurons/validator.py).
   30 unit tests cover the chain layer without needing a live chain.
-  The runbook to register and run on testnet is docs/TESTNET.md. What
+  The runbook to register and run on testnet is docs/legacy/TESTNET.md. What
   remains is operator action (wallets, faucet, registration) plus the
   first live weight-set, none of which can be unit-tested.
 - Production/product layer. A docker sandbox for gate execution
@@ -98,7 +98,7 @@ integration tests cover the contracts.
   miner-side wall-clock ceiling per assignment
   (BITSWARM_MAX_TASK_SECONDS), and bundle size limits in both
   directions (BITSWARM_MAX_BUNDLE_MB). Operator guides:
-  docs/MINING.md and docs/VALIDATING.md.
+  docs/legacy/MINING.md and docs/legacy/VALIDATING.md.
 
 **What's not built yet:**
 - Native Gemini backend (function-declaration shape is different
@@ -111,7 +111,7 @@ integration tests cover the contracts.
   allowlisted env). The remaining gap is the claude_code backend,
   where the CLI itself is the agent and needs network for the
   Anthropic API; its confinement is deployment-level
-  (docker/Dockerfile.miner or a VM, per docs/MINING.md) rather than
+  (docker/Dockerfile.miner or a VM, per docs/legacy/MINING.md) rather than
   code-enforced.
 - Cryptographic verification (anti-collusion mining).
 - Test-first decomposition's live validation against a real run

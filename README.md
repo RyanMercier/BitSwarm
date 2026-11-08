@@ -1,269 +1,153 @@
 # BitSwarm
 
-The verification layer for AI-generated code. A Bittensor subnet that
-turns natural-language feature specs into verified, merged code: a
-coordinator decomposes the spec into executable contracts; independent
-miners implement the pieces in isolation; a hermetic dual-gate harness
-verifies that the components compose without breaking what was already
-there; miners are paid only for verified work.
+**A coding-agent harness that turns model actions into scoped patches, verifies them against frozen tests in a sandbox, and records enough evidence that anyone can rerun the verdict.**
 
-## Live results
+Python 3.11+ | Linux/WSL | Docker | SQLite | Git | Claude CLI and OpenAI-compatible adapters
 
-- **All seven supported languages at 1.000 / 1.000** on a single
-  language-agnostic Wordle spec (Python, TypeScript, Java, C#, C,
-  C++, Rust) across two overnight Docker runs, zero API spend on
-  the Claude Max subscription.
-- **Diff mode on pallets/click**, a real 45,000-line open-source
-  Python repo with 1,000+ existing tests: a verified 1.000 / 1.000
-  added a new EnumChoice parameter type from a four-sentence spec.
-  Two cooperating miners; zero new failures in the existing suite;
-  13 minutes wall time; $0 cost.
+[![CI](https://github.com/RyanMercier/BitSwarm/actions/workflows/harness.yml/badge.svg)](https://github.com/RyanMercier/BitSwarm/actions/workflows/harness.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## Why this beats a centralized orchestrator with subagents
+## The result that matters
 
-The miner's local success signal is byte-for-byte the same
-computation the validator runs at scoring time, which is the same
-computation any auditor's replay produces. No point in the trust
-chain asks anyone to take anyone's word. Read
-[docs/WHY_BITSWARM.md](docs/WHY_BITSWARM.md) for the case study (a
-live false-positive class we caught and closed during diff-mode
-bring-up).
+Six coding-agent runs passed every acceptance test. Then I audited the reviewer's repair on one of them and found it was wrong for inputs the tests never covered. Five extra probes failed four times on the solo patch and twice on the reviewed patch. Both had been "verified."
 
-## Docs
+That is the project in one paragraph: the interesting engineering is not getting an agent to pass tests. It is knowing what a passing test proves, keeping the evidence when it proves less than you hoped, and making the whole chain replayable. Read the [case study](docs/CASE_STUDY.md), the [post-hoc audit](docs/evidence/pilot/posthoc-audit.json), and the [follow-up under a stronger contract](docs/evidence/followup/README.md).
 
-- [docs/WHY_BITSWARM.md](docs/WHY_BITSWARM.md) - the verification
-  thesis, with the case study.
-- [docs/MINING.md](docs/MINING.md) - run a miner and earn: backends,
-  economics, host protection.
-- [docs/VALIDATING.md](docs/VALIDATING.md) - run a validator: the
-  sandbox, the user API, scoring knobs, operations.
-- [docs/TESTNET.md](docs/TESTNET.md) - step-by-step runbook to
-  register and run BitSwarm on the Bittensor test network.
-- [docs/STATUS.md](docs/STATUS.md) - engineering state, every env
-  var, the full roadmap.
-- [BITSWARM_SPEC.md](BITSWARM_SPEC.md) - the v2 design spec.
+## What it is for
 
-This README is the quick-start and the multi-LLM cheat sheet.
+- **Measuring whether a second agent is worth it.** Run the same task with a solo implementer and with an implementer plus an independent reviewer, under equal budgets, and get acceptance rate, model calls, latency, and cost per accepted task with failures kept in the denominator.
+- **Verifying a patch without a model.** `bitswarm verify` takes a repository commit, a patch, an allow list, and a directory of acceptance tests, and returns PASS, FAIL, or INCONCLUSIVE from a network-less container. The same gate ships as a GitHub Action for agent-written pull requests. This is the reusable slice: it does not care who or what wrote the patch.
+- **Studying harness design.** Scoped JSON tools instead of a shell, transactional state, fail-closed recovery, three-way verification outcomes, and hash-pinned replay, in about 2,000 lines with tests for each property.
 
+## Five-minute demo
 
-## Running on the network
-
-Three roles, three entry points:
+Requires Python 3.11+, Git, uv, and a local Docker daemon.
 
 ```bash
-# Miner: earn by completing subtasks (see docs/MINING.md)
-python -m neurons.miner --netuid <N> --subtensor.network test \
-  --wallet.name miner --wallet.hotkey default --axon.port 8091
-
-# Validator: orchestrate, verify, set weights (see docs/VALIDATING.md)
-export BITSWARM_SANDBOX=docker BITSWARM_API_KEYS=key1
-python -m neurons.validator --netuid <N> --subtensor.network test \
-  --wallet.name validator --wallet.hotkey default \
-  --inbox ./task_inbox --output ./validator_runs
-
-# User: submit specs to any validator's API, fetch the verified patch
-python -m validator.api --inbox ./task_inbox --output ./validator_runs --port 8100
-curl -X POST http://validator:8100/tasks -H "X-API-Key: key1" \
-  -H "Content-Type: application/json" \
-  -d '{"spec": "...", "mode": "diff", "repo_bundle": "<base64 git bundle>"}'
+uv sync --frozen
+docker build -f docker/Dockerfile.harness -t bitswarm-harness:local .
+uv run bitswarm demo --out out/demo --sandbox docker
+uv run bitswarm replay out/demo
 ```
 
-Gate tests on the validator run inside a network-less docker sandbox
-(`BITSWARM_SANDBOX`), so miner-supplied code never executes bare on
-the host.
+Open `out/demo/report.html`. The demo is scripted and credential-free: an implementer ships a half-finished clamp function, a reviewer catches the missing upper bound, a repair fixes it, and the verifier confirms it against withheld tests. The same state machine runs live models.
 
+Without Docker, pass `--sandbox unsafe-local` to run trusted fixtures on the host. Snap Docker users with a private `/tmp` should set `BITSWARM_GATE_TMPDIR` to a directory both client and daemon can see. Details in the [operating guide](docs/HARNESS.md).
 
-## Multi-LLM support
+## How it works
 
-A miner picks ONE backend per process via `MINER_BACKEND`. Validators
-pick their coordinator backend independently via `COORDINATOR_BACKEND`.
+```mermaid
+flowchart LR
+    T[Task + pinned Git baseline] --> I[Implementer]
+    I --> P[Scoped candidate patch]
+    P --> R[Reviewer: separate context]
+    R -->|findings| F[Bounded repair]
+    R -->|no findings| V[Independent verifier]
+    F --> V
+    P -->|solo condition| V
+    C[Frozen acceptance contract] --> V
+    V --> O[PASS / FAIL / INCONCLUSIVE]
+    O --> A[Patch + hashes + trace + report]
+```
 
-| Backend | Miner | Coordinator | What it does | When to use it |
-|---|:-:|:-:|---|---|
-| `sdk` (default) | yes | yes | Anthropic Python SDK, metered API tokens | Anyone with an `ANTHROPIC_API_KEY` |
-| `claude_code` | yes | yes | `claude` CLI subprocess on a Max / Pro / Team subscription | Local dev + smoke tests, zero API spend |
-| `openai` | yes | not yet | Any OpenAI-compatible Chat Completions endpoint | Production miners: pick whichever provider gives the best score per dollar |
+- **The harness owns the tools.** Models return one JSON action per turn: read, search, patch, run development tests, finish, or submit review findings. There is no shell. Git resolves the actual changed paths before a patch is accepted, so a model cannot touch tests, configuration, or anything outside its allow list.
+- **Review is independent and bounded.** The reviewer sees the task, the candidate patch, and its own observations, never the implementer's explanations. Findings need a file, a defect, and evidence. It cannot edit. One repair cycle follows, and a reviewer that never submits findings runs out of its own turn budget rather than starving verification.
+- **Finishing is not passing.** The verifier runs baseline, regression, and acceptance gates on disposable copies. Assertion failures fail. Timeouts, collection errors, missing reports, and a test run that rewrote its own source are inconclusive, never a pass.
+- **State survives crashes.** SQLite stores state and an ordered event log in one transaction. Runs pause and resume at completed action boundaries. An operation interrupted mid-flight is surfaced as uncertain, not silently retried.
+- **Verdicts can be rerun.** Replay rebuilds the candidate from the saved baseline and patch, checks every hash, records whether the verifier and image match what produced the original verdict, and runs the gates again.
 
-The `openai` backend uses the OpenAI Python SDK with a configurable
-`base_url`, so it works with: OpenAI, DeepSeek, OpenRouter, Together,
-Groq, Fireworks, Anthropic-via-OpenAI-compat, a local vLLM /
-llama.cpp / Ollama server, or anything else that speaks the OpenAI
-Chat Completions API with tool/function calling.
+## What the pilot showed
 
-### Picking a backend
+Three authored Python tasks, one model family (Fable 5.1) in two role configurations, equal maximum budgets, sequential runs on one workstation. Every attempt is retained under [docs/evidence](docs/evidence/pilot/README.md).
+
+| Condition | Accepted (contract v1) | Model calls | Median seconds | CLI cost estimate |
+|---|---:|---:|---:|---:|
+| Solo | 3/3 | 17 | 45.9 | $2.34 |
+| Reviewed | 3/3 | 29 | 78.1 | $4.11 |
+
+Both retry-delay patches then failed the post-hoc numerical probes, and two fresh attempts under the strengthened contract both failed final verification. Those are separate experiments and are reported separately. None of this is a statistical claim about review being worth it or not; it is the apparatus for finding out, plus one worked example of the apparatus catching its own weak signal.
+
+Reproduce with a Claude CLI login (these commands spend model usage):
 
 ```bash
-# A. Anthropic API (default; what you had before)
-export ANTHROPIC_API_KEY=sk-ant-...
-python -m miner.server                       # MINER_BACKEND defaults to "sdk"
-
-# B. Free local testing on a Claude subscription
-npm install -g @anthropic-ai/claude-code
-claude auth login
-export MINER_BACKEND=claude_code
-python -m miner.server
-
-# C. Production miner on any OpenAI-compatible provider
-export MINER_BACKEND=openai
-export MINER_OPENAI_API_KEY=...           # provider's key
-export MINER_OPENAI_BASE_URL=...          # provider's URL (omit for OpenAI)
-export MINER_OPENAI_MODEL=...             # provider's model id
-python -m miner.server
+uv run python benchmarks/prepare.py --out out/pilot-tasks
+uv run bitswarm evaluate --manifest out/pilot-tasks/manifest.json --out out/pilot
+uv run python benchmarks/export_evidence.py out/pilot --out out/public-evidence
 ```
 
-### Provider examples (openai backend)
+## Use it as a GitHub Action
+
+```yaml
+- uses: actions/checkout@v4
+- uses: RyanMercier/BitSwarm@main
+  with:
+    contract-path: acceptance      # pytest files, read from the base branch
+    allow: 'src/* README.md'       # everything else fails the gate
+```
+
+The pull request cannot edit the tests it is judged against, is refused by default if it touches test files or configuration, and gets a PASS, FAIL, or INCONCLUSIVE verdict with per-test detail in the job summary. The uploaded run directory replays with `bitswarm replay`. This repository verifies its own pull requests this way. Inputs, limits, and a local invocation are in [docs/ACTION.md](docs/ACTION.md).
+
+## Verify any patch
 
 ```bash
-# DeepSeek (cheap, strong on code)
-MINER_OPENAI_BASE_URL=https://api.deepseek.com
-MINER_OPENAI_MODEL=deepseek-chat
-MINER_OPENAI_API_KEY=sk-...
-
-# OpenRouter (router across many providers)
-MINER_OPENAI_BASE_URL=https://openrouter.ai/api/v1
-MINER_OPENAI_MODEL=meta-llama/llama-3.3-70b-instruct
-MINER_OPENAI_API_KEY=sk-or-...
-
-# Local vLLM
-MINER_OPENAI_BASE_URL=http://localhost:8000/v1
-MINER_OPENAI_API_KEY=sk-local            # any non-empty string
-MINER_OPENAI_MODEL=Qwen/Qwen2.5-Coder-32B-Instruct
-
-# Local Ollama
-MINER_OPENAI_BASE_URL=http://localhost:11434/v1
-MINER_OPENAI_API_KEY=sk-local
-MINER_OPENAI_MODEL=qwen2.5-coder:32b
-
-# OpenAI itself (defaults work)
-MINER_OPENAI_API_KEY=sk-...
-MINER_OPENAI_MODEL=gpt-4o-mini           # or gpt-5, etc.
+uv run bitswarm verify --repo /path/to/repo --base HEAD \
+  --contract /path/to/acceptance-tests --patch change.diff \
+  --allow src/module.py --out out/verify-run
 ```
 
-If a provider supports OpenAI's `tools` / `function_call` shape but
-NOT a `tool_choice="auto"` value, the request will currently fail.
-Most major providers do support it. Patches welcome for the corner
-cases.
+The result directory holds the patch, tree hashes of baseline, candidate, and contract, the image ID, per-test statuses for all three gates, and an HTML report. `bitswarm replay` reruns it later and says whether the environment still matches.
 
-### Mixing backends
+## Design decisions worth reading
 
-Coordinator and miner are independent. Common combos:
+- **Three outcomes, not two.** Conflating "the tests failed" with "the measurement did not finish" corrupts acceptance rates and hides infrastructure problems behind agent failures.
+- **Per-test evidence, not suite verdicts.** Regression is computed as the set of previously passing tests that no longer pass, so a repository with a few broken tests at baseline can still be evaluated honestly.
+- **Refuse to guess after a crash.** Resumption is only allowed from a completed action boundary. This trades availability for semantics that are easy to reason about.
+- **Version the contract, keep the history.** When the audit found the weak tests, the original scores stayed as they were and a v2 contract was run as a separate experiment.
+- **Keep the model outside the trust boundary.** Provider adapters return actions; they never own the repository, the tests, or the loop.
 
-```bash
-# Plan with the strongest available model, mine with whatever is cheap
-COORDINATOR_BACKEND=sdk MINER_BACKEND=openai \
-  MINER_OPENAI_BASE_URL=https://api.deepseek.com \
-  MINER_OPENAI_MODEL=deepseek-chat \
-  python demo/run_pipeline.py --spec demo/spec_wordle.txt
+## Boundaries
 
-# Everything on the local subscription, zero spend
-COORDINATOR_BACKEND=claude_code MINER_BACKEND=claude_code \
-  python demo/run_pipeline.py --spec demo/spec_wordle.txt
-```
+Single host, trusted operator, trusted Docker daemon. The provided image supports stdlib-only Python projects with pytest tests under `tests/`; other repositories need a task-specific image. Candidate code and pytest share an interpreter inside the container, so this is not a judge for deliberately hostile submissions. Passing a finite contract is evidence, not proof. Full local traces contain prompts and source; the public evidence export omits them.
 
-
-## Quick start
-
-```bash
-git clone https://github.com/RyanMercier/BitSwarm.git
-cd BitSwarm
-pip install -r requirements.txt
-
-# Pick a backend (see Multi-LLM section above) then run the demo:
-python demo/run_pipeline.py --spec demo/spec_wordle.txt --out out/run1
-
-# Poke at the result:
-cd out/run1/merged_repo
-python -m pytest tests/
-python -m wordle      # play the game BitSwarm just built
-```
-
-C++ run:
-
-```bash
-export MINER_LANGUAGE=cpp COORDINATOR_LANGUAGE=cpp
-python demo/run_pipeline.py --spec demo/spec_wordle_cpp.txt --out out/cpp_run
-cd out/cpp_run/merged_repo
-make test
-./wordle_bin
-```
-
-
-## Running the test suite
-
-```bash
-pip install -r requirements.txt
-pip install pytest
-python -m pytest tests/                    # ~30s, 342 tests
-```
-
-
-## Layout (high level)
-
-```
-config.py              env-var resolution (all three backends)
-miner/
-  server.py            FastAPI; routes MINER_BACKEND to one of:
-  agent.py             ... Anthropic SDK
-  agent_cc.py          ... claude CLI subprocess
-  agent_openai.py      ... any OpenAI-compatible endpoint
-  tools.py             tool definitions (file_read/write, bash, list_files)
-  recovery.py          retry / hard-reset state machine
-  warm_start.py        pre-loaded context for the first turn
-  runtime.py           transport-agnostic execution (shared by HTTP + axon)
-validator/
-  server.py            orchestration server
-  api.py               user-facing task submission API
-  inbox.py             task lifecycle (submit / status / recover / artifacts)
-  sandbox.py           docker sandbox for gate execution
-  decomposer.py        Phase 1 / 1.5 / 2 coordinator (SDK)
-  decomposer_cc.py     subprocess coordinator
-  scaffolder.py        write stubs + git commit baseline
-  merge.py             tiered merge + recovery (dispatches diff_merge)
-  diff_merge.py        diff-mode dual-gate scoring
-  weights.py           rolling-EMA scores + on-chain weight submission
-  holdback.py          hidden-test commit-reveal
-  scorer.py            per-subtask scoring
-  parsers/             per-language tree-sitter parsers
-protocol/              pydantic schemas + synapses + repo bundling + versioning
-neurons/               Bittensor entry points (miner.py, validator.py)
-docker/                Dockerfile.miner + Dockerfile.validator
-demo/                  in-process pipeline runner + specs
-tests/                 342 tests
-docs/STATUS.md         full status, architecture, roadmap
-docs/TESTNET.md        testnet runbook
-```
-
-
-## Diff mode (modify an existing codebase)
-
-```bash
-python demo/run_pipeline_diff.py \
-  --target /path/to/existing/repo \
-  --spec   /path/to/change_spec.txt \
-  --out    out/diff_run_1
-```
-
-The coordinator decomposes the change into per-file modification
-subtasks, each with a target-state stub (the post-edit public API as
-real source code). Miners verify their own work by replaying their
-patch onto a pristine baseline in a hermetic environment, which is
-the same computation the validator's scoring gates run. Scoring is
-dual-gate: the coordinator's new tests must pass on the merged
-result, and the existing test suite must not lose any
-previously-passing test.
+Open: repository-scale task corpora, mixed-provider comparisons, external-process oracles, selective review routing, and automatic recovery of uncertain actions.
 
 ## Status
 
-Live-tested: all seven languages at 1.000 on the Wordle spec
-(scaffold mode), and a verified 1.000 on pallets/click (diff mode).
-The `openai` backend is wired and covered by dispatch +
-tool-translation tests but has not yet had a full pipeline run on a
-non-Anthropic provider; that run is the next milestone. Diff mode is
-language-generic on both sides: the miner-side replay and the
-merge-side gates share the same build-system runner dispatch, with
-per-test regression granularity for pytest, cargo, dotnet, ctest,
-vitest/jest, and mvn/gradle (JUnit XML), and suite-level comparison
-elsewhere. The live diff-mode run so far is Python (pallets/click);
-a non-Python diff run is on the roadmap.
+Version 0. What has been executed and where:
 
-Roadmap and known limitations: [docs/STATUS.md](docs/STATUS.md).
+| Piece | Verified |
+|---|---|
+| Harness runtime, verifier, Action module | 49 + 10 unit tests on Linux/WSL, run on every pull request by CI |
+| Validator regression fixes | 7 tests, run in CI with the provider SDKs installed |
+| Container isolation | 7 opt-in Docker tests, including real thread exhaustion, run in CI on a GitHub runner |
+| Live model pilot | 8 retained runs of Fable 5.1 through the Claude CLI, replayed |
+| GitHub Action end to end | On this repository's own pull request, in Docker on a GitHub runner: PASS, 341 baseline, 407 regression, 8 acceptance |
+
+Not done: a real-repository task corpus, a second model provider, external-process oracles, and any statistical claim. The [validation record](docs/VALIDATION.md) lists every check with its observed result, and the [review log](docs/HARNESS_REVIEW.md) lists every defect found in the harness so far and how it was fixed.
+
+## Where it came from
+
+BitSwarm began as a Bittensor subnet: a coordinator decomposed feature specs into scaffolded subtasks, independent miners implemented them in parallel, and a validator merged, tested, and set on-chain weights. It ran one spec end to end in seven languages and added a feature to pallets/click from a four-sentence request. A pitch meeting with Yuma Labs made the gap clear: there was no crisp answer to who would pay, for what, and why a network rather than a vendor. The one piece with an obvious buyer was verification, and before selling verification I needed to know what the verification signal was worth. This harness is the result. The subnet code and its [archived documentation](LEGACY_README.md) remain in the repository; its historical results predate the scoring fixes made during this work and are not evidence for the harness.
+
+## Repository map
+
+```
+action.yml          GitHub Action: verify a pull request against held-out tests
+acceptance/         this repository's own held-out contract
+harness/            runtime, verifier, workspace, adapters, store, Action, CLI   (the project)
+benchmarks/         task preparation, evidence export, replay, post-hoc audit
+docs/CASE_STUDY.md  the subnet, the pivot, and the reviewer repair that passed and was wrong
+docs/HARNESS.md     operating guide and trust boundaries
+docs/ACTION.md      GitHub Action inputs, semantics, limits
+docs/VALIDATION.md  every check run, with observed results
+docs/evidence/      retained pilot and follow-up runs: traces, patches, hashes
+docs/legacy/        subnet-era docs: mining, validating, testnet runbook, status
+tests/              test_harness.py, test_action.py, test_harness_docker.py (opt-in), test_review_regressions.py
+validator/ miner/ neurons/ protocol/ demo/ BITSWARM_SPEC.md   archived subnet prototype
+```
+
+```bash
+uv sync --extra dev
+uv run python -m pytest tests/test_harness.py tests/test_action.py -q
+BITSWARM_DOCKER_TESTS=1 uv run python -m pytest tests/test_harness_docker.py -q
+```

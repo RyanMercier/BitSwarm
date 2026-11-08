@@ -1,0 +1,80 @@
+[
+  {
+    "task": "interval-union",
+    "condition": "solo-fable",
+    "repeat": 0,
+    "phase": "passed",
+    "turns": 5,
+    "seconds": 32.59778972999993,
+    "known_cost_usd": 0.587477,
+    "unknown_cost_calls": 0,
+    "fixture": false,
+    "run": "batch-0-interval-union-solo-fable-0",
+    "batch": 0
+  },
+  {
+    "task": "interval-union",
+    "condition": "reviewed-fable",
+    "repeat": 0,
+    "phase": "passed",
+    "turns": 10,
+    "seconds": 78.1079951709944,
+    "known_cost_usd": 1.307842,
+    "unknown_cost_calls": 0,
+    "fixture": false,
+    "run": "batch-0-interval-union-reviewed-fable-0",
+    "batch": 0
+  },
+  {
+    "task": "dependency-order",
+    "condition": "solo-fable",
+    "repeat": 0,
+    "phase": "passed",
+    "turns": 5,
+    "seconds": 45.90533607299585,
+    "known_cost_usd": 0.6596719999999999,
+    "unknown_cost_calls": 0,
+    "fixture": false,
+    "run": "batch-0-dependency-order-solo-fable-0",
+    "batch": 0
+  },
+  {
+    "task": "dependency-order",
+    "condition": "reviewed-fable",
+    "repeat": 0,
+    "phase": "passed",
+    "turns": 7,
+    "seconds": 65.27725275800549,
+    "known_cost_usd": 0.915039,
+    "unknown_cost_calls": 0,
+    "fixture": false,
+    "run": "batch-0-dependency-order-reviewed-fable-0",
+    "batch": 0
+  },
+  {
+    "task": "retry-delay",
+    "condition": "solo-fable",
+    "repeat": 0,
+    "phase": "passed",
+    "turns": 7,
+    "seconds": 89.70502358500016,
+    "known_cost_usd": 1.09186,
+    "unknown_cost_calls": 0,
+    "fixture": false,
+    "run": "batch-0-retry-delay-solo-fable-0",
+    "batch": 0
+  },
+  {
+    "task": "retry-delay",
+    "condition": "reviewed-fable",
+    "repeat": 0,
+    "phase": "passed",
+    "turns": 12,
+    "seconds": 148.16866727500383,
+    "known_cost_usd": 1.8875229999999994,
+    "unknown_cost_calls": 0,
+    "fixture": false,
+    "run": "batch-0-retry-delay-reviewed-fable-0",
+    "batch": 0
+  }
+]

@@ -1,0 +1,44 @@
+{
+  "outcome": "PASS",
+  "gates": {
+    "baseline": {
+      "outcome": "PASS",
+      "tests": {
+        "tests.test_existing::test_single": "passed"
+      },
+      "reason": ""
+    },
+    "regression": {
+      "outcome": "PASS",
+      "tests": {
+        "tests.test_existing::test_single": "passed"
+      },
+      "reason": ""
+    },
+    "acceptance": {
+      "outcome": "PASS",
+      "tests": {
+        "test_contract::test_union[items0-expected0]": "passed",
+        "test_contract::test_union[items1-expected1]": "passed",
+        "test_contract::test_union[items2-expected2]": "passed",
+        "test_contract::test_union[items3-expected3]": "passed",
+        "test_contract::test_union[items4-expected4]": "passed",
+        "test_contract::test_union[items5-expected5]": "passed",
+        "test_contract::test_iterator": "passed",
+        "test_contract::test_invalid": "passed"
+      },
+      "reason": ""
+    }
+  },
+  "lost_passing_tests": [],
+  "baseline_hash": "e184351c247e231edc0185221b82ce5b7f08c8c854f826b0666c3b0f5da85ef8",
+  "candidate_hash": "546fa02cedac2da8404e1194b16548ff0a7e0d1d8091f7bbea2b08ca3ce38573",
+  "contract_hash": "f2d48c5e0049e213c0f64d65971968e084230a0dab3efb88550bf9e6c8e7acc5",
+  "mode": "docker",
+  "patch_hash": "e0d528d508d40a97cd8dcdacf2362ed8df4fd2e64d2c67db002fa6ee1dc5b476",
+  "environment": {
+    "mode": "docker",
+    "verifier_hash": "c7e7a890fe369348f2644ce14a3c5fe5812f02834bc395b562ae804680d14234",
+    "image": "sha256:15a6fa48ed5a7640677e2c5e81d4073c98a233abe78de433c9619beb7739acac"
+  }
+}

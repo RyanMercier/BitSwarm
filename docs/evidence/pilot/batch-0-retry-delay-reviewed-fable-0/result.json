@@ -1,0 +1,53 @@
+{
+  "outcome": "PASS",
+  "gates": {
+    "baseline": {
+      "outcome": "PASS",
+      "tests": {
+        "tests.test_existing::test_missing": "passed"
+      },
+      "reason": ""
+    },
+    "regression": {
+      "outcome": "PASS",
+      "tests": {
+        "tests.test_existing::test_missing": "passed"
+      },
+      "reason": ""
+    },
+    "acceptance": {
+      "outcome": "PASS",
+      "tests": {
+        "test_contract::test_valid[ 12 -12.0]": "passed",
+        "test_contract::test_valid[0-0.0]": "passed",
+        "test_contract::test_valid[999-60.0]": "passed",
+        "test_contract::test_valid[Thu, 01 Jan 2026 00:00:30 GMT-30.0]": "passed",
+        "test_contract::test_valid[Wed, 31 Dec 2025 23:59:59 GMT-0.0]": "passed",
+        "test_contract::test_invalid[None]": "passed",
+        "test_contract::test_invalid[]": "passed",
+        "test_contract::test_invalid[-1]": "passed",
+        "test_contract::test_invalid[1.5]": "passed",
+        "test_contract::test_invalid[+2]": "passed",
+        "test_contract::test_invalid[\\u0661\\u0662]": "passed",
+        "test_contract::test_invalid[nonsense]": "passed",
+        "test_contract::test_invalid[Thu, 01 Jan 2026 00:00:30]": "passed",
+        "test_contract::test_bad_cap[-1]": "passed",
+        "test_contract::test_bad_cap[inf]": "passed",
+        "test_contract::test_bad_cap[nan]": "passed",
+        "test_contract::test_cap": "passed"
+      },
+      "reason": ""
+    }
+  },
+  "lost_passing_tests": [],
+  "baseline_hash": "2b9b0e6fb40011e045ad5ca4e7b7721b3f6f9905620b21ac9cd51221fa7f187f",
+  "candidate_hash": "6d2e0223f7c17adb7935c7a4bfd68d237dc8fb810f9727174d114c1d1abbc32a",
+  "contract_hash": "1aef1608ae2c74e55a38a4d9e305af010883677513c8284070f545f2f27e3299",
+  "mode": "docker",
+  "patch_hash": "ec5b9cddbc5e7f0988dc4d397adc6e98cb5bc0e9e676fd3e6a3aa761c8b6931e",
+  "environment": {
+    "mode": "docker",
+    "verifier_hash": "c7e7a890fe369348f2644ce14a3c5fe5812f02834bc395b562ae804680d14234",
+    "image": "sha256:15a6fa48ed5a7640677e2c5e81d4073c98a233abe78de433c9619beb7739acac"
+  }
+}

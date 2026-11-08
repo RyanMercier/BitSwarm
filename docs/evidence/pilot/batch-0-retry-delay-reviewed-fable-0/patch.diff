@@ -1,0 +1,53 @@
+diff --git a/solution.py b/solution.py
+index f10a702..7d00c1c 100644
+--- a/solution.py
++++ b/solution.py
+@@ -1,2 +1,47 @@
++import math
++from email.utils import parsedate_to_datetime
++
++_ASCII_WS = " \t\r\n"
++
++
+ def retry_delay(value, now, cap=60.0):
+-    return None
++    try:
++        cap = float(cap)
++    except (TypeError, ValueError):
++        raise ValueError("cap must be a finite non-negative number")
++    if math.isnan(cap) or math.isinf(cap) or cap < 0:
++        raise ValueError("cap must be a finite non-negative number")
++    if value is None:
++        return None
++    if isinstance(value, bytes):
++        try:
++            value = value.decode("ascii")
++        except UnicodeDecodeError:
++            return None
++    if not isinstance(value, str):
++        return None
++    text = value.strip(_ASCII_WS)
++    if not text:
++        return None
++    if text.isascii() and text.isdigit():
++        try:
++            seconds = int(text)
++        except ValueError:
++            # Exceeds int conversion digit limit; value is far above any finite cap.
++            return cap
++        if seconds >= cap:
++            return cap
++        return float(seconds)
++    try:
++        when = parsedate_to_datetime(text)
++    except (ValueError, TypeError, IndexError, OverflowError):
++        return None
++    if when is None or when.tzinfo is None or when.utcoffset() is None:
++        return None
++    try:
++        delta = (when - now).total_seconds()
++    except (TypeError, OverflowError):
++        return None
++    if delta <= 0:
++        return 0.0
++    return min(delta, cap)

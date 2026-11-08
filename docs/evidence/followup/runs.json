@@ -1,0 +1,28 @@
+[
+  {
+    "task": "retry-delay",
+    "condition": "reviewed-fable",
+    "repeat": 0,
+    "phase": "failed",
+    "turns": 11,
+    "seconds": 157.87979614001233,
+    "known_cost_usd": 1.8273679999999999,
+    "unknown_cost_calls": 0,
+    "fixture": false,
+    "run": "batch-0-retry-delay-reviewed-fable-0",
+    "batch": 0
+  },
+  {
+    "task": "retry-delay",
+    "condition": "solo-fable",
+    "repeat": 0,
+    "phase": "failed",
+    "turns": 8,
+    "seconds": 99.65721872600261,
+    "known_cost_usd": 1.287556,
+    "unknown_cost_calls": 0,
+    "fixture": false,
+    "run": "batch-0-retry-delay-solo-fable-0",
+    "batch": 0
+  }
+]
