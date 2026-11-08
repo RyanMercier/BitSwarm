@@ -177,8 +177,7 @@ def _count(tests: dict) -> str:
 
 def summary_markdown(result: dict) -> str:
     outcome = result.get("outcome", "INCONCLUSIVE")
-    icon = {"PASS": "white_check_mark", "FAIL": "x"}.get(outcome, "warning")
-    lines = [f"## BitSwarm verify: :{icon}: {outcome}", ""]
+    lines = [f"## BitSwarm verify: {outcome}", ""]
     if result.get("reason"):
         lines += [f"**Reason:** {result['reason']}", ""]
     lines += [
