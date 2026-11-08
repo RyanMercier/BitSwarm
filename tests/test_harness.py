@@ -672,4 +672,5 @@ def test_sandbox_limits_are_validated_and_reach_the_container(tmp_path, monkeypa
     assert verifier.environment()["pids_limit"] == 256
     gate = verifier.gate(source)
     assert "--pids-limit=256" in seen["cmd"] and "--memory=1024m" in seen["cmd"]
+    assert "--init" in seen["cmd"]
     assert gate.outcome == "INCONCLUSIVE" and gate.resources["pids.peak"] == "300"

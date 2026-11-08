@@ -266,6 +266,10 @@ class Verifier:
                     "docker",
                     "run",
                     "--rm",
+                    # A real init as PID 1 reaps orphaned test processes. Without
+                    # it the worker is PID 1, never reaps, and every orphan counts
+                    # against --pids-limit until the container exits.
+                    "--init",
                     "--name",
                     name,
                     "--network=none",
