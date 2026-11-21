@@ -197,3 +197,34 @@ def test_detect_runner_does_not_crash_on_missing_repo(tmp_path):
     spec = detect_runner(missing)
     # Falls through to pytest (the default).
     assert spec.name == "pytest"
+
+
+# ---- Phase 5 (red-team): XFAIL integration tests must not count as pass ----
+
+def test_integration_xfail_counts_as_pass_by_default():
+    """The original grader counts XFAIL as a pass (preserved by default so
+    the study's before-numbers reproduce)."""
+    from validator.test_runner import parse_test_counts
+    out = ("tests/test_integration.py::test_a PASSED\n"
+           "tests/test_integration.py::test_b XFAIL\n"
+           "tests/test_integration.py::test_c XPASS\n")
+    assert parse_test_counts(out, strict_xfail=False) == (3, 3)
+
+
+def test_integration_strict_xfail_does_not_pass_missing_module():
+    """Phase 5 fix: at scoring time an XFAIL means a module raised
+    NotImplementedError, so it must NOT count as a pass; XPASS still does."""
+    from validator.test_runner import parse_test_counts
+    out = ("tests/test_integration.py::test_a PASSED\n"
+           "tests/test_integration.py::test_b XFAIL\n"
+           "tests/test_integration.py::test_c XPASS\n")
+    passed, total = parse_test_counts(out, strict_xfail=True)
+    assert (passed, total) == (2, 3)
+
+
+def test_strict_xfail_flag_reads_env(monkeypatch):
+    from validator import test_runner
+    monkeypatch.setenv("BITSWARM_STRICT_INTEGRATION_XFAIL", "1")
+    assert test_runner._strict_xfail() is True
+    monkeypatch.delenv("BITSWARM_STRICT_INTEGRATION_XFAIL", raising=False)
+    assert test_runner._strict_xfail() is False

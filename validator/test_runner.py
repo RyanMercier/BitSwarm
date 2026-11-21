@@ -89,19 +89,46 @@ def run_test_file(test_file, repo_path):
         return False, f"[ERROR running {test_file}: {e}]"
 
 
-def parse_test_counts(output):
+def _strict_xfail() -> bool:
+    """Phase 5 fix (red-team study), off by default.
+
+    The coordinator marks every integration test
+    ``@pytest.mark.xfail(raises=NotImplementedError)`` so the suite is
+    green while the repo is still scaffolding. At SCORING time every
+    module should be implemented, so an integration test that still
+    xfails means a module is missing and raised NotImplementedError.
+    Counting that as a pass (the original behavior) let a merged repo
+    with a whole module missing report integration_ratio=1.0, so the
+    dependent subtasks kept full credit. With this flag on, XFAIL counts
+    toward the total but NOT as a pass; XPASS (the code unexpectedly
+    works) still counts as a pass.
+
+    Default off so the study's "before" numbers reproduce exactly; the
+    Phase 5 rerun sets BITSWARM_STRICT_INTEGRATION_XFAIL=1.
+    """
+    return os.environ.get("BITSWARM_STRICT_INTEGRATION_XFAIL", "").strip().lower() in (
+        "1", "true", "yes")
+
+
+def parse_test_counts(output, strict_xfail=None):
     """Parse pytest output to extract (passed, total) counts.
-    Counts XPASS (unexpectedly passing xfail) as passed since that means the code works."""
+
+    XPASS (an xfail-marked test that unexpectedly passed) always counts
+    as passed: the code works. XFAIL counts as passed only in the
+    original (non-strict) mode; see ``_strict_xfail``."""
+    if strict_xfail is None:
+        strict_xfail = _strict_xfail()
     passed = 0
     total = 0
     for line in output.split("\n"):
-        if "PASSED" in line or "XPASS" in line:
+        if "XFAIL" in line:
+            total += 1
+            if not strict_xfail:
+                passed += 1
+        elif "PASSED" in line or "XPASS" in line:
             passed += 1
             total += 1
         elif "FAILED" in line or "ERROR" in line:
-            total += 1
-        elif "XFAIL" in line:
-            passed += 1
             total += 1
     return passed, total
 
