@@ -1,0 +1,1173 @@
+Your assignment: parser
+Description: Implement minidb/parser.py: recursive-descent parse(tokens: list[Token]) -> Statement (one statement, optional trailing ';', then EOF), parse_script(tokens: list[Token]) -> list[Statement] (';'-separated, empty statements skipped), and parse_expression(tokens: list[Token]) -> Expr, producing the frozen AST nodes from minidb.types per the grammar documented there (NOT > AND > OR, left-associative AND/OR, non-chaining comparisons, IS [NOT] NULL, parentheses). INSERT VALUES must be literals converted to Value (INTEGER token -> int, STRING -> str, TRUE/FALSE -> bool, NULL -> None); any malformed input raises SQLSyntaxError.
+Files to implement: ['minidb/parser.py', 'tests/test_parser.py']
+Tests to pass: ['tests/test_parser.py']
+
+Project structure:
+│   ├── README.md
+│   ├── conftest.py  [shared - do not modify]
+│   ├── requirements.txt
+│   ├── minidb/
+│   │   ├── __init__.py  [shared - do not modify]
+│   │   ├── cli.py  [assigned to another engineer]
+│   │   ├── engine.py  [assigned to another engineer]
+│   │   ├── executor.py  [assigned to another engineer]
+│   │   ├── expr_eval.py  [assigned to another engineer]
+│   │   ├── parser.py  ← YOUR ASSIGNMENT
+│   │   ├── table_store.py  [assigned to another engineer]
+│   │   ├── tokenizer.py  [assigned to another engineer]
+│   │   ├── types.py  [shared - do not modify]
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── test_cli.py  [assigned to another engineer]
+│   │   ├── test_engine.py  [assigned to another engineer]
+│   │   ├── test_executor.py  [assigned to another engineer]
+│   │   ├── test_expr_eval.py  [assigned to another engineer]
+│   │   ├── test_integration__bare_boolean_column_in_where.py
+│   │   ├── test_integration__comparison_between_different_types_raises.py
+│   │   ├── test_integration__drop_table_then_select_raises_unknown_table.py
+│   │   ├── test_integration__engine_default_store_constructed_via_module_table_store.py
+│   │   ├── test_integration__engine_execute_propagates_minidb_errors.py
+│   │   ├── test_integration__engine_execute_script_delegates_to_parse_script.py
+│   │   ├── test_integration__engine_execute_syntax_errors.py
+│   │   ├── test_integration__engine_reads_rows_inserted_directly_into_store.py
+│   │   ├── test_integration__engine_uses_custom_store_mock.py
+│   │   ├── test_integration__engines_sharing_a_store_see_same_data.py
+│   │   ├── test_integration__execute_script_skips_empty_statements.py
+│   │   ├── test_integration__execute_script_syntax_error_raises.py
+│   │   ├── test_integration__executor_delete_uses_matcher_via_store.py
+│   │   ├── test_integration__executor_uses_supplied_matcher.py
+│   │   ├── test_integration__format_result_non_select.py
+│   │   ├── test_integration__format_result_single_row_from_engine.py
+│   │   ├── test_integration__format_result_zero_rows_select.py
+│   │   ├── test_integration__full_spec_script_via_execute_script.py
+│   │   ├── test_integration__insert_into_unknown_table_raises.py
+│   │   ├── test_integration__insert_type_mismatch_raises_and_does_not_store.py
+│   │   ├── test_integration__insert_unknown_column_raises.py
+│   │   ├── test_integration__insert_with_reordered_and_partial_column_list.py
+│   │   ├── test_integration__insert_without_column_list_uses_schema_order.py
+│   │   ├── test_integration__insert_wrong_value_count_raises_type_mismatch.py
+│   │   ├── test_integration__is_null_and_is_not_null.py
+│   │   ├── test_integration__keywords_case_insensitive_names_case_sensitive.py
+│   │   ├── test_integration__kleene_or_null_true_is_true.py
+│   │   ├── test_integration__modules_expose_expected_callables.py
+│   │   ├── test_integration__multiple_tables_are_independent.py
+│   │   ├── test_integration__non_boolean_where_raises.py
+│   │   ├── test_integration__null_comparison_excludes_row.py
+│   │   ├── test_integration__null_fits_every_column_type.py
+│   │   ├── test_integration__null_literal_where_matches_nothing.py
+│   │   ├── test_integration__package_lazy_engine_export_is_engine_class.py
+│   │   ├── test_integration__parentheses_override_precedence.py
+│   │   ├── test_integration__parse_expression_with_where_matches.py
+│   │   ├── test_integration__projection_respects_requested_order_and_duplicates_allowed_order.py
+│   │   ├── test_integration__recreate_table_after_drop_is_empty.py
+│   │   ├── test_integration__repl_accumulates_multiline_statement.py
+│   │   ├── test_integration__repl_executes_statements_and_prints_results.py
+│   │   ├── test_integration__repl_reports_errors_to_stderr_and_continues.py
+│   │   ├── test_integration__repl_runs_leftover_buffer_at_eof.py
+│   │   ├── test_integration__select_star_returns_all_rows_in_insertion_order.py
+│   │   ├── test_integration__select_with_and_and_is_not_null.py
+│   │   ├── test_integration__select_with_not_or_precedence.py
+│   │   ├── test_integration__string_literal_escaping_round_trips.py
+│   │   ├── test_integration__tokenizer_output_feeds_parser.py
+│   │   ├── test_integration__unknown_column_in_where_raises.py
+│   │   ├── test_integration__unknown_projected_column_raises_even_on_empty_table.py
+│   │   ├── test_parser.py  ← YOUR ASSIGNMENT
+│   │   ├── test_table_store.py  [assigned to another engineer]
+│   │   ├── test_tokenizer.py  [assigned to another engineer]
+
+=== STUB FILE: minidb/parser.py ===
+"""Recursive-descent parser for MiniDB's SQL subset.
+
+Consumes the token list produced by ``minidb.tokenizer.tokenize`` (which
+always ends with an EOF token) and builds the frozen AST nodes defined in
+``minidb.types``. The statement and WHERE-expression grammars are
+documented in the ``minidb.types`` module docstring:
+
+* Precedence NOT > AND > OR; AND/OR are left-associative.
+* Comparisons do not chain (``a = b = c`` is an error).
+* ``IS [NOT] NULL`` produces ``IsNull(operand, negated)``.
+* INSERT values must be literals, converted to Values: INTEGER token ->
+  ``int``, STRING -> ``str``, TRUE/FALSE -> ``bool``, NULL -> ``None``.
+* Column types in CREATE TABLE are the keywords INTEGER, TEXT, BOOLEAN,
+  mapped to ``ColumnType``.
+
+Any malformed input raises ``SQLSyntaxError``.
+"""
+
+from __future__ import annotations
+
+from minidb.types import (
+    COMPARISON_OPS,
+    And,
+    ColumnDef,
+    ColumnRef,
+    ColumnType,
+    Comparison,
+    CreateTableStmt,
+    DeleteStmt,
+    DropTableStmt,
+    Expr,
+    InsertStmt,
+    IsNull,
+    Literal,
+    Not,
+    Or,
+    SelectStmt,
+    SQLSyntaxError,
+    Statement,
+    Token,
+    TokenType,
+    Value,
+)
+
+__all__ = ["parse", "parse_script", "parse_expression"]
+
+
+def parse(tokens: list[Token]) -> Statement:
+    """Parse exactly one statement, optionally followed by a single ';',
+    then EOF.
+
+    Raises:
+        SQLSyntaxError: if the tokens are not exactly one valid statement
+            (including empty input, a lone ';', or trailing tokens).
+    """
+    raise NotImplementedError("parse not implemented")
+
+
+def parse_script(tokens: list[Token]) -> list[Statement]:
+    """Parse zero or more ';'-separated statements up to EOF.
+
+    Empty statements (consecutive ';' or a trailing ';') are skipped; an
+    empty token stream (just EOF) yields ``[]``.
+
+    Raises:
+        SQLSyntaxError: if any statement is malformed.
+    """
+    raise NotImplementedError("parse_script not implemented")
+
+
+def parse_expression(tokens: list[Token]) -> Expr:
+    """Parse a single WHERE-style expression that must consume every token
+    up to EOF.
+
+    Raises:
+        SQLSyntaxError: if the tokens do not form exactly one expression.
+    """
+    raise NotImplementedError("parse_expression not implemented")
+
+
+=== STUB FILE: tests/test_parser.py ===
+"""Unit tests for minidb.parser.
+
+Tokens are built by hand so these tests do not depend on the tokenizer.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from minidb.parser import parse, parse_expression, parse_script
+from minidb.types import (
+    And,
+    ColumnDef,
+    ColumnRef,
+    ColumnType,
+    Comparison,
+    CreateTableStmt,
+    DeleteStmt,
+    DropTableStmt,
+    InsertStmt,
+    IsNull,
+    Literal,
+    Not,
+    Or,
+    SelectStmt,
+    SQLSyntaxError,
+    Token,
+    TokenType,
+)
+
+
+def lex(text: str) -> list[Token]:
+    """Tiny whitespace-split lexer for tests: each space-separated word is
+    a token. Uppercase words in KEYWORD_SET -> KEYWORD; digits -> INTEGER;
+    words wrapped in single quotes -> STRING; symbols -> OPERATOR; else
+    IDENTIFIER."""
+    keywords = {
+        "CREATE", "TABLE", "DROP", "INSERT", "INTO", "VALUES", "SELECT",
+        "FROM", "WHERE", "DELETE", "AND", "OR", "NOT", "IS", "NULL", "TRUE",
+        "FALSE", "INTEGER", "TEXT", "BOOLEAN",
+    }
+    ops = {"<>", "<=", ">=", "=", "<", ">", "(", ")", ",", "*", ";"}
+    out: list[Token] = []
+    for word in text.split():
+        if word in keywords:
+            out.append(Token(TokenType.KEYWORD, word))
+        elif word.isdigit():
+            out.append(Token(TokenType.INTEGER, word))
+        elif word.startswith("'") and word.endswith("'") and len(word) >= 2:
+            out.append(Token(TokenType.STRING, word[1:-1]))
+        elif word in ops:
+            out.append(Token(TokenType.OPERATOR, word))
+        else:
+            out.append(Token(TokenType.IDENTIFIER, word))
+    out.append(Token(TokenType.EOF, ""))
+    return out
+
+
+# --- statements -------------------------------------------------------------
+
+
+def test_create_table():
+    stmt = parse(lex("CREATE TABLE t ( a INTEGER , b TEXT , c BOOLEAN )"))
+    assert stmt == CreateTableStmt(
+        "t",
+        (
+            ColumnDef("a", ColumnType.INTEGER),
+            ColumnDef("b", ColumnType.TEXT),
+            ColumnDef("c", ColumnType.BOOLEAN),
+        ),
+    )
+
+
+def test_drop_table_with_semicolon():
+    assert parse(lex("DROP TABLE users ;")) == DropTableStmt("users")
+
+
+def test_insert_without_columns_converts_literals():
+    stmt = parse(lex("INSERT INTO t VALUES ( 1 , 'x' , TRUE , FALSE , NULL )"))
+    assert stmt == InsertStmt("t", None, (1, "x", True, False, None))
+    assert type(stmt.values[0]) is int
+    assert type(stmt.values[2]) is bool
+
+
+def test_insert_with_columns():
+    stmt = parse(lex("INSERT INTO t ( c , a ) VALUES ( TRUE , 5 )"))
+    assert stmt == InsertStmt("t", ("c", "a"), (True, 5))
+
+
+def test_select_star():
+    assert parse(lex("SELECT * FROM users")) == SelectStmt("users", None, None)
+
+
+def test_select_columns_with_where():
+    stmt = parse(lex("SELECT name , email FROM users WHERE active = TRUE"))
+    assert stmt == SelectStmt(
+        "users",
+        ("name", "email"),
+        Comparison("=", ColumnRef("active"), Literal(True)),
+    )
+
+
+def test_delete_with_and_without_where():
+    assert parse(lex("DELETE FROM t")) == DeleteStmt("t", None)
+    assert parse(lex("DELETE FROM t WHERE a <> 2")) == DeleteStmt(
+        "t", Comparison("<>", ColumnRef("a"), Literal(2))
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        ";",
+        "SELECT * FROM t ; SELECT * FROM t",
+        "SELECT FROM t",
+        "SELECT * FROM",
+        "SELECT * FROM t WHERE",
+        "SELECT * FROM t WHERE a = 1 = 1",
+        "SELECT * FROM t WHERE ( a = 1",
+        "INSERT INTO t VALUES ( a )",
+        "INSERT INTO t VALUES ( )",
+        "CREATE TABLE t ( a FLOAT )",
+        "CREATE TABLE t ( )",
+        "DROP t",
+        "SELECT * FROM t ; ;",
+        "users",
+    ],
+)
+def test_parse_syntax_errors(text):
+    with pytest.raises(SQLSyntaxError):
+        parse(lex(text))
+
+
+# --- scripts ----------------------------------------------------------------
+
+
+def test_parse_script_multiple_and_skips_empty():
+    stmts = parse_script(lex("DROP TABLE a ; ; DROP TABLE b ; DELETE FROM c ;"))
+    assert stmts == [DropTableStmt("a"), DropTableStmt("b"), DeleteStmt("c")]
+
+
+def test_parse_script_without_trailing_semicolon():
+    assert parse_script(lex("DROP TABLE a ; DROP TABLE b")) == [
+        DropTableStmt("a"),
+        DropTableStmt("b"),
+    ]
+
+
+def test_parse_script_empty():
+    assert parse_script(lex("")) == []
+    assert parse_script(lex("; ;")) == []
+
+
+def test_parse_script_error():
+    with pytest.raises(SQLSyntaxError):
+        parse_script(lex("DROP TABLE a ; SELECT a"))
+
+
+# --- expressions ------------------------------------------------------------
+
+
+def test_expression_precedence_not_and_or():
+    expr = parse_expression(lex("NOT a OR b = 1 AND c"))
+    assert expr == Or(
+        Not(ColumnRef("a")),
+        And(Comparison("=", ColumnRef("b"), Literal(1)), ColumnRef("c")),
+    )
+
+
+def test_not_binds_over_comparison():
+    assert parse_expression(lex("NOT a = 1")) == Not(
+        Comparison("=", ColumnRef("a"), Literal(1))
+    )
+
+
+def test_and_or_left_associative():
+    assert parse_expression(lex("a AND b AND c")) == And(
+        And(ColumnRef("a"), ColumnRef("b")), ColumnRef("c")
+    )
+    assert parse_expression(lex("a OR b OR c")) == Or(
+        Or(ColumnRef("a"), ColumnRef("b")), ColumnRef("c")
+    )
+
+
+def test_parentheses_override():
+    assert parse_expression(lex("( a OR b ) AND c")) == And(
+        Or(ColumnRef("a"), ColumnRef("b")), ColumnRef("c")
+    )
+
+
+def test_is_null_and_is_not_null():
+    assert parse_expression(lex("email IS NULL")) == IsNull(ColumnRef("email"), False)
+    assert parse_expression(lex("email IS NOT NULL")) == IsNull(ColumnRef("email"), True)
+
+
+def test_all_comparison_ops_and_literals():
+    for op in ("=", "<>", "<", "<=", ">", ">="):
+        assert parse_expression(lex(f"x {op} 'v'")) == Comparison(
+            op, ColumnRef("x"), Literal("v")
+        )
+    assert parse_expression(lex("NULL")) == Literal(None)
+    assert parse_expression(lex("FALSE")) == Literal(False)
+
+
+def test_expression_trailing_tokens_error():
+    with pytest.raises(SQLSyntaxError):
+        parse_expression(lex("a b"))
+    with pytest.raises(SQLSyntaxError):
+        parse_expression(lex("a IS 1"))
+
+
+
+=== TEST FILE: tests/test_parser.py ===
+"""Unit tests for minidb.parser.
+
+Tokens are built by hand so these tests do not depend on the tokenizer.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from minidb.parser import parse, parse_expression, parse_script
+from minidb.types import (
+    And,
+    ColumnDef,
+    ColumnRef,
+    ColumnType,
+    Comparison,
+    CreateTableStmt,
+    DeleteStmt,
+    DropTableStmt,
+    InsertStmt,
+    IsNull,
+    Literal,
+    Not,
+    Or,
+    SelectStmt,
+    SQLSyntaxError,
+    Token,
+    TokenType,
+)
+
+
+def lex(text: str) -> list[Token]:
+    """Tiny whitespace-split lexer for tests: each space-separated word is
+    a token. Uppercase words in KEYWORD_SET -> KEYWORD; digits -> INTEGER;
+    words wrapped in single quotes -> STRING; symbols -> OPERATOR; else
+    IDENTIFIER."""
+    keywords = {
+        "CREATE", "TABLE", "DROP", "INSERT", "INTO", "VALUES", "SELECT",
+        "FROM", "WHERE", "DELETE", "AND", "OR", "NOT", "IS", "NULL", "TRUE",
+        "FALSE", "INTEGER", "TEXT", "BOOLEAN",
+    }
+    ops = {"<>", "<=", ">=", "=", "<", ">", "(", ")", ",", "*", ";"}
+    out: list[Token] = []
+    for word in text.split():
+        if word in keywords:
+            out.append(Token(TokenType.KEYWORD, word))
+        elif word.isdigit():
+            out.append(Token(TokenType.INTEGER, word))
+        elif word.startswith("'") and word.endswith("'") and len(word) >= 2:
+            out.append(Token(TokenType.STRING, word[1:-1]))
+        elif word in ops:
+            out.append(Token(TokenType.OPERATOR, word))
+        else:
+            out.append(Token(TokenType.IDENTIFIER, word))
+    out.append(Token(TokenType.EOF, ""))
+    return out
+
+
+# --- statements -------------------------------------------------------------
+
+
+def test_create_table():
+    stmt = parse(lex("CREATE TABLE t ( a INTEGER , b TEXT , c BOOLEAN )"))
+    assert stmt == CreateTableStmt(
+        "t",
+        (
+            ColumnDef("a", ColumnType.INTEGER),
+            ColumnDef("b", ColumnType.TEXT),
+            ColumnDef("c", ColumnType.BOOLEAN),
+        ),
+    )
+
+
+def test_drop_table_with_semicolon():
+    assert parse(lex("DROP TABLE users ;")) == DropTableStmt("users")
+
+
+def test_insert_without_columns_converts_literals():
+    stmt = parse(lex("INSERT INTO t VALUES ( 1 , 'x' , TRUE , FALSE , NULL )"))
+    assert stmt == InsertStmt("t", None, (1, "x", True, False, None))
+    assert type(stmt.values[0]) is int
+    assert type(stmt.values[2]) is bool
+
+
+def test_insert_with_columns():
+    stmt = parse(lex("INSERT INTO t ( c , a ) VALUES ( TRUE , 5 )"))
+    assert stmt == InsertStmt("t", ("c", "a"), (True, 5))
+
+
+def test_select_star():
+    assert parse(lex("SELECT * FROM users")) == SelectStmt("users", None, None)
+
+
+def test_select_columns_with_where():
+    stmt = parse(lex("SELECT name , email FROM users WHERE active = TRUE"))
+    assert stmt == SelectStmt(
+        "users",
+        ("name", "email"),
+        Comparison("=", ColumnRef("active"), Literal(True)),
+    )
+
+
+def test_delete_with_and_without_where():
+    assert parse(lex("DELETE FROM t")) == DeleteStmt("t", None)
+    assert parse(lex("DELETE FROM t WHERE a <> 2")) == DeleteStmt(
+        "t", Comparison("<>", ColumnRef("a"), Literal(2))
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        ";",
+        "SELECT * FROM t ; SELECT * FROM t",
+        "SELECT FROM t",
+        "SELECT * FROM",
+        "SELECT * FROM t WHERE",
+        "SELECT * FROM t WHERE a = 1 = 1",
+        "SELECT * FROM t WHERE ( a = 1",
+        "INSERT INTO t VALUES ( a )",
+        "INSERT INTO t VALUES ( )",
+        "CREATE TABLE t ( a FLOAT )",
+        "CREATE TABLE t ( )",
+        "DROP t",
+        "SELECT * FROM t ; ;",
+        "users",
+    ],
+)
+def test_parse_syntax_errors(text):
+    with pytest.raises(SQLSyntaxError):
+        parse(lex(text))
+
+
+# --- scripts ----------------------------------------------------------------
+
+
+def test_parse_script_multiple_and_skips_empty():
+    stmts = parse_script(lex("DROP TABLE a ; ; DROP TABLE b ; DELETE FROM c ;"))
+    assert stmts == [DropTableStmt("a"), DropTableStmt("b"), DeleteStmt("c")]
+
+
+def test_parse_script_without_trailing_semicolon():
+    assert parse_script(lex("DROP TABLE a ; DROP TABLE b")) == [
+        DropTableStmt("a"),
+        DropTableStmt("b"),
+    ]
+
+
+def test_parse_script_empty():
+    assert parse_script(lex("")) == []
+    assert parse_script(lex("; ;")) == []
+
+
+def test_parse_script_error():
+    with pytest.raises(SQLSyntaxError):
+        parse_script(lex("DROP TABLE a ; SELECT a"))
+
+
+# --- expressions ------------------------------------------------------------
+
+
+def test_expression_precedence_not_and_or():
+    expr = parse_expression(lex("NOT a OR b = 1 AND c"))
+    assert expr == Or(
+        Not(ColumnRef("a")),
+        And(Comparison("=", ColumnRef("b"), Literal(1)), ColumnRef("c")),
+    )
+
+
+def test_not_binds_over_comparison():
+    assert parse_expression(lex("NOT a = 1")) == Not(
+        Comparison("=", ColumnRef("a"), Literal(1))
+    )
+
+
+def test_and_or_left_associative():
+    assert parse_expression(lex("a AND b AND c")) == And(
+        And(ColumnRef("a"), ColumnRef("b")), ColumnRef("c")
+    )
+    assert parse_expression(lex("a OR b OR c")) == Or(
+        Or(ColumnRef("a"), ColumnRef("b")), ColumnRef("c")
+    )
+
+
+def test_parentheses_override():
+    assert parse_expression(lex("( a OR b ) AND c")) == And(
+        Or(ColumnRef("a"), ColumnRef("b")), ColumnRef("c")
+    )
+
+
+def test_is_null_and_is_not_null():
+    assert parse_expression(lex("email IS NULL")) == IsNull(ColumnRef("email"), False)
+    assert parse_expression(lex("email IS NOT NULL")) == IsNull(ColumnRef("email"), True)
+
+
+def test_all_comparison_ops_and_literals():
+    for op in ("=", "<>", "<", "<=", ">", ">="):
+        assert parse_expression(lex(f"x {op} 'v'")) == Comparison(
+            op, ColumnRef("x"), Literal("v")
+        )
+    assert parse_expression(lex("NULL")) == Literal(None)
+    assert parse_expression(lex("FALSE")) == Literal(False)
+
+
+def test_expression_trailing_tokens_error():
+    with pytest.raises(SQLSyntaxError):
+        parse_expression(lex("a b"))
+    with pytest.raises(SQLSyntaxError):
+        parse_expression(lex("a IS 1"))
+
+
+
+=== SHARED SCHEMA: conftest.py ===
+"""Make the repository root importable so ``import minidb`` works under pytest."""
+
+import os
+import sys
+
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+
+=== SHARED SCHEMA: minidb/__init__.py ===
+"""MiniDB: an in-memory relational query engine for a small SQL subset.
+
+Usage::
+
+    from minidb import Engine
+
+    engine = Engine()
+    engine.execute("CREATE TABLE users (id INTEGER, name TEXT)")
+
+``Engine`` is resolved lazily so that importing ``minidb.types`` (or any
+other submodule) never drags in the full pipeline.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from minidb.engine import Engine
+
+__all__ = ["Engine"]
+
+
+def __getattr__(name: str) -> object:
+    if name == "Engine":
+        from minidb.engine import Engine
+
+        return Engine
+    raise AttributeError(f"module 'minidb' has no attribute {name!r}")
+
+
+=== SHARED SCHEMA: minidb/types.py ===
+"""Shared types, AST nodes, constants, and exceptions for MiniDB.
+
+Every MiniDB module imports from ``minidb.types`` using the full dotted
+path. This module holds data definitions and tiny type helpers only; it
+contains no tokenizing, parsing, evaluation, or storage logic.
+
+Naming rules shared by every module:
+
+* Table names and column names are case-sensitive and matched exactly.
+* Keywords are case-insensitive; the tokenizer normalizes them to
+  uppercase.
+
+WHERE expression grammar (implemented by ``minidb.parser``, evaluated by
+``minidb.expr_eval``)::
+
+    expr       := or_expr
+    or_expr    := and_expr ( OR and_expr )*          -> Or(left, right), left-assoc
+    and_expr   := not_expr ( AND not_expr )*         -> And(left, right), left-assoc
+    not_expr   := NOT not_expr | predicate           -> Not(operand)
+    predicate  := primary [ comp_op primary          -> Comparison(op, left, right)
+                          | IS [NOT] NULL ]          -> IsNull(operand, negated)
+    primary    := INTEGER | STRING | TRUE | FALSE | NULL   -> Literal(value)
+                | IDENTIFIER                              -> ColumnRef(name)
+                | '(' expr ')'
+    comp_op    := '=' | '<>' | '<' | '<=' | '>' | '>='
+
+Comparisons do not chain: ``a = b = c`` is a syntax error. ``NOT a = 1``
+parses as ``Not(Comparison('=', ColumnRef('a'), Literal(1)))``.
+
+Statement grammar (keywords shown uppercase; trailing ';' optional)::
+
+    CREATE TABLE name '(' col TYPE (',' col TYPE)* ')'
+    DROP TABLE name
+    INSERT INTO name [ '(' col (',' col)* ')' ] VALUES '(' literal (',' literal)* ')'
+    SELECT ( '*' | col (',' col)* ) FROM name [ WHERE expr ]
+    DELETE FROM name [ WHERE expr ]
+
+where TYPE is one of INTEGER, TEXT, BOOLEAN and literal is an INTEGER,
+STRING, TRUE, FALSE, or NULL token. Negative integer literals are not
+supported.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Callable, Iterator, Optional, Protocol, Union
+
+# ---------------------------------------------------------------------------
+# Scalar values and rows
+# ---------------------------------------------------------------------------
+
+#: A scalar SQL value: INTEGER -> int, TEXT -> str, BOOLEAN -> bool,
+#: NULL -> None. ``bool`` is a subclass of ``int`` in Python, but MiniDB
+#: treats them as distinct: ``True`` is NOT a valid INTEGER and ``1`` is
+#: NOT a valid BOOLEAN.
+Value = Union[int, str, bool, None]
+
+#: A stored or projected row: one Value per column, in column order.
+Row = tuple[Value, ...]
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class MiniDBError(Exception):
+    """Base class for every error MiniDB raises deliberately.
+
+    ``str(error)`` is a single human-readable line; the CLI prints it as
+    ``ERROR: <message>``.
+    """
+
+
+class SQLSyntaxError(MiniDBError):
+    """Raised by the tokenizer for input it cannot lex, by the parser for
+    token sequences that do not form a valid statement or expression, and
+    by the engine for blank input or multiple statements passed to
+    ``Engine.execute``."""
+
+
+class UnknownTableError(MiniDBError):
+    """Raised when a statement references a table that does not exist."""
+
+    def __init__(self, table: str) -> None:
+        super().__init__(f"unknown table: {table}")
+        self.table = table
+
+
+class UnknownColumnError(MiniDBError):
+    """Raised when a column name does not exist in the relevant schema."""
+
+    def __init__(self, column: str) -> None:
+        super().__init__(f"unknown column: {column}")
+        self.column = column
+
+
+class TypeMismatchError(MiniDBError):
+    """Raised when a value's type does not fit its context: an INSERT
+    value that does not match the column type, an INSERT with the wrong
+    number of values, a comparison between different SQL types, or a
+    non-boolean operand to NOT/AND/OR/WHERE."""
+
+
+class TableExistsError(MiniDBError):
+    """Raised by CREATE TABLE when the table name is already in use."""
+
+    def __init__(self, table: str) -> None:
+        super().__init__(f"table already exists: {table}")
+        self.table = table
+
+
+# ---------------------------------------------------------------------------
+# Schema
+# ---------------------------------------------------------------------------
+
+
+class ColumnType(Enum):
+    """Declared column type. ``.value`` is the SQL keyword spelling."""
+
+    INTEGER = "INTEGER"
+    TEXT = "TEXT"
+    BOOLEAN = "BOOLEAN"
+
+
+@dataclass(frozen=True)
+class ColumnDef:
+    """One column of a table schema."""
+
+    name: str
+    type: ColumnType
+
+
+@dataclass(frozen=True)
+class Schema:
+    """Ordered column definitions for a table (declaration order)."""
+
+    columns: tuple[ColumnDef, ...]
+
+    def column_names(self) -> list[str]:
+        """Return column names in declaration order."""
+        return [column.name for column in self.columns]
+
+    def has_column(self, name: str) -> bool:
+        """Return True if a column with exactly this name exists."""
+        return any(column.name == name for column in self.columns)
+
+    def index_of(self, name: str) -> int:
+        """Return the zero-based position of column ``name``.
+
+        Raises:
+            UnknownColumnError: if no column has exactly this name.
+        """
+        for index, column in enumerate(self.columns):
+            if column.name == name:
+                return index
+        raise UnknownColumnError(name)
+
+    def __len__(self) -> int:
+        return len(self.columns)
+
+
+def value_matches_type(value: Value, column_type: ColumnType) -> bool:
+    """Return True if ``value`` may be stored in a column of ``column_type``.
+
+    None (NULL) matches every type. bool matches only BOOLEAN; int (but
+    not bool) matches only INTEGER; str matches only TEXT.
+    """
+    if value is None:
+        return True
+    if column_type is ColumnType.BOOLEAN:
+        return isinstance(value, bool)
+    if column_type is ColumnType.INTEGER:
+        return isinstance(value, int) and not isinstance(value, bool)
+    if column_type is ColumnType.TEXT:
+        return isinstance(value, str)
+    return False
+
+
+def sql_type_name(value: Value) -> str:
+    """Return the SQL type name of a value: 'NULL', 'BOOLEAN', 'INTEGER',
+    or 'TEXT'. Used for same-type checks and error messages."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "BOOLEAN"
+    if isinstance(value, int):
+        return "INTEGER"
+    return "TEXT"
+
+
+# ---------------------------------------------------------------------------
+# Query results
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class QueryResult:
+    """Result of executing one statement.
+
+    SELECT: ``columns`` holds the projected column names in order, ``rows``
+    the projected rows in insertion order, and ``row_count == len(rows)``.
+
+    CREATE / DROP / INSERT / DELETE: ``columns == []``, ``rows == []``, and
+    ``row_count`` is the number of rows affected (CREATE and DROP -> 0,
+    INSERT -> 1, DELETE -> number of rows removed).
+    """
+
+    columns: list[str] = field(default_factory=list)
+    rows: list[Row] = field(default_factory=list)
+    row_count: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Tokens
+# ---------------------------------------------------------------------------
+
+
+class TokenType(Enum):
+    """Kinds of lexical tokens."""
+
+    KEYWORD = "KEYWORD"
+    IDENTIFIER = "IDENTIFIER"
+    INTEGER = "INTEGER"
+    STRING = "STRING"
+    OPERATOR = "OPERATOR"
+    EOF = "EOF"
+
+
+@dataclass(frozen=True)
+class Token:
+    """A lexical token.
+
+    ``value`` by type:
+
+    * KEYWORD: the keyword in uppercase, e.g. ``'SELECT'`` (always a member
+      of ``KEYWORDS``).
+    * IDENTIFIER: the name exactly as written, e.g. ``'users'``.
+    * INTEGER: the digit text, e.g. ``'42'``.
+    * STRING: the contents without the surrounding quotes, with ``''``
+      unescaped to ``'``, e.g. ``'it''s'`` -> ``"it's"``.
+    * OPERATOR: the symbol, one of ``OPERATORS``.
+    * EOF: the empty string ``''``.
+
+    ``position`` is the zero-based character offset of the token's first
+    character in the source (the source length for EOF). It is excluded
+    from equality so tests can compare tokens without positions.
+    """
+
+    type: TokenType
+    value: str
+    position: int = field(default=0, compare=False)
+
+
+#: Reserved words, matched case-insensitively and emitted uppercase.
+KEYWORDS: frozenset[str] = frozenset(
+    {
+        "CREATE",
+        "TABLE",
+        "DROP",
+        "INSERT",
+        "INTO",
+        "VALUES",
+        "SELECT",
+        "FROM",
+        "WHERE",
+        "DELETE",
+        "AND",
+        "OR",
+        "NOT",
+        "IS",
+        "NULL",
+        "TRUE",
+        "FALSE",
+        "INTEGER",
+        "TEXT",
+        "BOOLEAN",
+    }
+)
+
+#: Operator and punctuation symbols, longest first for maximal munch.
+OPERATORS: tuple[str, ...] = ("<>", "<=", ">=", "=", "<", ">", "(", ")", ",", "*", ";")
+
+#: Operators valid in a Comparison node.
+COMPARISON_OPS: frozenset[str] = frozenset({"=", "<>", "<", "<=", ">", ">="})
+
+
+# ---------------------------------------------------------------------------
+# Expression AST
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Literal:
+    """A constant: int, str, bool, or None (NULL)."""
+
+    value: Value
+
+
+@dataclass(frozen=True)
+class ColumnRef:
+    """A bare identifier resolved against the row's schema."""
+
+    name: str
+
+
+@dataclass(frozen=True)
+class Comparison:
+    """``left op right`` where ``op`` is in ``COMPARISON_OPS``."""
+
+    op: str
+    left: Expr
+    right: Expr
+
+
+@dataclass(frozen=True)
+class IsNull:
+    """``operand IS NULL`` (negated=False) or ``operand IS NOT NULL``
+    (negated=True). Always evaluates to True or False, never NULL."""
+
+    operand: Expr
+    negated: bool = False
+
+
+@dataclass(frozen=True)
+class Not:
+    """Logical ``NOT operand`` (three-valued)."""
+
+    operand: Expr
+
+
+@dataclass(frozen=True)
+class And:
+    """Logical ``left AND right`` (three-valued)."""
+
+    left: Expr
+    right: Expr
+
+
+@dataclass(frozen=True)
+class Or:
+    """Logical ``left OR right`` (three-valued)."""
+
+    left: Expr
+    right: Expr
+
+
+Expr = Union[Literal, ColumnRef, Comparison, IsNull, Not, And, Or]
+
+
+# ---------------------------------------------------------------------------
+# Statement AST
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CreateTableStmt:
+    """``CREATE TABLE table (col TYPE, ...)``."""
+
+    table: str
+    columns: tuple[ColumnDef, ...]
+
+
+@dataclass(frozen=True)
+class DropTableStmt:
+    """``DROP TABLE table``."""
+
+    table: str
+
+
+@dataclass(frozen=True)
+class InsertStmt:
+    """``INSERT INTO table [(col, ...)] VALUES (literal, ...)``.
+
+    ``columns`` is None when no column list was given (values are then in
+    schema declaration order). ``values`` holds already-converted Values.
+    """
+
+    table: str
+    columns: Optional[tuple[str, ...]]
+    values: tuple[Value, ...]
+
+
+@dataclass(frozen=True)
+class SelectStmt:
+    """``SELECT cols FROM table [WHERE expr]``.
+
+    ``columns`` is None for ``SELECT *``; otherwise the requested column
+    names in order. ``where`` is None when there is no WHERE clause.
+    """
+
+    table: str
+    columns: Optional[tuple[str, ...]]
+    where: Optional[Expr] = None
+
+
+@dataclass(frozen=True)
+class DeleteStmt:
+    """``DELETE FROM table [WHERE expr]``; no WHERE deletes every row."""
+
+    table: str
+    where: Optional[Expr] = None
+
+
+Statement = Union[CreateTableStmt, DropTableStmt, InsertStmt, SelectStmt, DeleteStmt]
+
+
+# ---------------------------------------------------------------------------
+# Cross-component interfaces
+# ---------------------------------------------------------------------------
+
+#: Predicate over a stored row, used by ``StorageBackend.delete_where``.
+RowPredicate = Callable[[Row], bool]
+
+#: Signature of ``minidb.expr_eval.where_matches``: True only when the
+#: expression evaluates to exactly True for the row.
+WhereMatcher = Callable[[Expr, Row, Schema], bool]
+
+
+class StorageBackend(Protocol):
+    """Interface implemented by ``minidb.table_store.TableStore`` and
+    consumed by ``minidb.executor`` and ``minidb.engine``."""
+
+    def create_table(self, name: str, schema: Schema) -> None:
+        """Create an empty table. Raises TableExistsError if it exists."""
+        ...
+
+    def drop_table(self, name: str) -> None:
+        """Remove a table and its rows. Raises UnknownTableError."""
+        ...
+
+    def has_table(self, name: str) -> bool:
+        """Return True if the table exists."""
+        ...
+
+    def get_schema(self, name: str) -> Schema:
+        """Return the table's schema. Raises UnknownTableError."""
+        ...
+
+    def insert(self, name: str, row: Row) -> None:
+        """Append a full row in schema order. Raises UnknownTableError, or
+        TypeMismatchError if ``len(row)`` differs from the column count or
+        any value fails ``value_matches_type``."""
+        ...
+
+    def scan(self, name: str) -> Iterator[Row]:
+        """Yield rows in insertion order. Raises UnknownTableError."""
+        ...
+
+    def delete_where(self, name: str, predicate: RowPredicate) -> int:
+        """Remove rows for which ``predicate(row)`` is True, preserving the
+        order of the rest; return the number removed. Raises
+        UnknownTableError."""
+        ...
+
+
+
+=== DEPENDENCY STUB (read-only): minidb/tokenizer.py ===
+"""Lexer for MiniDB's SQL subset.
+
+``tokenize`` turns SQL text into a list of ``Token`` objects terminated by
+exactly one EOF token. Lexical rules:
+
+* Whitespace is skipped.
+* A word starting with a letter or ``_`` and continuing with letters,
+  digits, or ``_`` is a KEYWORD (emitted uppercase) if its uppercase form
+  is in ``KEYWORDS``; otherwise an IDENTIFIER kept exactly as written.
+* A run of ASCII digits is an INTEGER token whose value is the digit text.
+* A single-quoted string is a STRING token; ``''`` inside it is unescaped
+  to ``'``. A missing closing quote raises SQLSyntaxError.
+* Operators are matched longest-first from ``OPERATORS``.
+* Any other character raises SQLSyntaxError.
+* Each token's ``position`` is the offset of its first character; the EOF
+  token's position is ``len(sql)`` and its value is ``''``.
+"""
+
+from __future__ import annotations
+
+from minidb.types import KEYWORDS, OPERATORS, SQLSyntaxError, Token, TokenType
+
+__all__ = [
+    "tokenize",
+    "is_identifier_start",
+    "is_identifier_char",
+    "read_string_literal",
+]
+
+
+def is_identifier_start(ch: str) -> bool:
+    """Return True if ``ch`` may begin an identifier or keyword: an ASCII
+    letter or underscore."""
+    raise NotImplementedError("is_identifier_start not implemented")
+
+
+def is_identifier_char(ch: str) -> bool:
+    """Return True if ``ch`` may continue an identifier or keyword: an ASCII
+    letter, ASCII digit, or underscore."""
+    raise NotImplementedError("is_identifier_char not implemented")
+
+
+def read_string_literal(sql: str, start: int) -> tuple[str, int]:
+    """Read a single-quoted string literal beginning at ``sql[start]``
+    (which must be ``'``).
+
+    Returns ``(contents, end)`` where ``contents`` has ``''`` unescaped to
+    ``'`` and ``end`` is the index just past the closing quote.
+
+    Raises:
+        SQLSyntaxError: if the literal is not terminated.
+    """
+    raise NotImplementedError("read_string_literal not implemented")
+
+
+def tokenize(sql: str) -> list[Token]:
+    """Convert ``sql`` into tokens, always ending with one EOF token.
+
+    Raises:
+        SQLSyntaxError: on an unterminated string or an unknown character.
+    """
+    raise NotImplementedError("tokenize not implemented")
+
+
+## IMPORTANT: Cross-Subtask Dependencies
+
+Other engineers' modules (marked "[assigned to another engineer]" above) are stubs
+in your repo  -  their functions raise NotImplementedError. If your tests import and
+use objects from those modules, those tests will fail with NotImplementedError BEFORE
+testing your stub.
+
+When this happens, edit your test file to use `unittest.mock.MagicMock()` instead:
+  from unittest.mock import MagicMock
+  dep = MagicMock()  # replaces any object from another subtask's module
+  my_obj = MyClass(dep)  # now tests YOUR stub
+
+Your test files ARE in your allowed_files  -  you may and should edit them.
+
+If DEPENDENCY STUB files are shown above, they define the EXACT function signatures
+of modules you depend on. When calling functions from those modules, match the
+signatures exactly (parameter names, types, count). Do not guess interfaces.
+
+Start implementing. Run tests with: pytest tests/test_parser.py -v --tb=short

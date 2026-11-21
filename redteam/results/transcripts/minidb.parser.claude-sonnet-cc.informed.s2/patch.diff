@@ -1,0 +1,250 @@
+diff --git a/minidb/parser.py b/minidb/parser.py
+index 205356d..4586c61 100644
+--- a/minidb/parser.py
++++ b/minidb/parser.py
+@@ -45,6 +45,202 @@ from minidb.types import (
+ __all__ = ["parse", "parse_script", "parse_expression"]
+ 
+ 
++class _Parser:
++    def __init__(self, tokens: list[Token]) -> None:
++        self.tokens = tokens
++        self.pos = 0
++
++    def peek(self) -> Token:
++        if self.pos < len(self.tokens):
++            return self.tokens[self.pos]
++        return Token(TokenType.EOF, "")
++
++    def next(self) -> Token:
++        tok = self.peek()
++        if tok.type is not TokenType.EOF:
++            self.pos += 1
++        return tok
++
++    def is_kw(self, word: str) -> bool:
++        tok = self.peek()
++        return tok.type is TokenType.KEYWORD and tok.value == word
++
++    def is_op(self, sym: str) -> bool:
++        tok = self.peek()
++        return tok.type is TokenType.OPERATOR and tok.value == sym
++
++    def at_eof(self) -> bool:
++        return self.peek().type is TokenType.EOF
++
++    def error(self, expected: str) -> SQLSyntaxError:
++        tok = self.peek()
++        found = "end of input" if tok.type is TokenType.EOF else repr(tok.value)
++        return SQLSyntaxError(f"expected {expected}, found {found}")
++
++    def expect_kw(self, word: str) -> None:
++        if not self.is_kw(word):
++            raise self.error(word)
++        self.pos += 1
++
++    def expect_op(self, sym: str) -> None:
++        if not self.is_op(sym):
++            raise self.error(repr(sym))
++        self.pos += 1
++
++    def ident(self) -> str:
++        if self.peek().type is not TokenType.IDENTIFIER:
++            raise self.error("identifier")
++        return self.next().value
++
++    def ident_list(self) -> tuple[str, ...]:
++        names = [self.ident()]
++        while self.is_op(","):
++            self.pos += 1
++            names.append(self.ident())
++        return tuple(names)
++
++    def literal_value(self) -> Value:
++        tok = self.peek()
++        if tok.type is TokenType.INTEGER:
++            self.pos += 1
++            return int(tok.value)
++        if tok.type is TokenType.STRING:
++            self.pos += 1
++            return tok.value
++        if tok.type is TokenType.KEYWORD and tok.value in ("TRUE", "FALSE", "NULL"):
++            self.pos += 1
++            return {"TRUE": True, "FALSE": False, "NULL": None}[tok.value]
++        raise self.error("literal")
++
++    # statements
++    def statement(self) -> Statement:
++        tok = self.peek()
++        if tok.type is not TokenType.KEYWORD:
++            raise self.error("statement")
++        if tok.value == "CREATE":
++            return self.create()
++        if tok.value == "DROP":
++            self.pos += 1
++            self.expect_kw("TABLE")
++            return DropTableStmt(self.ident())
++        if tok.value == "INSERT":
++            return self.insert()
++        if tok.value == "SELECT":
++            return self.select()
++        if tok.value == "DELETE":
++            self.pos += 1
++            self.expect_kw("FROM")
++            table = self.ident()
++            return DeleteStmt(table, self.opt_where())
++        raise self.error("statement")
++
++    def create(self) -> Statement:
++        self.pos += 1
++        self.expect_kw("TABLE")
++        table = self.ident()
++        self.expect_op("(")
++        cols = []
++        while True:
++            name = self.ident()
++            tok = self.peek()
++            if tok.type is not TokenType.KEYWORD or tok.value not in (
++                "INTEGER", "TEXT", "BOOLEAN"
++            ):
++                raise self.error("column type")
++            self.pos += 1
++            cols.append(ColumnDef(name, ColumnType(tok.value)))
++            if self.is_op(","):
++                self.pos += 1
++                continue
++            break
++        self.expect_op(")")
++        return CreateTableStmt(table, tuple(cols))
++
++    def insert(self) -> Statement:
++        self.pos += 1
++        self.expect_kw("INTO")
++        table = self.ident()
++        columns = None
++        if self.is_op("("):
++            self.pos += 1
++            columns = self.ident_list()
++            self.expect_op(")")
++        self.expect_kw("VALUES")
++        self.expect_op("(")
++        values = [self.literal_value()]
++        while self.is_op(","):
++            self.pos += 1
++            values.append(self.literal_value())
++        self.expect_op(")")
++        return InsertStmt(table, columns, tuple(values))
++
++    def select(self) -> Statement:
++        self.pos += 1
++        if self.is_op("*"):
++            self.pos += 1
++            columns = None
++        else:
++            columns = self.ident_list()
++        self.expect_kw("FROM")
++        table = self.ident()
++        return SelectStmt(table, columns, self.opt_where())
++
++    def opt_where(self):
++        if self.is_kw("WHERE"):
++            self.pos += 1
++            return self.expr()
++        return None
++
++    # expressions
++    def expr(self) -> Expr:
++        left = self.and_expr()
++        while self.is_kw("OR"):
++            self.pos += 1
++            left = Or(left, self.and_expr())
++        return left
++
++    def and_expr(self) -> Expr:
++        left = self.not_expr()
++        while self.is_kw("AND"):
++            self.pos += 1
++            left = And(left, self.not_expr())
++        return left
++
++    def not_expr(self) -> Expr:
++        if self.is_kw("NOT"):
++            self.pos += 1
++            return Not(self.not_expr())
++        return self.predicate()
++
++    def predicate(self) -> Expr:
++        left = self.primary()
++        tok = self.peek()
++        if tok.type is TokenType.OPERATOR and tok.value in COMPARISON_OPS:
++            self.pos += 1
++            return Comparison(tok.value, left, self.primary())
++        if self.is_kw("IS"):
++            self.pos += 1
++            negated = False
++            if self.is_kw("NOT"):
++                self.pos += 1
++                negated = True
++            self.expect_kw("NULL")
++            return IsNull(left, negated)
++        return left
++
++    def primary(self) -> Expr:
++        tok = self.peek()
++        if tok.type is TokenType.IDENTIFIER:
++            self.pos += 1
++            return ColumnRef(tok.value)
++        if self.is_op("("):
++            self.pos += 1
++            inner = self.expr()
++            self.expect_op(")")
++            return inner
++        return Literal(self.literal_value())
++
++
+ def parse(tokens: list[Token]) -> Statement:
+     """Parse exactly one statement, optionally followed by a single ';',
+     then EOF.
+@@ -53,7 +249,13 @@ def parse(tokens: list[Token]) -> Statement:
+         SQLSyntaxError: if the tokens are not exactly one valid statement
+             (including empty input, a lone ';', or trailing tokens).
+     """
+-    raise NotImplementedError("parse not implemented")
++    p = _Parser(tokens)
++    stmt = p.statement()
++    if p.is_op(";"):
++        p.pos += 1
++    if not p.at_eof():
++        raise p.error("end of input")
++    return stmt
+ 
+ 
+ def parse_script(tokens: list[Token]) -> list[Statement]:
+@@ -65,7 +267,16 @@ def parse_script(tokens: list[Token]) -> list[Statement]:
+     Raises:
+         SQLSyntaxError: if any statement is malformed.
+     """
+-    raise NotImplementedError("parse_script not implemented")
++    p = _Parser(tokens)
++    out: list[Statement] = []
++    while True:
++        while p.is_op(";"):
++            p.pos += 1
++        if p.at_eof():
++            return out
++        out.append(p.statement())
++        if not p.at_eof() and not p.is_op(";"):
++            raise p.error("';' or end of input")
+ 
+ 
+ def parse_expression(tokens: list[Token]) -> Expr:
+@@ -75,4 +286,8 @@ def parse_expression(tokens: list[Token]) -> Expr:
+     Raises:
+         SQLSyntaxError: if the tokens do not form exactly one expression.
+     """
+-    raise NotImplementedError("parse_expression not implemented")
++    p = _Parser(tokens)
++    expr = p.expr()
++    if not p.at_eof():
++        raise p.error("end of input")
++    return expr

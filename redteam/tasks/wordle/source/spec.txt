@@ -1,0 +1,158 @@
+Build a playable Wordle clone in Python.
+
+For anyone who hasn't seen it: the player has 6 attempts to guess a
+secret 5-letter English word. After each guess, every letter is color
+coded:
+
+  * HIT     (green)  -- right letter, right position
+  * PRESENT (yellow) -- right letter, wrong position
+  * MISS    (grey)   -- letter not in the target at all
+
+We'll render those as bracketed letters in the terminal:
+
+  Target: ALLOY     Guess: LLAMA
+  output: [ L ] [ l ] [ . ] [ . ] [ . ]   (HIT, PRESENT, MISS, MISS, MISS)
+
+The duplicate-letter rule is the one subtle bit. The target ALLOY has
+two Ls. If the guess is LLAMA, the first L is a HIT (matches position
+2 in ALLOY... wait no, ALLOY position 1 is L, position 2 is L. The
+guess LLAMA position 1 is L: HIT. Position 2 is L: there's still one
+unmatched L in the target, so PRESENT. After that, ALLOY is out of Ls,
+so a third L in the guess would be MISS even though L appears in the
+target.) In short: every target letter can be consumed at most once,
+HITs are accounted for first, PRESENTs are matched left-to-right
+against whatever target letters are left over.
+
+
+# Required behavior
+
+Running `python -m wordle` should:
+
+  1. Pick a random 5-letter target word from a built-in dictionary.
+  2. Prompt the player for a guess.
+  3. Reject any guess that isn't a 5-letter word in the dictionary
+     (print "not in word list", same prompt comes back, attempt count
+     doesn't increment).
+  4. For a valid guess, print the colored row for that guess plus all
+     previous rows, then prompt again.
+  5. After 6 attempts (or when the player guesses the target), print
+     a final summary --- either "You won in N!" or "You lost. The word
+     was XYZAB." --- and exit.
+  6. Support `quit` at any prompt to exit cleanly.
+
+The Python library API (for the test suite to drive without a real
+TTY) must look like:
+
+```python
+from wordle import Game, Feedback
+
+game = Game(target="ALLOY")             # explicit target, no randomness
+result = game.guess("LLAMA")
+assert result.feedbacks == [
+    Feedback.HIT, Feedback.PRESENT, Feedback.MISS,
+    Feedback.MISS, Feedback.MISS,
+]
+assert game.attempts_used == 1
+assert game.status == "in_progress"
+
+game.guess("ALLOY")
+assert game.status == "won"
+```
+
+
+# Suggested decomposition (5 subtasks + shared types)
+
+  shared_files (no weight, imported by everyone):
+    * Feedback enum, GuessResult dataclass, GameStatus enum,
+      Game-related exceptions (InvalidGuessError, GameOverError).
+
+  Tier 1 -- can run in parallel, no cross-subtask deps:
+
+    * `words`   -- ships a list[str] of ~2000 common 5-letter words
+                   plus a validator: `is_valid_guess(word) -> bool`
+                   and `random_target() -> str`. Keep the dictionary
+                   inline as a Python list (one item per line in the
+                   source); don't try to download anything.
+
+    * `scorer`  -- the duplicate-letter rule. Pure function:
+                   `score(guess: str, target: str) -> list[Feedback]`.
+                   Has to handle the two-pass duplicate logic
+                   correctly. This is the most interesting algorithm
+                   and the integration tests pound on it.
+
+    * `renderer` -- pure formatting:
+                   `render_row(guess, feedbacks) -> str` and
+                   `render_board(history) -> str`. Returns the
+                   bracketed-letter format shown above. No I/O.
+
+  Tier 2 -- depend on Tier 1:
+
+    * `game`    -- the state machine. Wraps a target, a history of
+                   GuessResults, and the current status. Uses
+                   `words.is_valid_guess` to reject invalid input and
+                   `scorer.score` to grade each accepted guess.
+
+    * `cli`     -- the REPL: argparse / input() loop that uses
+                   `game.Game` plus `renderer.render_board`. The
+                   `python -m wordle` entry point lives here.
+
+Suggested weights: scorer = 0.30 (the meaty algorithm), game = 0.25,
+cli = 0.15, words = 0.15, renderer = 0.15. Sum = 1.00.
+
+
+# Integration test contract
+
+`tests/test_integration.py` must cover:
+
+  1. Pure greens: target="ALLOY", guess="ALLOY" -> 5 HITs, status="won",
+     attempts_used=1.
+
+  2. Pure misses: target="ALLOY", guess="QRSTU" -> 5 MISSes,
+     status="in_progress".
+
+  3. The duplicate-letter case from the spec:
+     target="ALLOY", guess="LLAMA" -> [HIT, PRESENT, MISS, MISS, MISS].
+
+  4. A trickier duplicate case:
+     target="STARE", guess="ASSAY" ->
+       position 1 'A' vs 'S' in STARE: A is in STARE -> PRESENT
+       position 2 'S' vs 'T' in STARE: S is in STARE (position 1),
+         already consumed? No -- HITs go first. Re-read the rules:
+         no S is a HIT (positions don't match), but STARE has one S,
+         so the first non-HIT S becomes PRESENT.
+       Actually compute it yourself in the test to be sure; just
+       assert your implementation matches your computation.
+
+  5. Invalid guess: `Game.guess("ZZZZZ")` (assuming ZZZZZ isn't in
+     the dictionary) raises `InvalidGuessError` and attempts_used
+     does NOT increment.
+
+  6. Game over: 6 wrong guesses -> 7th guess raises `GameOverError`,
+     status is "lost".
+
+  7. Renderer roundtrip: feed a history through `render_board`,
+     assert the output contains one bracketed letter per cell and
+     the right number of rows.
+
+
+# Out of scope
+
+  * Multiplayer / hard mode / dark mode toggles.
+  * A real GUI (Tkinter, web, whatever). The bracketed-letter ASCII
+    output is the entire visual layer.
+  * Persistence (no saving / loading games).
+  * Streak tracking across sessions.
+
+
+# Engineering constraints
+
+  * Stdlib only. No `colorama`, no `rich`, no curses --- bracketed
+    letters in plain text.
+  * Every cross-subtask import uses the full package path
+    (`from wordle.scorer import score`, not `from scorer import score`).
+  * Stub function bodies raise `NotImplementedError`. Stub tests fail
+    on those stubs (do NOT wrap calls in `pytest.raises(NotImplementedError)`).
+  * Each subtask's test file has at least 4 meaningful tests that
+    call real functions and assert real return values.
+  * Type hints on every public function/method signature.
+  * No print() in library code. Only `cli.py` prints.

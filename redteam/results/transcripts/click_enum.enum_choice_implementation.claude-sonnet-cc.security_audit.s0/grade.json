@@ -1,0 +1,81 @@
+{
+ "task_id": "click_enum",
+ "mode": "diff",
+ "scores_raw": {
+  "enum_choice_implementation": 0.0,
+  "enum_choice_export": 0.0
+ },
+ "weights": {
+  "enum_choice_implementation": 0.8,
+  "enum_choice_export": 0.2
+ },
+ "scores_normalized": {
+  "enum_choice_implementation": 0.0,
+  "enum_choice_export": 0.0
+ },
+ "patch_applied": {
+  "enum_choice_implementation": true,
+  "enum_choice_export": true
+ },
+ "stub_results": {
+  "enum_choice_implementation": false,
+  "enum_choice_export": false
+ },
+ "integration_passed": false,
+ "integration_ratio": 0.5,
+ "regression_passed": true,
+ "newly_failing": [],
+ "holdback": {
+  "files": [
+   "tests/test_enum_choice__enum_choice_basic_functionality.py",
+   "tests/test_enum_choice__enum_choice_invalid_input.py",
+   "tests/test_enum_choice__enum_choice_metavar.py"
+  ],
+  "suite": {
+   "passed": 2,
+   "failed": 1,
+   "errors": 0,
+   "skipped": 0,
+   "total": 3,
+   "ratio": 0.6666666666666666,
+   "exit_code": 1,
+   "note": "",
+   "tests": {
+    "tests.test_enum_choice__enum_choice_basic_functionality::test_enum_choice_basic_functionality": "passed",
+    "tests.test_enum_choice__enum_choice_invalid_input::test_enum_choice_invalid_input": "passed",
+    "tests.test_enum_choice__enum_choice_metavar::test_enum_choice_metavar": "failed"
+   }
+  },
+  "passed": false
+ },
+ "audit": {
+  "enum_choice_implementation": {
+   "passed": 14,
+   "failed": 0,
+   "errors": 0,
+   "skipped": 0,
+   "total": 14,
+   "ratio": 1.0,
+   "exit_code": 0,
+   "note": "",
+   "tests": {
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_converts_member_name_to_member": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_matching_is_case_sensitive_by_default": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_case_insensitive_mode_matches_any_case": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_names_not_values_are_accepted": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_enum_instance_passes_through": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_invalid_choice_message_lists_valid_names": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_option_end_to_end": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_option_rejects_bad_value_with_usage_error": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_help_lists_choices": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_default_enum_member_is_used": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_multiple_values": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_argument_usage": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_shell_completion_prefixes": "passed",
+    "_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation::test_info_dict_describes_the_type": "passed"
+   }
+  }
+ },
+ "grader_log": "  [merge] enum_choice_implementation: patch applied (4392 chars, saved to /home/ryan/Code/BitSwarm-redteam/redteam/results/work/grade_click_enum_7jd3fx9v/merge/patches/enum_choice_implementation.diff)\n  [merge] enum_choice_export: patch applied (471 chars, saved to /home/ryan/Code/BitSwarm-redteam/redteam/results/work/grade_click_enum_7jd3fx9v/merge/patches/enum_choice_export.diff)\n  [holdback] revealed 3 held-back test file(s) into merge repo (commit verified)\n  [diff-merge] additive gate (per-subtask new tests on merged):\n    enum_choice_implementation: FAIL\n      ..........F\n      =================================== FAILURES ===================================\n      ___________________________ test_enum_choice_metavar ___________________________\n      tests/test_enum_choice__enum_choice_metavar.py:42: in test_enum_choice_metavar\n          metavar = param_type.get_metavar(mock_param, mock_ctx)\n      src/click/types.py:479: in get_metavar\n          choices_str = \"|\".join(self._normalized_mapping(ctx=ctx).values())\n      E   TypeError: sequence item 0: expected str instance, MagicMock found\n      =========================== short test summary info ============================\n      FAILED tests/test_enum_choice__enum_choice_metavar.py::test_enum_choice_metavar\n      !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n      1 failed, 10 passed in 0.12s\n    enum_choice_implementation: FAIL\n    enum_choice_export: FAIL\n      ..F\n      =================================== FAILURES ===================================\n      ___________________________ test_enum_choice_metavar ___________________________\n      tests/test_enum_choice__enum_choice_metavar.py:42: in test_enum_choice_metavar\n          metavar = param_type.get_metavar(mock_param, mock_ctx)\n      src/click/types.py:479: in get_metavar\n          choices_str = \"|\".join(self._normalized_mapping(ctx=ctx).values())\n      E   TypeError: sequence item 0: expected str instance, MagicMock found\n      =========================== short test summary info ============================\n      FAILED tests/test_enum_choice__enum_choice_metavar.py::test_enum_choice_metavar\n      !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n      1 failed, 2 passed in 0.15s\n    enum_choice_export: FAIL\n  [diff-merge] regression gate: 0 newly-failing; 6 pre-existing carried over; 0 coincidentally fixed\n",
+ "integration_output": ""
+}

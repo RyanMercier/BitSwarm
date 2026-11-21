@@ -1,0 +1,76 @@
+diff --git a/wordle/scorer.py b/wordle/scorer.py
+index 06b284c..2e1efe0 100644
+--- a/wordle/scorer.py
++++ b/wordle/scorer.py
+@@ -4,47 +4,35 @@ from wordle.types import Feedback
+ 
+ 
+ def score_guess(guess: str, target: str) -> List[Feedback]:
+-    """Score a guess against the target word with proper duplicate handling.
+-
+-    Args:
+-        guess: The guessed word (5 letters)
+-        target: The target word (5 letters)
+-
+-    Returns:
+-        List of Feedback for each letter position
+-    """
+-    raise NotImplementedError("score_guess not implemented")
++    """Score a guess against the target word with proper duplicate handling."""
++    feedback = [Feedback.MISS] * len(guess)
++    _mark_hits(guess, target, feedback)
++    _mark_presents(guess, target, feedback)
++    return feedback
+ 
+ 
+ def _count_letters(word: str) -> dict[str, int]:
+-    """Count occurrences of each letter in a word.
+-
+-    Args:
+-        word: The word to count letters in
+-
+-    Returns:
+-        Dictionary mapping letters to their counts
+-    """
+-    raise NotImplementedError("_count_letters not implemented")
++    """Count occurrences of each letter in a word."""
++    counts: dict[str, int] = {}
++    for c in word:
++        counts[c] = counts.get(c, 0) + 1
++    return counts
+ 
+ 
+ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+-    """Mark exact matches (HIT) in the feedback list.
+-
+-    Args:
+-        guess: The guessed word
+-        target: The target word
+-        feedback: List to modify with HIT marks
+-    """
+-    raise NotImplementedError("_mark_hits not implemented")
++    """Mark exact matches (HIT) in the feedback list."""
++    for i, c in enumerate(guess):
++        if c == target[i]:
++            feedback[i] = Feedback.HIT
+ 
+ 
+ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+-    """Mark letters present in wrong positions (PRESENT) in the feedback list.
+-
+-    Args:
+-        guess: The guessed word
+-        target: The target word
+-        feedback: List to modify with PRESENT marks
+-    """
+-    raise NotImplementedError("_mark_presents not implemented")
+\ No newline at end of file
++    """Mark letters present in wrong positions (PRESENT) in the feedback list."""
++    remaining = _count_letters(
++        [t for i, t in enumerate(target) if guess[i] != t] and
++        "".join(t for i, t in enumerate(target) if guess[i] != t)
++    )
++    for i, c in enumerate(guess):
++        if guess[i] != target[i] and remaining.get(c, 0) > 0:
++            feedback[i] = Feedback.PRESENT
++            remaining[c] -= 1

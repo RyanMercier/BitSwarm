@@ -1,0 +1,132 @@
+diff --git a/minidb/cli.py b/minidb/cli.py
+index 7da59c2..7f8688f 100644
+--- a/minidb/cli.py
++++ b/minidb/cli.py
+@@ -1,9 +1,4 @@
+-"""Command-line REPL and result formatting for MiniDB.
+-
+-Run with ``python -m minidb.cli``. ``Engine`` is imported at module level
+-so tests can patch ``minidb.cli.Engine``.
+-"""
+-
++"""Reference implementation of minidb.cli."""
+ from __future__ import annotations
+ 
+ import sys
+@@ -12,35 +7,36 @@ from typing import Optional, TextIO
+ from minidb.engine import Engine
+ from minidb.types import MiniDBError, QueryResult, Value
+ 
+-__all__ = ["format_value", "format_result", "run_repl", "main"]
+-
+ 
+ def format_value(value: Value) -> str:
+-    """Render one cell: None -> 'NULL', True -> 'TRUE', False -> 'FALSE',
+-    anything else -> ``str(value)``."""
+-    raise NotImplementedError("format_value not implemented")
++    if value is None:
++        return "NULL"
++    if value is True:
++        return "TRUE"
++    if value is False:
++        return "FALSE"
++    return str(value)
+ 
+ 
+ def format_result(result: QueryResult) -> str:
+-    """Render a QueryResult as text (no trailing newline).
+-
+-    If ``result.columns`` is non-empty: a header line, a separator line of
+-    dashes, then one line per row. Each column's width is the max length of
+-    its header and formatted cells; every cell is left-justified to that
+-    width and cells are joined with ``' | '``. A final line reads
+-    ``'(N rows)'``, or ``'(1 row)'`` when N == 1.
+-
+-    Example::
+-
+-        id | name
+-        -- | -----
+-        1  | alice
+-        (1 row)
+-
+-    If ``result.columns`` is empty: ``'OK (N rows affected)'`` with
+-    N = ``result.row_count``.
+-    """
+-    raise NotImplementedError("format_result not implemented")
++    if result.columns:
++        cells = [[format_value(v) for v in row] for row in result.rows]
++        widths = []
++        for i, header in enumerate(result.columns):
++            width = len(header)
++            for row in cells:
++                width = max(width, len(row[i]))
++            widths.append(width)
++        header_line = " | ".join(h.ljust(widths[i])
++                                 for i, h in enumerate(result.columns))
++        sep_line = " | ".join("-" * widths[i] for i in range(len(result.columns)))
++        lines = [header_line, sep_line]
++        for row in cells:
++            lines.append(" | ".join(row[i].ljust(widths[i]) for i in range(len(row))))
++        n = len(result.rows)
++        lines.append(f"({n} row)" if n == 1 else f"({n} rows)")
++        return "\n".join(lines)
++    return f"OK ({result.row_count} rows affected)"
+ 
+ 
+ def run_repl(
+@@ -49,28 +45,36 @@ def run_repl(
+     stderr: TextIO,
+     engine: Optional[Engine] = None,
+ ) -> int:
+-    """Read SQL from ``stdin`` line by line and execute it.
+-
+-    * ``engine`` defaults to ``Engine()`` (module-level name).
+-    * A line equal to ``.exit`` after stripping stops processing.
+-    * Lines accumulate in a buffer; once the stripped buffer ends with
+-      ``';'`` it is passed to ``engine.execute`` and cleared.
+-    * On success write ``format_result(result) + '\\n'`` to ``stdout``.
+-    * On ``MiniDBError`` write ``'ERROR: <message>\\n'`` to ``stderr`` and
+-      continue.
+-    * At EOF, a non-blank leftover buffer is executed the same way.
+-    * Blank buffers are never executed.
+-
+-    Returns 0.
+-    """
+-    raise NotImplementedError("run_repl not implemented")
++    if engine is None:
++        engine = Engine()
++    buffer = ""
++
++    def flush() -> None:
++        nonlocal buffer
++        text = buffer.strip()
++        buffer = ""
++        if not text:
++            return
++        try:
++            result = engine.execute(text)
++            stdout.write(format_result(result) + "\n")
++        except MiniDBError as exc:
++            stderr.write(f"ERROR: {exc}\n")
++
++    for line in stdin:
++        if line.strip() == ".exit":
++            buffer = ""
++            return 0
++        buffer += line
++        if buffer.strip().endswith(";"):
++            flush()
++    flush()
++    return 0
+ 
+ 
+ def main(argv: Optional[list[str]] = None) -> int:
+-    """CLI entry point: run the REPL on sys.stdin/stdout/stderr and return
+-    its exit code. ``argv`` is accepted for future options and ignored."""
+-    raise NotImplementedError("main not implemented")
++    return run_repl(sys.stdin, sys.stdout, sys.stderr)
+ 
+ 
+ if __name__ == "__main__":
+-    sys.exit(main())
++    raise SystemExit(main())

@@ -1,0 +1,108 @@
+diff --git a/minidb/tokenizer.py b/minidb/tokenizer.py
+index 863709f..b006999 100644
+--- a/minidb/tokenizer.py
++++ b/minidb/tokenizer.py
+@@ -1,21 +1,3 @@
+-"""Lexer for MiniDB's SQL subset.
+-
+-``tokenize`` turns SQL text into a list of ``Token`` objects terminated by
+-exactly one EOF token. Lexical rules:
+-
+-* Whitespace is skipped.
+-* A word starting with a letter or ``_`` and continuing with letters,
+-  digits, or ``_`` is a KEYWORD (emitted uppercase) if its uppercase form
+-  is in ``KEYWORDS``; otherwise an IDENTIFIER kept exactly as written.
+-* A run of ASCII digits is an INTEGER token whose value is the digit text.
+-* A single-quoted string is a STRING token; ``''`` inside it is unescaped
+-  to ``'``. A missing closing quote raises SQLSyntaxError.
+-* Operators are matched longest-first from ``OPERATORS``.
+-* Any other character raises SQLSyntaxError.
+-* Each token's ``position`` is the offset of its first character; the EOF
+-  token's position is ``len(sql)`` and its value is ``''``.
+-"""
+-
+ from __future__ import annotations
+ 
+ from minidb.types import KEYWORDS, OPERATORS, SQLSyntaxError, Token, TokenType
+@@ -27,18 +9,15 @@ __all__ = [
+     "read_string_literal",
+ ]
+ 
+-
+ def is_identifier_start(ch: str) -> bool:
+     """Return True if ``ch`` may begin an identifier or keyword: an ASCII
+     letter or underscore."""
+-    raise NotImplementedError("is_identifier_start not implemented")
+-
++    return ch.isalpha() or ch == '_'
+ 
+ def is_identifier_char(ch: str) -> bool:
+     """Return True if ``ch`` may continue an identifier or keyword: an ASCII
+     letter, ASCII digit, or underscore."""
+-    raise NotImplementedError("is_identifier_char not implemented")
+-
++    return ch.isalnum() or ch == '_'
+ 
+ def read_string_literal(sql: str, start: int) -> tuple[str, int]:
+     """Read a single-quoted string literal beginning at ``sql[start]``
+@@ -50,8 +29,19 @@ def read_string_literal(sql: str, start: int) -> tuple[str, int]:
+     Raises:
+         SQLSyntaxError: if the literal is not terminated.
+     """
+-    raise NotImplementedError("read_string_literal not implemented")
+-
++    end = start + 1
++    contents = []
++    while end < len(sql):
++        if sql[end] == "'":
++            if end + 1 < len(sql) and sql[end + 1] == "'":
++                contents.append("'")
++                end += 2
++            else:
++                return ''.join(contents), end + 1
++        else:
++            contents.append(sql[end])
++            end += 1
++    raise SQLSyntaxError("unterminated string literal")
+ 
+ def tokenize(sql: str) -> list[Token]:
+     """Convert ``sql`` into tokens, always ending with one EOF token.
+@@ -59,4 +49,37 @@ def tokenize(sql: str) -> list[Token]:
+     Raises:
+         SQLSyntaxError: on an unterminated string or an unknown character.
+     """
+-    raise NotImplementedError("tokenize not implemented")
++    tokens = []
++    position = 0
++    while position < len(sql):
++        if sql[position].isspace():
++            position += 1
++            continue
++        elif is_identifier_start(sql[position]):
++            start = position
++            while position < len(sql) and is_identifier_char(sql[position]):
++                position += 1
++            word = sql[start:position]
++            if word.upper() in KEYWORDS:
++                tokens.append(Token(TokenType.KEYWORD, word.upper(), start))
++            else:
++                tokens.append(Token(TokenType.IDENTIFIER, word, start))
++        elif sql[position].isdigit():
++            start = position
++            while position < len(sql) and sql[position].isdigit():
++                position += 1
++            tokens.append(Token(TokenType.INTEGER, sql[start:position], start))
++        elif sql[position] == "'":
++            contents, end_position = read_string_literal(sql, position)
++            tokens.append(Token(TokenType.STRING, contents, position))
++            position = end_position
++        else:
++            for operator in OPERATORS:
++                if sql[position:position + len(operator)] == operator:
++                    tokens.append(Token(TokenType.OPERATOR, operator, position))
++                    position += len(operator)
++                    break
++            else:
++                raise SQLSyntaxError(f"unknown character: {sql[position]}")
++    tokens.append(Token(TokenType.EOF, "", len(sql)))
++    return tokens

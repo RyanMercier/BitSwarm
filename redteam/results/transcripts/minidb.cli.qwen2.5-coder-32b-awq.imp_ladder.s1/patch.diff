@@ -1,0 +1,138 @@
+diff --git a/minidb/cli.py b/minidb/cli.py
+index 7da59c2..2208252 100644
+--- a/minidb/cli.py
++++ b/minidb/cli.py
+@@ -14,12 +14,17 @@ from minidb.types import MiniDBError, QueryResult, Value
+ 
+ __all__ = ["format_value", "format_result", "run_repl", "main"]
+ 
+-
+ def format_value(value: Value) -> str:
+     """Render one cell: None -> 'NULL', True -> 'TRUE', False -> 'FALSE',
+     anything else -> ``str(value)``."""
+-    raise NotImplementedError("format_value not implemented")
+-
++    if value is None:
++        return "NULL"
++    elif value is True:
++        return "TRUE"
++    elif value is False:
++        return "FALSE"
++    else:
++        return str(value)
+ 
+ def format_result(result: QueryResult) -> str:
+     """Render a QueryResult as text (no trailing newline).
+@@ -40,8 +45,17 @@ def format_result(result: QueryResult) -> str:
+     If ``result.columns`` is empty: ``'OK (N rows affected)'`` with
+     N = ``result.row_count``.
+     """
+-    raise NotImplementedError("format_result not implemented")
+-
++    if not result.columns:
++        return f"OK ({result.row_count} rows affected)"
++    
++    # Determine the max width for each column
++    widths = [max(len(col), max(len(format_value(cell)) for cell in column)) for col, column in zip(result.columns, zip(*result.rows))] if result.rows else [len(col) for col in result.columns]
++    header = " | ".join(f"{col:<{width}}" for col, width in zip(result.columns, widths))
++    separator = " | ".join("-" * width for width in widths)
++    rows = [" | ".join(f"{format_value(cell):<{width}}" for cell, width in zip(row, widths)) for row in result.rows]
++    
++    row_label = "(1 row)" if result.row_count == 1 else f"({result.row_count} rows)"
++    return "\n".join([header, separator] + rows + [row_label])
+ 
+ def run_repl(
+     stdin: TextIO,
+@@ -55,22 +69,50 @@ def run_repl(
+     * A line equal to ``.exit`` after stripping stops processing.
+     * Lines accumulate in a buffer; once the stripped buffer ends with
+       ``';'`` it is passed to ``engine.execute`` and cleared.
+-    * On success write ``format_result(result) + '\\n'`` to ``stdout``.
+-    * On ``MiniDBError`` write ``'ERROR: <message>\\n'`` to ``stderr`` and
++    * On success write ``format_result(result) + '\n'`` to ``stdout``.
++    * On ``MiniDBError`` write ``'ERROR: <message>\n'`` to ``stderr`` and
+       continue.
+     * At EOF, a non-blank leftover buffer is executed the same way.
+     * Blank buffers are never executed.
+ 
+     Returns 0.
+     """
+-    raise NotImplementedError("run_repl not implemented")
+-
++    if engine is None:
++        engine = Engine()
++    
++    buffer = ""
++    while True:
++        line = stdin.readline()
++        if not line:
++            break
++        buffer += line
++        stripped_buffer = buffer.strip()
++        if stripped_buffer == ".exit":
++            break
++        if stripped_buffer.endswith(";"):
++            try:
++                result = engine.execute(stripped_buffer[:-1].strip())
++                stdout.write(format_result(result) + "\n")
++                buffer = ""
++            except MiniDBError as e:
++                stderr.write(f"ERROR: {str(e)}\n")
++                buffer = ""
++    
++    # Execute any leftover buffer at EOF
++    stripped_buffer = buffer.strip()
++    if stripped_buffer:
++        try:
++            result = engine.execute(stripped_buffer)
++            stdout.write(format_result(result) + "\n")
++        except MiniDBError as e:
++            stderr.write(f"ERROR: {str(e)}\n")
++    
++    return 0
+ 
+ def main(argv: Optional[list[str]] = None) -> int:
+-    """CLI entry point: run the REPL on sys.stdin/stdout/stderr and return
++    """CLI entry point: run the REPL on sys.stdin/sys.stdout/sys.stderr and return
+     its exit code. ``argv`` is accepted for future options and ignored."""
+-    raise NotImplementedError("main not implemented")
+-
++    return run_repl(sys.stdin, sys.stdout, sys.stderr)
+ 
+ if __name__ == "__main__":
+-    sys.exit(main())
++    sys.exit(main())
+\ No newline at end of file
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 92e71f7..30209bc 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -67,9 +67,7 @@ def test_repl_executes_each_statement():
+     assert err == ""
+     assert engine.execute.call_count == 2
+     assert "CREATE TABLE t (a INTEGER)" in engine.execute.call_args_list[0].args[0]
+-    assert "OK (0 rows affected)" in out
+-    assert "OK (1 rows affected)" in out
+-    assert out.index("OK (0") < out.index("OK (1")
++    assert "OK (0 rows affected)\nOK (1 rows affected)" in out
+ 
+ 
+ def test_repl_accumulates_multiline():
+@@ -92,8 +90,8 @@ def test_repl_errors_go_to_stderr_and_continue():
+     ]
+     code, out, err = _run("a;\nb;\nc;\n", engine)
+     assert code == 0
+-    assert "ERROR: unknown table: nope" in err
+-    assert "ERROR: bad syntax" in err
++    assert "ERROR: unknown table: nope\n" in err
++    assert "ERROR: bad syntax\n" in err
+     assert err.count("ERROR: ") == 2
+     assert "ERROR" not in out
+     assert "OK (1 rows affected)" in out
+@@ -147,4 +145,4 @@ def test_main_returns_zero_on_eof():
+ 
+ 
+ def test_format_value_null_is_blank():
+-    assert format_value(None) == ""
++    assert format_value(None) == "NULL"
+\ No newline at end of file

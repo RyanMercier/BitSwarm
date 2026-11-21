@@ -1,0 +1,93 @@
+diff --git a/minidb/cli.py b/minidb/cli.py
+index 7da59c2..dab17ee 100644
+--- a/minidb/cli.py
++++ b/minidb/cli.py
+@@ -18,7 +18,13 @@ __all__ = ["format_value", "format_result", "run_repl", "main"]
+ def format_value(value: Value) -> str:
+     """Render one cell: None -> 'NULL', True -> 'TRUE', False -> 'FALSE',
+     anything else -> ``str(value)``."""
+-    raise NotImplementedError("format_value not implemented")
++    if value is None:
++        return "NULL"
++    if value is True:
++        return "TRUE"
++    if value is False:
++        return "FALSE"
++    return str(value)
+ 
+ 
+ def format_result(result: QueryResult) -> str:
+@@ -40,7 +46,23 @@ def format_result(result: QueryResult) -> str:
+     If ``result.columns`` is empty: ``'OK (N rows affected)'`` with
+     N = ``result.row_count``.
+     """
+-    raise NotImplementedError("format_result not implemented")
++    if not result.columns:
++        return f"OK ({result.row_count} rows affected)"
++    cells = [[format_value(v) for v in row] for row in result.rows]
++    widths = [len(c) for c in result.columns]
++    for row in cells:
++        for i, text in enumerate(row):
++            if i < len(widths):
++                widths[i] = max(widths[i], len(text))
++
++    def _line(items: list[str]) -> str:
++        return " | ".join(t.ljust(widths[i]) for i, t in enumerate(items))
++
++    lines = [_line(list(result.columns)), _line(["-" * w for w in widths])]
++    lines.extend(_line(row) for row in cells)
++    n = len(result.rows)
++    lines.append("(1 row)" if n == 1 else f"({n} rows)")
++    return "\n".join(lines)
+ 
+ 
+ def run_repl(
+@@ -63,13 +85,34 @@ def run_repl(
+ 
+     Returns 0.
+     """
+-    raise NotImplementedError("run_repl not implemented")
++    if engine is None:
++        engine = Engine()
++
++    def _run(sql: str) -> None:
++        try:
++            result = engine.execute(sql)
++        except MiniDBError as error:
++            stderr.write(f"ERROR: {error}\n")
++            return
++        stdout.write(format_result(result) + "\n")
++
++    buffer = ""
++    for line in stdin:
++        if line.strip() == ".exit":
++            break
++        buffer += line
++        if buffer.strip().endswith(";"):
++            _run(buffer)
++            buffer = ""
++    if buffer.strip():
++        _run(buffer)
++    return 0
+ 
+ 
+ def main(argv: Optional[list[str]] = None) -> int:
+     """CLI entry point: run the REPL on sys.stdin/stdout/stderr and return
+     its exit code. ``argv`` is accepted for future options and ignored."""
+-    raise NotImplementedError("main not implemented")
++    return run_repl(sys.stdin, sys.stdout, sys.stderr)
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 92e71f7..6af00be 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -144,7 +144,3 @@ def test_main_returns_zero_on_eof():
+             patch("sys.stderr", io.StringIO()):
+         assert main([]) == 0
+     fake.execute.assert_not_called()
+-
+-
+-def test_format_value_null_is_blank():
+-    assert format_value(None) == ""

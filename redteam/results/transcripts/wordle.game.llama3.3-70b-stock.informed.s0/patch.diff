@@ -1,0 +1,191 @@
+diff --git a/tests/test_game.py b/tests/test_game.py
+index 4c3c83c..e889ddd 100644
+--- a/tests/test_game.py
++++ b/tests/test_game.py
+@@ -1,12 +1,9 @@
+-"""Tests for game module."""
+-import pytest
+ from unittest.mock import MagicMock
+ from wordle.game import Game
+ from wordle.types import GameStatus, InvalidGuessError, GameOverError
+ 
+ 
+ def test_game_init():
+-    """Test game initialization."""
+     game = Game("HELLO")
+     status = game.get_status()
+     assert status == GameStatus.IN_PROGRESS
+@@ -16,7 +13,6 @@ def test_game_init():
+ 
+ 
+ def test_make_guess_valid():
+-    """Test making a valid guess."""
+     game = Game("HELLO")
+     result = game.make_guess("WORLD")
+ 
+@@ -28,7 +24,6 @@ def test_make_guess_valid():
+ 
+ 
+ def test_make_guess_winning():
+-    """Test winning the game with correct guess."""
+     game = Game("HELLO")
+     result = game.make_guess("HELLO")
+ 
+@@ -38,7 +33,6 @@ def test_make_guess_winning():
+ 
+ 
+ def test_get_results():
+-    """Test getting all guess results."""
+     game = Game("HELLO")
+     game.make_guess("WORLD")
+     game.make_guess("GREAT")
+@@ -50,7 +44,6 @@ def test_get_results():
+ 
+ 
+ def test_get_target_word():
+-    """Test getting target word after game over."""
+     game = Game("HELLO")
+ 
+     # Target should be None during game
+@@ -64,7 +57,6 @@ def test_get_target_word():
+ 
+ 
+ def test_reset_game():
+-    """Test resetting the game."""
+     game = Game("HELLO")
+     game.make_guess("WORLD")
+ 
+@@ -80,7 +72,6 @@ def test_reset_game():
+ 
+ 
+ def test_game_over_after_six_attempts():
+-    """Test game over after maximum attempts."""
+     game = Game("HELLO")
+ 
+     # Make 6 wrong guesses
+@@ -88,4 +79,4 @@ def test_game_over_after_six_attempts():
+         game.make_guess("WRONG")
+ 
+     status = game.get_status()
+-    assert status == GameStatus.LOST
+\ No newline at end of file
++    assert status == GameStatus.LOST
+diff --git a/wordle/game.py b/wordle/game.py
+index 8f632fd..5af5c5e 100644
+--- a/wordle/game.py
++++ b/wordle/game.py
+@@ -1,84 +1,46 @@
+-"""Game state machine and core game logic with guess validation."""
+ from typing import List, Optional
+ from wordle.types import GuessResult, GameStatus, InvalidGuessError, GameOverError
+-
++from wordle.scorer import score_guess
++from wordle.words import is_valid_word, get_random_word
+ 
+ class Game:
+-    """Main game class that manages Wordle game state."""
+-
+     def __init__(self, target: Optional[str] = None):
+-        """Initialize a new game.
+-
+-        Args:
+-            target: Optional target word. If None, a random word is chosen.
+-        """
+-        raise NotImplementedError("Game.__init__ not implemented")
++        if target is None:
++            self.target = get_random_word()
++        else:
++            self.target = target
++        self.guesses = []
++        self.attempts_remaining = 6
++        self.status = GameStatus.IN_PROGRESS
+ 
+     def make_guess(self, guess: str) -> GuessResult:
+-        """Make a guess and return the result.
+-
+-        Args:
+-            guess: The word being guessed
+-
+-        Returns:
+-            GuessResult with the guess and feedback
+-
+-        Raises:
+-            InvalidGuessError: If guess is invalid
+-            GameOverError: If game is already over
+-        """
+-        raise NotImplementedError("Game.make_guess not implemented")
++        if self.status != GameStatus.IN_PROGRESS:
++            raise GameOverError("Game is already over")
++        guess = guess.upper()
++        if not is_valid_word(guess):
++            raise InvalidGuessError("Invalid guess")
++        feedbacks = score_guess(guess, self.target)
++        self.guesses.append(GuessResult(guess, feedbacks))
++        self.attempts_remaining -= 1
++        if guess == self.target:
++            self.status = GameStatus.WON
++        elif self.attempts_remaining == 0:
++            self.status = GameStatus.LOST
++        return GuessResult(guess, feedbacks)
+ 
+     def get_status(self) -> GameStatus:
+-        """Get the current game status.
+-
+-        Returns:
+-            Current game status
+-        """
+-        raise NotImplementedError("Game.get_status not implemented")
++        return self.status
+ 
+     def get_results(self) -> List[GuessResult]:
+-        """Get all guess results so far.
+-
+-        Returns:
+-            List of all guess results
+-        """
+-        raise NotImplementedError("Game.get_results not implemented")
++        return self.guesses
+ 
+     def get_attempts_remaining(self) -> int:
+-        """Get the number of attempts remaining.
+-
+-        Returns:
+-            Number of attempts left
+-        """
+-        raise NotImplementedError("Game.get_attempts_remaining not implemented")
++        return self.attempts_remaining
+ 
+     def get_target_word(self) -> Optional[str]:
+-        """Get the target word (only after game is over).
+-
+-        Returns:
+-            Target word if game is over, None otherwise
+-        """
+-        raise NotImplementedError("Game.get_target_word not implemented")
++        if self.status == GameStatus.IN_PROGRESS:
++            return None
++        return self.target
+ 
+     def reset(self, target: Optional[str] = None) -> None:
+-        """Reset the game with a new target word.
+-
+-        Args:
+-            target: Optional new target word. If None, a random word is chosen.
+-        """
+-        raise NotImplementedError("Game.reset not implemented")
+-
+-    def _validate_guess(self, guess: str) -> str:
+-        """Validate and normalize a guess.
+-
+-        Args:
+-            guess: The guess to validate
+-
+-        Returns:
+-            Normalized guess
+-
+-        Raises:
+-            InvalidGuessError: If guess is invalid
+-        """
+-        raise NotImplementedError("Game._validate_guess not implemented")
+\ No newline at end of file
++        self.__init__(target)

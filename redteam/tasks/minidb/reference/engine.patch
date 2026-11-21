@@ -1,0 +1,59 @@
+diff --git a/minidb/engine.py b/minidb/engine.py
+index d53bf37..06d6ae3 100644
+--- a/minidb/engine.py
++++ b/minidb/engine.py
+@@ -1,11 +1,4 @@
+-"""Public entry point tying the MiniDB pipeline together.
+-
+-``Engine.execute`` runs ``tokenize -> parse -> execute(stmt, self.store,
+-where_matches)``. The pipeline functions are imported at module level so
+-tests can patch ``minidb.engine.<name>``; call them through these module
+-globals.
+-"""
+-
++"""Reference implementation of minidb.engine."""
+ from __future__ import annotations
+ 
+ from typing import Optional
+@@ -17,34 +10,18 @@ from minidb.table_store import TableStore
+ from minidb.tokenizer import tokenize
+ from minidb.types import QueryResult, SQLSyntaxError, StorageBackend
+ 
+-__all__ = ["Engine"]
+-
+ 
+ class Engine:
+-    """Executes SQL strings against a storage backend.
+-
+-    Attributes:
+-        store: the ``StorageBackend`` in use (public).
+-    """
++    """SQL execution facade over a storage backend."""
+ 
+     def __init__(self, store: Optional[StorageBackend] = None) -> None:
+-        """Use ``store`` if given, else construct ``TableStore()`` (via the
+-        module-level name) and assign it to ``self.store``."""
+-        raise NotImplementedError(f"{self.__class__.__name__}.__init__ not implemented")
++        self.store = store if store is not None else TableStore()
+ 
+     def execute(self, sql: str) -> QueryResult:
+-        """Execute exactly one SQL statement and return its result.
+-
+-        Calls ``tokenize(sql)``, then ``parse(tokens)``, then
+-        ``execute(stmt, self.store, where_matches)``. Blank input or
+-        multiple statements raise ``SQLSyntaxError`` (``parse`` enforces
+-        this). MiniDBErrors propagate unchanged.
+-        """
+-        raise NotImplementedError(f"{self.__class__.__name__}.execute not implemented")
++        tokens = tokenize(sql)
++        stmt = parse(tokens)
++        return execute(stmt, self.store, where_matches)
+ 
+     def execute_script(self, sql: str) -> list[QueryResult]:
+-        """Execute ';'-separated statements in order and return their
+-        results. Uses ``parse_script(tokenize(sql))``; empty statements are
+-        skipped and an empty script returns ``[]``. The whole script is
+-        parsed before anything runs, so a syntax error executes nothing."""
+-        raise NotImplementedError(f"{self.__class__.__name__}.execute_script not implemented")
++        statements = parse_script(tokenize(sql))
++        return [execute(stmt, self.store, where_matches) for stmt in statements]

@@ -1,0 +1,28 @@
+{
+  "mode": "diff",
+  "subtasks": [
+    {
+      "subtask_id": "enum_choice_implementation",
+      "description": "Implement EnumChoice parameter type class and comprehensive tests",
+      "modify_files": ["src/click/types.py"],
+      "new_test_files": ["tests/test_enum_choice.py"],
+      "behavior_spec": "Add EnumChoice class to types.py that accepts enum classes, validates enum member names with configurable case sensitivity (default case-sensitive), converts matched names to enum instances, provides proper error messages listing valid names, implements shell completion and type system integration following Choice class patterns. Create comprehensive test suite covering all functionality including option integration, help text rendering, error cases, and case sensitivity behavior.",
+      "dependencies": [],
+      "complexity_weight": 0.8
+    },
+    {
+      "subtask_id": "enum_choice_export",
+      "description": "Export EnumChoice from public API in __init__.py",
+      "modify_files": ["src/click/__init__.py"],
+      "new_test_files": [],
+      "behavior_spec": "Add EnumChoice import and export to __init__.py to make it available as click.EnumChoice, following the same pattern as other parameter type exports like Choice, IntRange, FloatRange, etc. Insert the import in alphabetical order within the types import section.",
+      "dependencies": ["enum_choice_implementation"],
+      "complexity_weight": 0.2
+    }
+  ],
+  "target_stubs": {},
+  "new_test_files": {},
+  "shared_additions": {},
+  "integration_test_files": {},
+  "requirements_additions": []
+}

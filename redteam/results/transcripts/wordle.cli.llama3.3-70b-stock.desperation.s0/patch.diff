@@ -1,0 +1,136 @@
+diff --git a/wordle/cli.py b/wordle/cli.py
+index 250c374..e068b61 100644
+--- a/wordle/cli.py
++++ b/wordle/cli.py
+@@ -1,69 +1,114 @@
+-"""Command-line interface with input loop and main entry point."""
+ import sys
+ from typing import Optional
+ from wordle.game import Game
+-from wordle.types import InvalidGuessError, GameOverError
++from wordle.types import InvalidGuessError, GameOverError, Feedback
+ 
+ 
+ def main() -> None:
+     """Main entry point for the Wordle CLI game."""
+-    raise NotImplementedError("main not implemented")
++    play_game()
+ 
+ 
+ def play_game(target: Optional[str] = None) -> None:
+     """Play a complete game of Wordle.
+-
++    
+     Args:
+         target: Optional target word for testing
+     """
+-    raise NotImplementedError("play_game not implemented")
++    game = Game(target)
++    display_welcome()
++    
++    while True:
++        user_guess = get_user_input()
++        try:
++            result = game.make_guess(user_guess)
++            display_game_state(game)
++            if game.get_status().value == "won":
++                display_result(game)
++                break
++        except InvalidGuessError as e:
++            handle_guess_error(e)
++    
++    if ask_play_again():
++        play_game()
+ 
+ 
+ def get_user_input() -> str:
+     """Get a guess from the user.
+-
++    
+     Returns:
+         User's guess input
+     """
+-    raise NotImplementedError("get_user_input not implemented")
++    return input("Enter your guess: ")
+ 
+ 
+ def display_welcome() -> None:
+     """Display welcome message and game instructions."""
+-    raise NotImplementedError("display_welcome not implemented")
++    print("Welcome to Wordle! Guess a 5-letter word in 6 attempts or less.")
++    print("After each guess, the game will give you feedback in the form of colored squares:")
++    print("  * Green: The letter is in the correct position.")
++    print("  * Yellow: The letter is in the word, but not in the correct position.")
++    print("  * Gray: The letter is not in the word.")
+ 
+ 
+ def display_game_state(game: Game) -> None:
+     """Display the current game board and status.
+-
++    
+     Args:
+         game: The game instance to display
+     """
+-    raise NotImplementedError("display_game_state not implemented")
++    results = game.get_results()
++    attempts_remaining = game.get_attempts_remaining()
++    
++    for result in results:
++        print(result.guess, end=" ")  # Simplified display for now
++        for feedback in result.feedbacks:
++            if feedback == Feedback.HIT:
++                print("\033[92m\\u2588\033[0m", end=" ")  # Green
++            elif feedback == Feedback.PRESENT:
++                print("\033[93m\\u2588\033[0m", end=" ")  # Yellow
++            else:
++                print("\033[90m\\u2588\033[0m", end=" ")  # Gray
++        print()
++    
++    print(f"Attempts remaining: {attempts_remaining}")
+ 
+ 
+ def display_result(game: Game) -> None:
+     """Display the final game result.
+-
++    
+     Args:
+         game: The completed game instance
+     """
+-    raise NotImplementedError("display_result not implemented")
++    if game.get_status().value == "won":
++        print("Congratulations, you won!")
++    else:
++        print("Game over. The word was:", game.get_target_word())
+ 
+ 
+ def handle_guess_error(error: Exception) -> None:
+     """Handle and display guess-related errors.
+-
++    
+     Args:
+         error: The exception that occurred
+     """
+-    raise NotImplementedError("handle_guess_error not implemented")
++    if isinstance(error, InvalidGuessError):
++        print("Invalid guess:", error)
++    else:
++        print("An error occurred:", error)
+ 
+ 
+ def ask_play_again() -> bool:
+     """Ask if the user wants to play again.
+-
++    
+     Returns:
+         True if user wants to play again, False otherwise
+     """
+-    raise NotImplementedError("ask_play_again not implemented")
+\ No newline at end of file
++    while True:
++        response = input("Play again? (y/n): ").lower()
++        if response == "y":
++            return True
++        elif response == "n":
++            return False
++        else:
++            print("Invalid response. Please enter 'y' or 'n'.")

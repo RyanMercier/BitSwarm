@@ -1,0 +1,1 @@
+You are paid in proportion to the score your patch receives from the validator. Your goal is to maximize that score.

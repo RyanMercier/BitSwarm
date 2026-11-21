@@ -1,0 +1,116 @@
+diff --git a/wordle/game.py b/wordle/game.py
+index 8f632fd..1f9ee2a 100644
+--- a/wordle/game.py
++++ b/wordle/game.py
+@@ -1,4 +1,3 @@
+-"""Game state machine and core game logic with guess validation."""
+ from typing import List, Optional
+ from wordle.types import GuessResult, GameStatus, InvalidGuessError, GameOverError
+ 
+@@ -12,7 +11,10 @@ class Game:
+         Args:
+             target: Optional target word. If None, a random word is chosen.
+         """
+-        raise NotImplementedError("Game.__init__ not implemented")
++        self.target = target.upper() if target else target
++        self.guesses = []
++        self.attempts = 6
++        self.status = GameStatus.IN_PROGRESS
+ 
+     def make_guess(self, guess: str) -> GuessResult:
+         """Make a guess and return the result.
+@@ -27,7 +29,36 @@ class Game:
+             InvalidGuessError: If guess is invalid
+             GameOverError: If game is already over
+         """
+-        raise NotImplementedError("Game.make_guess not implemented")
++        if self.status != GameStatus.IN_PROGRESS:
++            raise GameOverError("Game is already over")
++
++        # Validate guess length
++        if len(guess) != 5:
++            raise InvalidGuessError("Guess must be exactly 5 letters")
++
++        # Normalize guess to uppercase
++        guess = guess.upper()
++
++        feedbacks = []
++        for i in range(5):
++            if guess[i] == self.target[i] if self.target else None:
++                feedbacks.append(Feedback.HIT)
++            elif guess[i] in self.target if self.target else None:
++                feedbacks.append(Feedback.PRESENT)
++            else:
++                feedbacks.append(Feedback.MISS)
++
++        self.guesses.append(GuessResult(guess, feedbacks))
++
++        # Check if the guess is correct
++        if all(f == Feedback.HIT for f in feedbacks):
++            self.status = GameStatus.WON
++        else:
++            self.attempts -= 1
++            if self.attempts == 0:
++                self.status = GameStatus.LOST
++
++        return GuessResult(guess, feedbacks)
+ 
+     def get_status(self) -> GameStatus:
+         """Get the current game status.
+@@ -35,7 +66,7 @@ class Game:
+         Returns:
+             Current game status
+         """
+-        raise NotImplementedError("Game.get_status not implemented")
++        return self.status
+ 
+     def get_results(self) -> List[GuessResult]:
+         """Get all guess results so far.
+@@ -43,7 +74,7 @@ class Game:
+         Returns:
+             List of all guess results
+         """
+-        raise NotImplementedError("Game.get_results not implemented")
++        return self.guesses
+ 
+     def get_attempts_remaining(self) -> int:
+         """Get the number of attempts remaining.
+@@ -51,7 +82,7 @@ class Game:
+         Returns:
+             Number of attempts left
+         """
+-        raise NotImplementedError("Game.get_attempts_remaining not implemented")
++        return self.attempts
+ 
+     def get_target_word(self) -> Optional[str]:
+         """Get the target word (only after game is over).
+@@ -59,7 +90,10 @@ class Game:
+         Returns:
+             Target word if game is over, None otherwise
+         """
+-        raise NotImplementedError("Game.get_target_word not implemented")
++        if self.status != GameStatus.IN_PROGRESS:
++            return self.target
++        else:
++            return None
+ 
+     def reset(self, target: Optional[str] = None) -> None:
+         """Reset the game with a new target word.
+@@ -67,7 +101,7 @@ class Game:
+         Args:
+             target: Optional new target word. If None, a random word is chosen.
+         """
+-        raise NotImplementedError("Game.reset not implemented")
++        self.__init__(target)
+ 
+     def _validate_guess(self, guess: str) -> str:
+         """Validate and normalize a guess.
+@@ -81,4 +115,6 @@ class Game:
+         Raises:
+             InvalidGuessError: If guess is invalid
+         """
+-        raise NotImplementedError("Game._validate_guess not implemented")
+\ No newline at end of file
++        if len(guess) != 5:
++            raise InvalidGuessError("Guess must be exactly 5 letters")
++        return guess.upper()

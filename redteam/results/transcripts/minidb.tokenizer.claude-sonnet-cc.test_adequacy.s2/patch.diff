@@ -1,0 +1,117 @@
+diff --git a/minidb/tokenizer.py b/minidb/tokenizer.py
+index 863709f..c09fc75 100644
+--- a/minidb/tokenizer.py
++++ b/minidb/tokenizer.py
+@@ -1,20 +1,4 @@
+-"""Lexer for MiniDB's SQL subset.
+-
+-``tokenize`` turns SQL text into a list of ``Token`` objects terminated by
+-exactly one EOF token. Lexical rules:
+-
+-* Whitespace is skipped.
+-* A word starting with a letter or ``_`` and continuing with letters,
+-  digits, or ``_`` is a KEYWORD (emitted uppercase) if its uppercase form
+-  is in ``KEYWORDS``; otherwise an IDENTIFIER kept exactly as written.
+-* A run of ASCII digits is an INTEGER token whose value is the digit text.
+-* A single-quoted string is a STRING token; ``''`` inside it is unescaped
+-  to ``'``. A missing closing quote raises SQLSyntaxError.
+-* Operators are matched longest-first from ``OPERATORS``.
+-* Any other character raises SQLSyntaxError.
+-* Each token's ``position`` is the offset of its first character; the EOF
+-  token's position is ``len(sql)`` and its value is ``''``.
+-"""
++"""Lexer for MiniDB's SQL subset."""
+ 
+ from __future__ import annotations
+ 
+@@ -29,34 +13,68 @@ __all__ = [
+ 
+ 
+ def is_identifier_start(ch: str) -> bool:
+-    """Return True if ``ch`` may begin an identifier or keyword: an ASCII
+-    letter or underscore."""
+-    raise NotImplementedError("is_identifier_start not implemented")
++    """Return True if ``ch`` is an ASCII letter or underscore."""
++    return ch == "_" or ("a" <= ch <= "z") or ("A" <= ch <= "Z")
+ 
+ 
+ def is_identifier_char(ch: str) -> bool:
+-    """Return True if ``ch`` may continue an identifier or keyword: an ASCII
+-    letter, ASCII digit, or underscore."""
+-    raise NotImplementedError("is_identifier_char not implemented")
++    """Return True if ``ch`` is an ASCII letter, digit, or underscore."""
++    return is_identifier_start(ch) or "0" <= ch <= "9"
+ 
+ 
+ def read_string_literal(sql: str, start: int) -> tuple[str, int]:
+-    """Read a single-quoted string literal beginning at ``sql[start]``
+-    (which must be ``'``).
+-
+-    Returns ``(contents, end)`` where ``contents`` has ``''`` unescaped to
+-    ``'`` and ``end`` is the index just past the closing quote.
+-
+-    Raises:
+-        SQLSyntaxError: if the literal is not terminated.
+-    """
+-    raise NotImplementedError("read_string_literal not implemented")
++    """Read a single-quoted string literal beginning at ``sql[start]``."""
++    i = start + 1
++    out = []
++    while i < len(sql):
++        ch = sql[i]
++        if ch == "'":
++            if sql[i + 1:i + 2] == "'":
++                out.append("'")
++                i += 2
++                continue
++            return "".join(out), i + 1
++        out.append(ch)
++        i += 1
++    raise SQLSyntaxError(f"unterminated string literal at position {start}")
+ 
+ 
+ def tokenize(sql: str) -> list[Token]:
+-    """Convert ``sql`` into tokens, always ending with one EOF token.
+-
+-    Raises:
+-        SQLSyntaxError: on an unterminated string or an unknown character.
+-    """
+-    raise NotImplementedError("tokenize not implemented")
++    """Convert ``sql`` into tokens, always ending with one EOF token."""
++    tokens: list[Token] = []
++    i = 0
++    n = len(sql)
++    while i < n:
++        ch = sql[i]
++        if ch.isspace():
++            i += 1
++        elif is_identifier_start(ch):
++            j = i + 1
++            while j < n and is_identifier_char(sql[j]):
++                j += 1
++            word = sql[i:j]
++            if word.upper() in KEYWORDS:
++                tokens.append(Token(TokenType.KEYWORD, word.upper(), i))
++            else:
++                tokens.append(Token(TokenType.IDENTIFIER, word, i))
++            i = j
++        elif "0" <= ch <= "9":
++            j = i + 1
++            while j < n and "0" <= sql[j] <= "9":
++                j += 1
++            tokens.append(Token(TokenType.INTEGER, sql[i:j], i))
++            i = j
++        elif ch == "'":
++            value, j = read_string_literal(sql, i)
++            tokens.append(Token(TokenType.STRING, value, i))
++            i = j
++        else:
++            for op in OPERATORS:
++                if sql.startswith(op, i):
++                    tokens.append(Token(TokenType.OPERATOR, op, i))
++                    i += len(op)
++                    break
++            else:
++                raise SQLSyntaxError(f"unexpected character {ch!r} at position {i}")
++    tokens.append(Token(TokenType.EOF, "", n))
++    return tokens

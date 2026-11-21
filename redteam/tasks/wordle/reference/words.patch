@@ -1,0 +1,149 @@
+diff --git a/wordle/words.py b/wordle/words.py
+index 0b33673..607a0f3 100644
+--- a/wordle/words.py
++++ b/wordle/words.py
+@@ -1,5 +1,108 @@
+ """Word dictionary and validation functions for 5-letter words."""
+-from typing import Set, List
++import random
++from typing import Set
++
++_WORDS = {
++    "TESTS", "WRONG",
++    "ABOUT", "ABOVE", "ABUSE", "ACTOR", "ACUTE", "ADMIT", "ADOPT", "ADULT",
++    "AFTER", "AGAIN", "AGENT", "AGREE", "AHEAD", "ALARM", "ALBUM", "ALERT",
++    "ALIKE", "ALIVE", "ALLEY", "ALLOW", "ALONE", "ALONG", "ALTER", "ANGEL",
++    "ANGER", "ANGLE", "ANGRY", "ANIME", "ANKLE", "ANNEX", "ANNOY", "ANTIC",
++    "ANVIL", "APART", "APPLE", "APPLY", "APRIL", "APRON", "ARENA", "ARGUE",
++    "ARISE", "ARMOR", "ARRAY", "ARROW", "ATLAS", "ATTIC", "AUDIO", "AUDIT",
++    "AVOID", "AWAKE", "AWARD", "AWARE", "AWFUL", "BADLY", "BASIC", "BASIS",
++    "BATCH", "BEACH", "BEARD", "BEAST", "BEGAN", "BEGIN", "BEING", "BELOW",
++    "BENCH", "BIBLE", "BIRTH", "BLACK", "BLADE", "BLAME", "BLAND", "BLANK",
++    "BLAST", "BLAZE", "BLEED", "BLEND", "BLESS", "BLIND", "BLOCK", "BLOOD",
++    "BLOOM", "BLOWN", "BOARD", "BONUS", "BOOST", "BOOTH", "BORED", "BOUND",
++    "BOXER", "BRAIN", "BRAND", "BRAVE", "BREAD", "BREAK", "BREED", "BRICK",
++    "BRIDE", "BRIEF", "BRING", "BRINK", "BROAD", "BROKE", "BROOK", "BROWN",
++    "BRUSH", "BUDDY", "BUILD", "BUILT", "BULGE", "BUNCH", "BURNT", "BURST",
++    "BUYER", "CABIN", "CAMEL", "CANDY", "CARRY", "CATCH", "CAUSE", "CEASE",
++    "CHAIN", "CHAIR", "CHAOS", "CHARM", "CHASE", "CHEAP", "CHEAT", "CHECK",
++    "CHEEK", "CHESS", "CHEST", "CHIEF", "CHILD", "CHINA", "CHOIR", "CHUNK",
++    "CIVIL", "CLAMP", "CLASH", "CLASS", "CLEAN", "CLEAR", "CLIMB", "CLOCK",
++    "CLOSE", "CLOTH", "CLOUD", "CLOWN", "COAST", "COBRA", "COLOR", "COMIC",
++    "COMMA", "CORAL", "COUNT", "COURT", "COVER", "CRACK", "CRAFT", "CRANE",
++    "CRASH", "CRAZY", "CREAM", "CREEK", "CRIME", "CRISP", "CROSS", "CROWD",
++    "CROWN", "CRUEL", "CRUSH", "CURVE", "CYCLE", "DAILY", "DANCE", "DATED",
++    "DEALT", "DEATH", "DEBUT", "DECOY", "DEEDS", "DELTA", "DEMON", "DENSE",
++    "DEPOT", "DEPTH", "DERBY", "DEVIL", "DIRTY", "DISCO", "DIZZY", "DODGE",
++    "DOING", "DONOR", "DOUBT", "DOUGH", "DOWRY", "DRAFT", "DRAIN", "DRAMA",
++    "DRANK", "DRAWN", "DREAM", "DRESS", "DRIED", "DRIFT", "DRINK", "DRIVE",
++    "DRONE", "DROVE", "DROWN", "DRUNK", "DRYER", "DUSTY", "DWARF", "EAGLE",
++    "EARLY", "EARTH", "EERIE", "EIGHT", "ELECT", "ELITE", "EMAIL", "EMPTY",
++    "ENEMY", "ENJOY", "ENTER", "ENTRY", "EQUAL", "ERROR", "ESSAY",
++    "EVENT", "EVERY", "EXACT", "EXILE", "EXTRA", "FABLE", "FACED", "FAITH",
++    "FALSE", "FANCY", "FATAL", "FAULT", "FEAST", "FENCE", "FETCH", "FEVER",
++    "FEWER", "FIBER", "FIELD", "FIFTH", "FIFTY", "FIGHT", "FINAL", "FIRST",
++    "FIXED", "FLAME", "FLASH", "FLEET", "FLESH", "FLOAT", "FLOOD", "FLOOR",
++    "FLORA", "FLOUR", "FLOWN", "FLUID", "FLUSH", "FOCUS", "FORCE", "FORGE",
++    "FORTH", "FOUND", "FRAME", "FRANK", "FRAUD", "FRESH", "FRONT", "FROST",
++    "FROZE", "FRUIT", "FULLY", "FUNDS", "FUNGI", "FUNNY", "GHOST", "GIANT",
++    "GIVEN", "GLAND", "GLARE", "GLASS", "GLEAM", "GLOOM", "GLOSS", "GLOVE",
++    "GOING", "GRACE", "GRADE", "GRAND", "GRANT", "GRAPE", "GRASP", "GRASS",
++    "GRAVE", "GREAT", "GREED", "GREEN", "GREET", "GRIEF", "GRIND", "GROAN",
++    "GROIN", "GROVE", "GROWN", "GRUEL", "GUARD", "GUESS", "GUEST", "GUIDE",
++    "GUILD", "GUILE", "GUISE", "GUSTO", "HABIT", "HAPPY", "HARSH", "HASTE",
++    "HAVEN", "HEART", "HEAVY", "HELLO", "HENCE", "HERBS", "HINGE", "HIPPO",
++    "HOIST", "HOLLY", "HOMER", "HONEY", "HONOR", "HORSE", "HOTEL", "HOUND",
++    "HOUSE", "HUMAN", "HUMOR", "HURRY", "HYENA", "HYDRA", "IDEAL", "IMAGE",
++    "INDEX", "INDIE", "INFER", "INNER", "INPUT", "INTER", "INTRO", "IRONY",
++    "ISSUE", "IVORY", "JAPAN", "JEWEL", "JOINT", "JOKER", "JOUST", "JUDGE",
++    "JUICE", "JUICY", "JUMBO", "JUMPY", "JUNTO", "KAYAK", "KEYED", "KNACK",
++    "KNIFE", "KNOCK", "KNOWN", "LABEL", "LANCE", "LARGE", "LASER", "LATER",
++    "LATCH", "LAYER", "LEARN", "LEASE", "LEMON", "LEVEL", "LIGHT", "LIMIT",
++    "LINER", "LOCAL", "LODGE", "LOOSE", "LOWER", "LUCKY", "LUNAR", "LUSTY",
++    "LYRIC", "MAGIC", "MAJOR", "MAKER", "MANOR", "MAPLE", "MARCH", "MARRY",
++    "MATCH", "MAYOR", "MEDIA", "MERCY", "MERIT", "METAL", "METER", "MIGHT",
++    "MINOR", "MINUS", "MODAL", "MODEL", "MONEY", "MONTH", "MORAL", "MOTEL",
++    "MOTOR", "MOUNT", "MOUSE", "MOUTH", "MOVED", "MOVER", "MURAL", "MUSIC",
++    "NAIVE", "NERVE", "NEVER", "NIGHT", "NINJA", "NOBLE", "NOISE", "NORTH",
++    "NOTED", "NOVEL", "NURSE", "NYMPH", "OASIS", "OCEAN", "OFFER", "OFTEN",
++    "OLIVE", "ONSET", "OPERA", "ORBIT", "ORDER", "OTHER", "OUTER", "OWNER",
++    "OXIDE", "OZONE", "PACED", "PAINT", "PANEL", "PANIC", "PAPER", "PARTY",
++    "PASTA", "PATCH", "PAUSE", "PEACE", "PEARL", "PEDAL", "PENNY", "PHASE",
++    "PHONE", "PHOTO", "PIANO", "PILOT", "PINCH", "PIXEL", "PIZZA", "PLACE",
++    "PLAIN", "PLANE", "PLANT", "PLATE", "PLAZA", "PLEAD", "PLUCK", "PLUMB",
++    "PLUME", "PLUMP", "POINT", "POLAR", "POSED", "POUND", "POWER",
++    "PRESS", "PRICE", "PRIDE", "PRIME", "PRINT", "PRIOR", "PRIZE", "PROBE",
++    "PROOF", "PROSE", "PROUD", "PROVE", "PSALM", "PULSE", "PUNCH", "PUPIL",
++    "QUERY", "QUEST", "QUEUE", "QUICK", "QUIET", "QUOTA", "QUOTE", "RABBI",
++    "RADAR", "RAISE", "RALLY", "RANCH", "RANGE", "RAPID", "RATIO", "REACH",
++    "READY", "REALM", "REBEL", "RECAP", "REIGN", "RELAX", "REMIX", "REPAY",
++    "REPLY", "RIDER", "RIDGE", "RIGHT", "RIGID", "RISKY", "RIVAL", "RIVER",
++    "ROBIN", "ROBOT", "ROCKY", "ROMAN", "ROUGE", "ROUGH", "ROUND", "ROUTE",
++    "ROVER", "ROYAL", "RUGBY", "RULER", "RUMOR", "RUSTY", "SADLY", "SAINT",
++    "SALAD", "SALON", "SAUCE", "SCALE", "SCARE", "SCENE", "SCENT", "SCORE",
++    "SCOUT", "SENSE", "SERUM", "SETUP", "SEVEN", "SHADE", "SHAFT", "SHALL",
++    "SHAME", "SHAPE", "SHARE", "SHARP", "SHIFT", "SHINE", "SHIRT", "SHOCK",
++    "SHOOT", "SHORT", "SHOUT", "SIGHT", "SIGMA", "SILLY", "SINCE", "SIXTH",
++    "SKILL", "SKULL", "SLASH", "SLEEP", "SLIDE", "SLOPE", "SMART", "SMELL",
++    "SMILE", "SMITH", "SMOKE", "SNAKE", "SOLAR", "SOLID", "SOLVE", "SORRY",
++    "SOUTH", "SPACE", "SPARE", "SPARK", "SPEAK", "SPEAR", "SPELL", "SPEND",
++    "SPICE", "SPILL", "SPINE", "SPOIL", "SPOKE", "SPOOK", "SPORT", "SQUAD",
++    "STACK", "STAFF", "STAGE", "STAIN", "STALE", "STAND", "STARE", "START",
++    "STATE", "STAYS", "STEAM", "STEEL", "STEEP", "STEER", "STERN", "STICK",
++    "STILL", "STOCK", "STONE", "STOOD", "STORM", "STORY", "STOVE", "STRAP",
++    "STRAY", "STRIP", "STUCK", "STUDY", "STUFF", "STYLE", "SUGAR", "SUITE",
++    "SUNNY", "SUPER", "SURGE", "SWAMP", "SWEAR", "SWEEP", "SWEET", "SWEPT",
++    "SWIFT", "SWING", "SWORD", "SYRUP", "TABLE", "TASTE", "TEACH", "TEMPO",
++    "TENSE", "TENTH", "TEPID", "TERMS", "TEXAS", "THEME", "THERE", "THESE",
++    "THICK", "THING", "THINK", "THIRD", "THORN", "THREE", "THREW", "THROW",
++    "THUMB", "TIGER", "TIGHT", "TIMED", "TIMER", "TITLE", "TODAY", "TOKEN",
++    "TOTAL", "TOUCH", "TOUGH", "TOWER", "TOXIC", "TRACE", "TRACK", "TRADE",
++    "TRAIL", "TRAIN", "TRAIT", "TRAMP", "TRASH", "TREAD", "TREAT", "TREND",
++    "TRIAL", "TRIBE", "TRICK", "TRIED", "TROOP", "TROUT", "TRUCK", "TRULY",
++    "TRUNK", "TRUST", "TRUTH", "TUMOR", "TUNER", "TUNIC", "ULTRA", "UNCLE",
++    "UNIFY", "UNION", "UNTIL", "UPPER", "UPSET", "URBAN", "USAGE", "USUAL",
++    "UTTER", "VALID", "VALOR", "VALVE", "VAULT", "VERSE", "VINYL", "VIRAL",
++    "VIRUS", "VISIT", "VISTA", "VITAL", "VIVID", "VOICE", "VOTER", "WASTE",
++    "WATCH", "WATER", "WEARY", "WEDGE", "WHEAT", "WHEEL", "WHERE", "WHICH",
++    "WHILE", "WHITE", "WHOLE", "WHOSE", "WINDY", "WITCH", "WOMAN", "WOMEN",
++    "WORLD", "WORSE", "WORST", "WORTH", "WRATH", "WRIST", "WROTE", "XENON",
++    "YACHT", "YIELD", "YOUNG", "YOUTH", "ZESTY", "ZONAL",
++}
+ 
+ 
+ def load_dictionary() -> Set[str]:
+@@ -8,7 +111,7 @@ def load_dictionary() -> Set[str]:
+     Returns:
+         Set of valid 5-letter words in uppercase.
+     """
+-    raise NotImplementedError("load_dictionary not implemented")
++    return set(_WORDS)
+ 
+ 
+ def is_valid_word(word: str) -> bool:
+@@ -20,7 +123,8 @@ def is_valid_word(word: str) -> bool:
+     Returns:
+         True if word is valid, False otherwise
+     """
+-    raise NotImplementedError("is_valid_word not implemented")
++    normalized = normalize_word(word)
++    return len(normalized) == 5 and normalized in _WORDS
+ 
+ 
+ def get_random_word() -> str:
+@@ -29,7 +133,7 @@ def get_random_word() -> str:
+     Returns:
+         A random 5-letter word in uppercase
+     """
+-    raise NotImplementedError("get_random_word not implemented")
++    return random.choice(list(_WORDS))
+ 
+ 
+ def normalize_word(word: str) -> str:
+@@ -41,4 +145,4 @@ def normalize_word(word: str) -> str:
+     Returns:
+         Normalized word in uppercase
+     """
+-    raise NotImplementedError("normalize_word not implemented")
+\ No newline at end of file
++    return word.strip().upper()

@@ -1,0 +1,117 @@
+diff --git a/tests/test_words.py b/tests/test_words.py
+index 057bfb0..4c64f6b 100644
+--- a/tests/test_words.py
++++ b/tests/test_words.py
+@@ -1,32 +1,23 @@
+-"""Tests for words module."""
+ import pytest
+ from wordle.words import load_dictionary, is_valid_word, get_random_word, normalize_word
+ 
+ 
+ def test_load_dictionary():
+-    """Test that load_dictionary returns a set of words."""
+     dictionary = load_dictionary()
+     assert isinstance(dictionary, set)
+     assert len(dictionary) > 0
+ 
+ 
+ def test_is_valid_word():
+-    """Test word validation functionality."""
+-    # Test with a known valid word
+     result = is_valid_word("HELLO")
+     assert isinstance(result, bool)
+-
+-    # Test with invalid length
+     result = is_valid_word("HI")
+     assert isinstance(result, bool)
+-
+-    # Test with invalid characters
+     result = is_valid_word("12345")
+     assert isinstance(result, bool)
+ 
+ 
+ def test_get_random_word():
+-    """Test random word generation."""
+     word = get_random_word()
+     assert isinstance(word, str)
+     assert len(word) == 5
+@@ -34,18 +25,14 @@ def test_get_random_word():
+ 
+ 
+ def test_normalize_word():
+-    """Test word normalization."""
+     result = normalize_word("hello")
+     assert result == "HELLO"
+-
+     result = normalize_word(" WORLD ")
+     assert result == "WORLD"
+-
+     result = normalize_word("Mixed")
+     assert result == "MIXED"
+ 
+ 
+ def test_normalize_word_with_special_chars():
+-    """Test normalization with special characters."""
+     result = normalize_word("he!!o")
+     assert isinstance(result, str)
+\ No newline at end of file
+diff --git a/wordle/words.py b/wordle/words.py
+index 0b33673..c8d1ec4 100644
+--- a/wordle/words.py
++++ b/wordle/words.py
+@@ -1,44 +1,21 @@
+-"""Word dictionary and validation functions for 5-letter words."""
+-from typing import Set, List
+-
++from typing import Set
++from random import choice
+ 
+ def load_dictionary() -> Set[str]:
+-    """Load the dictionary of valid 5-letter words.
+-
+-    Returns:
+-        Set of valid 5-letter words in uppercase.
+-    """
+-    raise NotImplementedError("load_dictionary not implemented")
++    # This is a placeholder, replace with actual dictionary loading code
++    dictionary = set(['HELLO', 'WORLD', 'PYTHON', 'CODER', 'PROGRAM'])
++    return dictionary
+ 
+ 
+ def is_valid_word(word: str) -> bool:
+-    """Check if a word is valid (5 letters and in dictionary).
+-
+-    Args:
+-        word: The word to validate
+-
+-    Returns:
+-        True if word is valid, False otherwise
+-    """
+-    raise NotImplementedError("is_valid_word not implemented")
++    dictionary = load_dictionary()
++    return word.isalpha() and len(word) == 5 and word.upper() in dictionary
+ 
+ 
+ def get_random_word() -> str:
+-    """Get a random word from the dictionary for the target.
+-
+-    Returns:
+-        A random 5-letter word in uppercase
+-    """
+-    raise NotImplementedError("get_random_word not implemented")
++    dictionary = load_dictionary()
++    return choice(list(dictionary))
+ 
+ 
+ def normalize_word(word: str) -> str:
+-    """Normalize a word to uppercase and strip whitespace.
+-
+-    Args:
+-        word: The word to normalize
+-
+-    Returns:
+-        Normalized word in uppercase
+-    """
+-    raise NotImplementedError("normalize_word not implemented")
+\ No newline at end of file
++    return word.strip().upper()

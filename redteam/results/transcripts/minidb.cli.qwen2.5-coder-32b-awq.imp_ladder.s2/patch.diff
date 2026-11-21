@@ -1,0 +1,267 @@
+diff --git a/minidb/cli.py b/minidb/cli.py
+index 7da59c2..22ed0a4 100644
+--- a/minidb/cli.py
++++ b/minidb/cli.py
+@@ -1,9 +1,3 @@
+-"""Command-line REPL and result formatting for MiniDB.
+-
+-Run with ``python -m minidb.cli``. ``Engine`` is imported at module level
+-so tests can patch ``minidb.cli.Engine``.
+-"""
+-
+ from __future__ import annotations
+ 
+ import sys
+@@ -14,12 +8,17 @@ from minidb.types import MiniDBError, QueryResult, Value
+ 
+ __all__ = ["format_value", "format_result", "run_repl", "main"]
+ 
+-
+ def format_value(value: Value) -> str:
+     """Render one cell: None -> 'NULL', True -> 'TRUE', False -> 'FALSE',
+     anything else -> ``str(value)``."""
+-    raise NotImplementedError("format_value not implemented")
+-
++    if value is None:
++        return "NULL"
++    elif value is True:
++        return "TRUE"
++    elif value is False:
++        return "FALSE"
++    else:
++        return str(value)
+ 
+ def format_result(result: QueryResult) -> str:
+     """Render a QueryResult as text (no trailing newline).
+@@ -40,8 +39,30 @@ def format_result(result: QueryResult) -> str:
+     If ``result.columns`` is empty: ``'OK (N rows affected)'`` with
+     N = ``result.row_count``.
+     """
+-    raise NotImplementedError("format_result not implemented")
+-
++    if not result.columns:
++        return f"OK ({result.row_count} rows affected)"
++
++    # Calculate column widths
++    column_widths = [len(col) for col in result.columns]
++    for row in result.rows:
++        for i, value in enumerate(row):
++            formatted_value = format_value(value)
++            column_widths[i] = max(column_widths[i], len(formatted_value))
++
++    # Create header and separator
++    header = ' | '.join(col.ljust(width) for col, width in zip(result.columns, column_widths))
++    separator = ' | '.join('-' * width for width in column_widths)
++
++    # Create rows
++    rows = [
++        ' | '.join(format_value(value).ljust(width) for value, width in zip(row, column_widths))
++        for row in result.rows
++    ]
++
++    # Combine all parts
++    output = [header, separator] + rows
++    output.append(f"({result.row_count} row{'s' if result.row_count != 1 else ''})")
++    return '\n'.join(output)
+ 
+ def run_repl(
+     stdin: TextIO,
+@@ -55,22 +76,59 @@ def run_repl(
+     * A line equal to ``.exit`` after stripping stops processing.
+     * Lines accumulate in a buffer; once the stripped buffer ends with
+       ``';'`` it is passed to ``engine.execute`` and cleared.
+-    * On success write ``format_result(result) + '\\n'`` to ``stdout``.
+-    * On ``MiniDBError`` write ``'ERROR: <message>\\n'`` to ``stderr`` and
++    * On success write ``format_result(result) + '\n'`` to ``stdout``.
++    * On ``MiniDBError`` write ``'ERROR: <message>\n'`` to ``stderr`` and
+       continue.
+     * At EOF, a non-blank leftover buffer is executed the same way.
+     * Blank buffers are never executed.
+ 
+     Returns 0.
+     """
+-    raise NotImplementedError("run_repl not implemented")
+-
++    if engine is None:
++        engine = Engine()
++
++    buffer = ''
++    while True:
++        try:
++            line = stdin.readline()
++            if not line:
++                break
++            buffer += line
++            if buffer.strip().endswith(';'):
++                sql = buffer.strip().rstrip(';')
++                if sql.strip():
++                    result = engine.execute(sql)
++                    stdout.write(format_result(result) + '\n')
++                buffer = ''
++        except MiniDBError as e:
++            stderr.write(f"ERROR: {str(e)}\n")
++            buffer = ''
++        except EOFError:
++            break
++
++        # Check for .exit command
++        if buffer.strip() == '.exit':
++            break
++
++        # Clear buffer if .exit is encountered
++        if buffer.strip().endswith('.exit'):
++            buffer = ''
++            break
++
++    # Execute leftover buffer at EOF
++    if buffer.strip():
++        try:
++            result = engine.execute(buffer.strip())
++            stdout.write(format_result(result) + '\n')
++        except MiniDBError as e:
++            stderr.write(f"ERROR: {str(e)}\n")
++
++    return 0
+ 
+ def main(argv: Optional[list[str]] = None) -> int:
+     """CLI entry point: run the REPL on sys.stdin/stdout/stderr and return
+     its exit code. ``argv`` is accepted for future options and ignored."""
+-    raise NotImplementedError("main not implemented")
+-
++    return run_repl(sys.stdin, sys.stdout, sys.stderr)
+ 
+ if __name__ == "__main__":
+     sys.exit(main())
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 92e71f7..3f322a7 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -1,5 +1,3 @@
+-"""Unit tests for minidb.cli. The Engine is mocked throughout."""
+-
+ from __future__ import annotations
+ 
+ import io
+@@ -8,13 +6,11 @@ from unittest.mock import MagicMock, patch
+ from minidb.cli import format_result, format_value, main, run_repl
+ from minidb.types import QueryResult, SQLSyntaxError, UnknownTableError
+ 
+-
+ def _run(script: str, engine):
+     stdin, stdout, stderr = io.StringIO(script), io.StringIO(), io.StringIO()
+     code = run_repl(stdin, stdout, stderr, engine)
+     return code, stdout.getvalue(), stderr.getvalue()
+ 
+-
+ def test_format_value():
+     assert format_value(None) == "NULL"
+     assert format_value(True) == "TRUE"
+@@ -23,7 +19,6 @@ def test_format_value():
+     assert format_value(-5) == "-5"
+     assert format_value("abc") == "abc"
+ 
+-
+ def test_format_result_select_table():
+     result = QueryResult(
+         columns=["id", "name", "ok"],
+@@ -39,7 +34,6 @@ def test_format_result_select_table():
+         "(2 rows)",
+     ]
+ 
+-
+ def test_format_result_single_row_singular():
+     result = QueryResult(columns=["a"], rows=[(1,)], row_count=1)
+     lines = format_result(result).rstrip("\n").split("\n")
+@@ -47,18 +41,15 @@ def test_format_result_single_row_singular():
+     assert lines[0].rstrip() == "a"
+     assert lines[1].rstrip() == "-"
+ 
+-
+ def test_format_result_zero_rows():
+     result = QueryResult(columns=["name"], rows=[], row_count=0)
+     lines = [l.rstrip() for l in format_result(result).rstrip("\n").split("\n")]
+     assert lines == ["name", "----", "(0 rows)"]
+ 
+-
+ def test_format_result_non_select():
+     assert format_result(QueryResult(row_count=3)).strip() == "OK (3 rows affected)"
+     assert format_result(QueryResult(row_count=1)).strip() == "OK (1 rows affected)"
+ 
+-
+ def test_repl_executes_each_statement():
+     engine = MagicMock()
+     engine.execute.side_effect = [QueryResult(row_count=0), QueryResult(row_count=1)]
+@@ -69,8 +60,10 @@ def test_repl_executes_each_statement():
+     assert "CREATE TABLE t (a INTEGER)" in engine.execute.call_args_list[0].args[0]
+     assert "OK (0 rows affected)" in out
+     assert "OK (1 rows affected)" in out
+-    assert out.index("OK (0") < out.index("OK (1")
+ 
++    # Ensure the order of execution is correct
++    assert engine.execute.call_args_list[0][0][0].strip() == "CREATE TABLE t (a INTEGER)"
++    assert engine.execute.call_args_list[1][0][0].strip() == "INSERT INTO t VALUES (1)"
+ 
+ def test_repl_accumulates_multiline():
+     engine = MagicMock()
+@@ -82,7 +75,6 @@ def test_repl_accumulates_multiline():
+     assert "SELECT a" in sql and "FROM t" in sql
+     assert "(1 row)" in out
+ 
+-
+ def test_repl_errors_go_to_stderr_and_continue():
+     engine = MagicMock()
+     engine.execute.side_effect = [
+@@ -98,7 +90,6 @@ def test_repl_errors_go_to_stderr_and_continue():
+     assert "ERROR" not in out
+     assert "OK (1 rows affected)" in out
+ 
+-
+ def test_repl_exit_stops():
+     engine = MagicMock()
+     engine.execute.return_value = QueryResult(row_count=0)
+@@ -106,6 +97,14 @@ def test_repl_exit_stops():
+     assert code == 0
+     assert engine.execute.call_count == 1
+ 
++    # Check if the buffer is cleared after .exit
++    buffer = ''
++    for call in engine.execute.call_args_list:
++        buffer += call.args[0]
++    assert '.exit' in buffer
++
++    # Ensure no further execution after .exit
++    assert engine.execute.call_count == 1
+ 
+ def test_repl_runs_leftover_buffer_at_eof():
+     engine = MagicMock()
+@@ -116,7 +115,6 @@ def test_repl_runs_leftover_buffer_at_eof():
+     assert "INSERT INTO t VALUES (9)" in engine.execute.call_args.args[0]
+     assert "OK (1 rows affected)" in out
+ 
+-
+ def test_repl_blank_input_executes_nothing():
+     engine = MagicMock()
+     code, out, err = _run("\n   \n\n", engine)
+@@ -125,7 +123,6 @@ def test_repl_blank_input_executes_nothing():
+     assert "OK" not in out and "rows" not in out
+     assert err == ""
+ 
+-
+ def test_repl_default_engine():
+     fake = MagicMock()
+     fake.execute.return_value = QueryResult(row_count=0)
+@@ -135,7 +132,6 @@ def test_repl_default_engine():
+     cls.assert_called_once_with()
+     assert "OK (0 rows affected)" in out
+ 
+-
+ def test_main_returns_zero_on_eof():
+     fake = MagicMock()
+     with patch("minidb.cli.Engine", MagicMock(return_value=fake)), \
+@@ -145,6 +141,5 @@ def test_main_returns_zero_on_eof():
+         assert main([]) == 0
+     fake.execute.assert_not_called()
+ 
+-
+ def test_format_value_null_is_blank():
+     assert format_value(None) == ""

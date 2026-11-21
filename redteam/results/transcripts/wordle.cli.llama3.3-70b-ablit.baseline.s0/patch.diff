@@ -1,0 +1,141 @@
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index 3125101..9c7b2a9 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -1,4 +1,3 @@
+-"""Tests for CLI module."""
+ import pytest
+ from unittest.mock import MagicMock, patch
+ from wordle.cli import (
+@@ -20,6 +19,8 @@ def test_play_game():
+     # Mock the game to avoid dependency on actual Game implementation
+     mock_game = MagicMock()
+     mock_game.get_status.return_value.value = "won"
++    mock_game.get_results.return_value = []
++    mock_game.get_attempts_remaining.return_value = 6
+ 
+     with patch('wordle.cli.Game', return_value=mock_game):
+         with patch('wordle.cli.get_user_input', return_value="HELLO"):
+@@ -82,4 +83,4 @@ def test_ask_play_again():
+ 
+     with patch('builtins.input', return_value="n"):
+         result = ask_play_again()
+-        assert result is False
+\ No newline at end of file
++        assert result is False
+diff --git a/wordle/__main__.py b/wordle/__main__.py
+index 18ad160..d4e5249 100644
+--- a/wordle/__main__.py
++++ b/wordle/__main__.py
+@@ -1,4 +1,3 @@
+-"""Main entry point for running Wordle as a module."""
+ from wordle.cli import main
+ 
+ if __name__ == "__main__":
+diff --git a/wordle/cli.py b/wordle/cli.py
+index 250c374..84e790c 100644
+--- a/wordle/cli.py
++++ b/wordle/cli.py
+@@ -1,4 +1,3 @@
+-"""Command-line interface with input loop and main entry point."""
+ import sys
+ from typing import Optional
+ from wordle.game import Game
+@@ -7,63 +6,82 @@ from wordle.types import InvalidGuessError, GameOverError
+ 
+ def main() -> None:
+     """Main entry point for the Wordle CLI game."""
+-    raise NotImplementedError("main not implemented")
++    play_game()
+ 
+ 
+ def play_game(target: Optional[str] = None) -> None:
+     """Play a complete game of Wordle.
+-
++    
+     Args:
+         target: Optional target word for testing
+     """
+-    raise NotImplementedError("play_game not implemented")
++    game = Game(target)
++    display_welcome()
++    
++    while True:
++        try:
++            user_input = get_user_input()
++            result = game.make_guess(user_input)
++            display_game_state(game)
++        except InvalidGuessError as e:
++            handle_guess_error(e)
++        except GameOverError:
++            display_result(game)
++            break
++    
++    if ask_play_again():
++        play_game()
+ 
+ 
+ def get_user_input() -> str:
+     """Get a guess from the user.
+-
++    
+     Returns:
+         User's guess input
+     """
+-    raise NotImplementedError("get_user_input not implemented")
++    return input("Enter your guess: ")
+ 
+ 
+ def display_welcome() -> None:
+     """Display welcome message and game instructions."""
+-    raise NotImplementedError("display_welcome not implemented")
++    print("Welcome to Wordle! Guess a 5-letter word in 6 attempts or less.")
+ 
+ 
+ def display_game_state(game: Game) -> None:
+     """Display the current game board and status.
+-
++    
+     Args:
+         game: The game instance to display
+     """
+-    raise NotImplementedError("display_game_state not implemented")
++    print(f"Attempts remaining: {game.get_attempts_remaining()}")
++    for result in game.get_results():
++        print(f"Guess: {result.guess}, Feedback: {result.feedbacks}")
+ 
+ 
+ def display_result(game: Game) -> None:
+     """Display the final game result.
+-
++    
+     Args:
+         game: The completed game instance
+     """
+-    raise NotImplementedError("display_result not implemented")
++    print(f"Game over. The target word was {game.get_target_word()}.")
++    print(f"Your final score is {game.get_results()[0].guess}.")
+ 
+ 
+ def handle_guess_error(error: Exception) -> None:
+     """Handle and display guess-related errors.
+-
++    
+     Args:
+         error: The exception that occurred
+     """
+-    raise NotImplementedError("handle_guess_error not implemented")
++    print(f"Error: {error}")
+ 
+ 
+ def ask_play_again() -> bool:
+     """Ask if the user wants to play again.
+-
++    
+     Returns:
+         True if user wants to play again, False otherwise
+     """
+-    raise NotImplementedError("ask_play_again not implemented")
+\ No newline at end of file
++    response = input("Do you want to play again? (y/n): ")
++    return response.lower() == 'y'

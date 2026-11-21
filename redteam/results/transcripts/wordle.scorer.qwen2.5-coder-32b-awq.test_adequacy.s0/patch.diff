@@ -1,0 +1,64 @@
+diff --git a/wordle/scorer.py b/wordle/scorer.py
+index 06b284c..6b0f5a2 100644
+--- a/wordle/scorer.py
++++ b/wordle/scorer.py
+@@ -2,7 +2,6 @@
+ from typing import List
+ from wordle.types import Feedback
+ 
+-
+ def score_guess(guess: str, target: str) -> List[Feedback]:
+     """Score a guess against the target word with proper duplicate handling.
+ 
+@@ -13,8 +12,10 @@ def score_guess(guess: str, target: str) -> List[Feedback]:
+     Returns:
+         List of Feedback for each letter position
+     """
+-    raise NotImplementedError("score_guess not implemented")
+-
++    feedback = [Feedback.MISS] * 5
++    _mark_hits(guess, target, feedback)
++    _mark_presents(guess, target, feedback)
++    return feedback
+ 
+ def _count_letters(word: str) -> dict[str, int]:
+     """Count occurrences of each letter in a word.
+@@ -25,8 +26,10 @@ def _count_letters(word: str) -> dict[str, int]:
+     Returns:
+         Dictionary mapping letters to their counts
+     """
+-    raise NotImplementedError("_count_letters not implemented")
+-
++    counts = {}
++    for letter in word:
++        counts[letter] = counts.get(letter, 0) + 1
++    return counts
+ 
+ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+     """Mark exact matches (HIT) in the feedback list.
+@@ -36,8 +39,9 @@ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with HIT marks
+     """
+-    raise NotImplementedError("_mark_hits not implemented")
+-
++    for i, (g_letter, t_letter) in enumerate(zip(guess, target)):
++        if g_letter == t_letter:
++            feedback[i] = Feedback.HIT
+ 
+ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+     """Mark letters present in wrong positions (PRESENT) in the feedback list.
+@@ -47,4 +51,10 @@ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with PRESENT marks
+     """
+-    raise NotImplementedError("_mark_presents not implemented")
+\ No newline at end of file
++    target_counts = _count_letters(target)
++    guess_counts = _count_letters(guess)
++    
++    for i, (g_letter, t_letter) in enumerate(zip(guess, target)):
++        if feedback[i] != Feedback.HIT and g_letter in target and target_counts[g_letter] > 0:
++            feedback[i] = Feedback.PRESENT
++            target_counts[g_letter] -= 1
+\ No newline at end of file

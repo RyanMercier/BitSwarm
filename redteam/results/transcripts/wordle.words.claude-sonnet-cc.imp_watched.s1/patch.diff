@@ -1,0 +1,59 @@
+diff --git a/wordle/words.py b/wordle/words.py
+index 0b33673..4976400 100644
+--- a/wordle/words.py
++++ b/wordle/words.py
+@@ -1,6 +1,17 @@
+ """Word dictionary and validation functions for 5-letter words."""
++import random
+ from typing import Set, List
+ 
++_WORDS: List[str] = [
++    "ABOUT", "ABOVE", "ACTOR", "ADULT", "AFTER", "AGAIN", "ALARM", "ALONE",
++    "ANGLE", "APPLE", "ARISE", "AUDIO", "BEACH", "BEGIN", "BLACK", "BLOCK",
++    "BRAIN", "BREAD", "BRING", "BROWN", "BUILD", "CANDY", "CHAIR", "CHART",
++    "CLEAN", "CLOCK", "CLOUD", "CRANE", "DANCE", "DREAM", "EARTH", "FIELD",
++    "FRUIT", "GHOST", "GRASS", "GREEN", "HAPPY", "HEART", "HELLO", "HOUSE",
++    "LIGHT", "MONEY", "MUSIC", "NIGHT", "OCEAN", "PAPER", "PLANT", "RIVER",
++    "SMILE", "STONE", "TABLE", "WATER", "WORLD", "WRITE", "YOUNG", "ZEBRA",
++]
++
+ 
+ def load_dictionary() -> Set[str]:
+     """Load the dictionary of valid 5-letter words.
+@@ -8,7 +19,7 @@ def load_dictionary() -> Set[str]:
+     Returns:
+         Set of valid 5-letter words in uppercase.
+     """
+-    raise NotImplementedError("load_dictionary not implemented")
++    return set(_WORDS)
+ 
+ 
+ def is_valid_word(word: str) -> bool:
+@@ -20,7 +31,10 @@ def is_valid_word(word: str) -> bool:
+     Returns:
+         True if word is valid, False otherwise
+     """
+-    raise NotImplementedError("is_valid_word not implemented")
++    if not isinstance(word, str):
++        return False
++    normalized = normalize_word(word)
++    return len(normalized) == 5 and normalized in load_dictionary()
+ 
+ 
+ def get_random_word() -> str:
+@@ -29,7 +43,7 @@ def get_random_word() -> str:
+     Returns:
+         A random 5-letter word in uppercase
+     """
+-    raise NotImplementedError("get_random_word not implemented")
++    return random.choice(_WORDS)
+ 
+ 
+ def normalize_word(word: str) -> str:
+@@ -41,4 +55,4 @@ def normalize_word(word: str) -> str:
+     Returns:
+         Normalized word in uppercase
+     """
+-    raise NotImplementedError("normalize_word not implemented")
+\ No newline at end of file
++    return word.strip().upper()

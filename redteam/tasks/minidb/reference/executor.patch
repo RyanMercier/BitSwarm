@@ -1,0 +1,144 @@
+diff --git a/minidb/executor.py b/minidb/executor.py
+index 333671f..c659a0a 100644
+--- a/minidb/executor.py
++++ b/minidb/executor.py
+@@ -1,16 +1,4 @@
+-"""Statement execution against a ``StorageBackend``.
+-
+-The executor never evaluates WHERE expressions itself: it delegates every
+-row test to the supplied ``matches`` callable (normally
+-``minidb.expr_eval.where_matches``), calling ``matches(where, row, schema)``.
+-
+-Results follow ``QueryResult`` conventions: SELECT fills ``columns`` and
+-``rows`` with ``row_count == len(rows)``; other statements return
+-``columns == []``, ``rows == []`` and ``row_count`` = rows affected
+-(CREATE/DROP -> 0, INSERT -> 1, DELETE -> count from
+-``store.delete_where``).
+-"""
+-
++"""Reference implementation of minidb.executor."""
+ from __future__ import annotations
+ 
+ from minidb.types import (
+@@ -28,64 +16,71 @@ from minidb.types import (
+     WhereMatcher,
+ )
+ 
+-__all__ = [
+-    "execute",
+-    "execute_create",
+-    "execute_drop",
+-    "execute_insert",
+-    "execute_select",
+-    "execute_delete",
+-]
+-
+ 
+ def execute(stmt: Statement, store: StorageBackend, matches: WhereMatcher) -> QueryResult:
+-    """Dispatch ``stmt`` to the matching ``execute_*`` function by type.
+-
+-    Raises:
+-        TypeError: for an object that is not a known statement type.
+-    """
+-    raise NotImplementedError("execute not implemented")
++    if isinstance(stmt, CreateTableStmt):
++        return execute_create(stmt, store)
++    if isinstance(stmt, DropTableStmt):
++        return execute_drop(stmt, store)
++    if isinstance(stmt, InsertStmt):
++        return execute_insert(stmt, store)
++    if isinstance(stmt, SelectStmt):
++        return execute_select(stmt, store, matches)
++    if isinstance(stmt, DeleteStmt):
++        return execute_delete(stmt, store, matches)
++    raise TypeError(f"not a statement: {stmt!r}")
+ 
+ 
+ def execute_create(stmt: CreateTableStmt, store: StorageBackend) -> QueryResult:
+-    """Create the table via ``store.create_table(stmt.table,
+-    Schema(stmt.columns))``; return row_count 0."""
+-    raise NotImplementedError("execute_create not implemented")
++    store.create_table(stmt.table, Schema(stmt.columns))
++    return QueryResult(columns=[], rows=[], row_count=0)
+ 
+ 
+ def execute_drop(stmt: DropTableStmt, store: StorageBackend) -> QueryResult:
+-    """Drop the table via ``store.drop_table``; return row_count 0."""
+-    raise NotImplementedError("execute_drop not implemented")
++    store.drop_table(stmt.table)
++    return QueryResult(columns=[], rows=[], row_count=0)
+ 
+ 
+ def execute_insert(stmt: InsertStmt, store: StorageBackend) -> QueryResult:
+-    """Build a full schema-ordered row and call ``store.insert``.
+-
+-    Without a column list the values are used as-is (the store validates
+-    arity and types). With a column list: each name must exist
+-    (``UnknownColumnError``), value count must equal column count
+-    (``TypeMismatchError``), and unlisted columns become None.
+-
+-    Returns row_count 1.
+-    """
+-    raise NotImplementedError("execute_insert not implemented")
+-
+-
+-def execute_select(stmt: SelectStmt, store: StorageBackend, matches: WhereMatcher) -> QueryResult:
+-    """Run a SELECT.
+-
+-    Calls ``store.get_schema`` first, resolves every projected column via
+-    ``schema.index_of`` before scanning (so unknown columns raise even on
+-    empty tables), then scans ``store.scan(stmt.table)``, keeps rows where
+-    ``matches(stmt.where, row, schema)`` is True (all rows when there is no
+-    WHERE), and projects in requested order. ``SELECT *`` yields
+-    ``columns = schema.column_names()``.
+-    """
+-    raise NotImplementedError("execute_select not implemented")
+-
+-
+-def execute_delete(stmt: DeleteStmt, store: StorageBackend, matches: WhereMatcher) -> QueryResult:
+-    """Delete via ``store.delete_where`` with a predicate that applies
+-    ``matches(stmt.where, row, schema)`` (or always True without WHERE);
+-    return the number of rows removed as row_count."""
+-    raise NotImplementedError("execute_delete not implemented")
++    if stmt.columns is None:
++        row = tuple(stmt.values)
++    else:
++        schema = store.get_schema(stmt.table)
++        for name in stmt.columns:
++            if not schema.has_column(name):
++                raise UnknownColumnError(name)
++        if len(stmt.columns) != len(stmt.values):
++            raise TypeMismatchError(
++                f"INSERT has {len(stmt.columns)} columns but "
++                f"{len(stmt.values)} values")
++        by_name = dict(zip(stmt.columns, stmt.values))
++        row = tuple(by_name.get(col.name) for col in schema.columns)
++    store.insert(stmt.table, row)
++    return QueryResult(columns=[], rows=[], row_count=1)
++
++
++def execute_select(stmt: SelectStmt, store: StorageBackend,
++                   matches: WhereMatcher) -> QueryResult:
++    schema = store.get_schema(stmt.table)
++    if stmt.columns is None:
++        names = schema.column_names()
++        indices = list(range(len(schema)))
++    else:
++        names = list(stmt.columns)
++        indices = [schema.index_of(n) for n in names]
++    rows = []
++    for row in store.scan(stmt.table):
++        if stmt.where is None or matches(stmt.where, row, schema):
++            rows.append(tuple(row[i] for i in indices))
++    return QueryResult(columns=names, rows=rows, row_count=len(rows))
++
++
++def execute_delete(stmt: DeleteStmt, store: StorageBackend,
++                   matches: WhereMatcher) -> QueryResult:
++    schema = store.get_schema(stmt.table)
++    if stmt.where is None:
++        predicate = lambda row: True  # noqa: E731
++    else:
++        predicate = lambda row: matches(stmt.where, row, schema)  # noqa: E731
++    removed = store.delete_where(stmt.table, predicate)
++    return QueryResult(columns=[], rows=[], row_count=removed)

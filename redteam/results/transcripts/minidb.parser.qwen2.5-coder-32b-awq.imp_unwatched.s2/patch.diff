@@ -1,0 +1,363 @@
+diff --git a/minidb/parser.py b/minidb/parser.py
+index 205356d..7bbb20c 100644
+--- a/minidb/parser.py
++++ b/minidb/parser.py
+@@ -1,21 +1,3 @@
+-"""Recursive-descent parser for MiniDB's SQL subset.
+-
+-Consumes the token list produced by ``minidb.tokenizer.tokenize`` (which
+-always ends with an EOF token) and builds the frozen AST nodes defined in
+-``minidb.types``. The statement and WHERE-expression grammars are
+-documented in the ``minidb.types`` module docstring:
+-
+-* Precedence NOT > AND > OR; AND/OR are left-associative.
+-* Comparisons do not chain (``a = b = c`` is an error).
+-* ``IS [NOT] NULL`` produces ``IsNull(operand, negated)``.
+-* INSERT values must be literals, converted to Values: INTEGER token ->
+-  ``int``, STRING -> ``str``, TRUE/FALSE -> ``bool``, NULL -> ``None``.
+-* Column types in CREATE TABLE are the keywords INTEGER, TEXT, BOOLEAN,
+-  mapped to ``ColumnType``.
+-
+-Any malformed input raises ``SQLSyntaxError``.
+-"""
+-
+ from __future__ import annotations
+ 
+ from minidb.types import (
+@@ -53,9 +35,219 @@ def parse(tokens: list[Token]) -> Statement:
+         SQLSyntaxError: if the tokens are not exactly one valid statement
+             (including empty input, a lone ';', or trailing tokens).
+     """
+-    raise NotImplementedError("parse not implemented")
+-
+-
++    if not tokens:
++        raise SQLSyntaxError("Expected statement")
++    
++    token = tokens.pop(0)
++    if token.type != TokenType.KEYWORD:
++        raise SQLSyntaxError(f"Unexpected token: {token.value}")
++    
++    if token.value == "CREATE":
++        stmt = _parse_create_table(tokens)
++    elif token.value == "DROP":
++        stmt = _parse_drop_table(tokens)
++    elif token.value == "INSERT":
++        stmt = _parse_insert(tokens)
++    elif token.value == "SELECT":
++        stmt = _parse_select(tokens)
++    elif token.value == "DELETE":
++        stmt = _parse_delete(tokens)
++    else:
++        raise SQLSyntaxError(f"Unknown statement: {token.value}")
++    
++    if tokens and tokens[0].value == ";":
++        tokens.pop(0)
++    
++    if tokens and tokens[0].type != TokenType.EOF:
++        raise SQLSyntaxError("Trailing tokens after statement")
++    
++    return stmt
++def _parse_create_table(tokens: list[Token]) -> CreateTableStmt:
++    if not tokens or tokens.pop(0).value != "TABLE":
++        raise SQLSyntaxError("Expected TABLE")
++    
++    table_token = tokens.pop(0)
++    if table_token.type != TokenType.IDENTIFIER:
++        raise SQLSyntaxError(f"Expected table name, got {table_token.value}")
++    
++    if not tokens or tokens.pop(0).value != "(":
++        raise SQLSyntaxError("Expected (")
++    
++    columns = []
++    while tokens:
++        token = tokens.pop(0)
++        if token.type == TokenType.EOF:
++            raise SQLSyntaxError("Expected )")
++        elif token.type != TokenType.IDENTIFIER:
++            raise SQLSyntaxError(f"Expected column name, got {token.value}")
++        
++        col_name = token.value
++        
++        type_token = tokens.pop(0)
++        if type_token.type != TokenType.KEYWORD or type_token.value not in ("INTEGER", "TEXT", "BOOLEAN"):
++            raise SQLSyntaxError(f"Expected column type, got {type_token.value}")
++        
++        col_type = ColumnType[type_token.value]
++        
++        columns.append(ColumnDef(col_name, col_type))
++        
++        next_token = tokens.pop(0)
++        if next_token.value == ")":
++            break
++        elif next_token.value != ",":
++            raise SQLSyntaxError(f"Expected , or ), got {next_token.value}")
++    
++    if not tokens or tokens.pop(0).type != TokenType.EOF:
++        raise SQLSyntaxError("Expected EOF")
++    
++    return CreateTableStmt(table_token.value, tuple(columns))
++def _parse_drop_table(tokens: list[Token]) -> DropTableStmt:
++    if not tokens or tokens.pop(0).value != "TABLE":
++        raise SQLSyntaxError("Expected TABLE")
++    
++    table_token = tokens.pop(0)
++    if table_token.type != TokenType.IDENTIFIER:
++        raise SQLSyntaxError(f"Expected table name, got {table_token.value}")
++    
++    if tokens and tokens[0].value == ";":
++        tokens.pop(0)
++    
++    if tokens and tokens[0].type != TokenType.EOF:
++        raise SQLSyntaxError("Trailing tokens after DROP TABLE")
++    
++    return DropTableStmt(table_token.value)
++def _parse_insert(tokens: list[Token]) -> InsertStmt:
++    if not tokens or tokens.pop(0).value != "INTO":
++        raise SQLSyntaxError("Expected INTO")
++    
++    table_token = tokens.pop(0)
++    if table_token.type != TokenType.IDENTIFIER:
++        raise SQLSyntaxError(f"Expected table name, got {table_token.value}")
++    
++    columns = None
++    if tokens and tokens[0].value == "(":
++        tokens.pop(0)
++        columns = []
++        while tokens:
++            token = tokens.pop(0)
++            if token.type == TokenType.EOF:
++                raise SQLSyntaxError("Expected )")
++            elif token.type != TokenType.IDENTIFIER:
++                raise SQLSyntaxError(f"Expected column name, got {token.value}")
++            
++            columns.append(token.value)
++            
++            next_token = tokens.pop(0)
++            if next_token.value == ")":
++                break
++            elif next_token.value != ",":
++                raise SQLSyntaxError(f"Expected , or ), got {next_token.value}")
++        
++    if not tokens or tokens.pop(0).value != "VALUES":
++        raise SQLSyntaxError("Expected VALUES")
++    
++    if not tokens or tokens.pop(0).value != "(":
++        raise SQLSyntaxError("Expected (")
++    
++    values = []
++    while tokens:
++        token = tokens.pop(0)
++        if token.type == TokenType.EOF:
++            raise SQLSyntaxError("Expected )")
++        elif token.type == TokenType.INTEGER:
++            values.append(int(token.value))
++        elif token.type == TokenType.STRING:
++            values.append(token.value)
++        elif token.type == TokenType.KEYWORD and token.value == "TRUE":
++            values.append(True)
++        elif token.type == TokenType.KEYWORD and token.value == "FALSE":
++            values.append(False)
++        elif token.type == TokenType.KEYWORD and token.value == "NULL":
++            values.append(None)
++        else:
++            raise SQLSyntaxError(f"Expected literal value, got {token.value}")
++        
++        next_token = tokens.pop(0)
++        if next_token.value == ")":
++            break
++        elif next_token.value != ",":
++            raise SQLSyntaxError(f"Expected , or ), got {next_token.value}")
++    
++    if tokens and tokens[0].value == ";":
++        tokens.pop(0)
++    
++    if tokens and tokens[0].type != TokenType.EOF:
++        raise SQLSyntaxError("Trailing tokens after INSERT")
++    
++    return InsertStmt(table_token.value, tuple(columns) if columns else None, tuple(values))
++def _parse_select(tokens: list[Token]) -> SelectStmt:
++    columns = None
++    if tokens and tokens[0].value == "*":
++        columns = None
++        tokens.pop(0)
++    else:
++        columns = []
++        while tokens:
++            token = tokens.pop(0)
++            if token.type == TokenType.KEYWORD and token.value == "FROM":
++                break
++            elif token.type == TokenType.EOF:
++                raise SQLSyntaxError("Expected FROM")
++            elif token.type != TokenType.IDENTIFIER:
++                raise SQLSyntaxError(f"Expected column name, got {token.value}")
++            
++            columns.append(token.value)
++            
++            next_token = tokens.pop(0)
++            if next_token.value == "FROM":
++                break
++            elif next_token.value != ",":
++                raise SQLSyntaxError(f"Expected , or FROM, got {next_token.value}")
++        else:
++            raise SQLSyntaxError("Expected FROM")
++    
++    if not tokens or tokens.pop(0).value != "FROM":
++        raise SQLSyntaxError("Expected FROM")
++    
++    table_token = tokens.pop(0)
++    if table_token.type != TokenType.IDENTIFIER:
++        raise SQLSyntaxError(f"Expected table name, got {table_token.value}")
++    
++    where = None
++    if tokens and tokens[0].value == "WHERE":
++        tokens.pop(0)
++        where = parse_expression(tokens)
++    
++    if tokens and tokens[0].value == ";":
++        tokens.pop(0)
++    
++    if tokens and tokens[0].type != TokenType.EOF:
++        raise SQLSyntaxError("Trailing tokens after SELECT")
++    
++    return SelectStmt(table_token.value, tuple(columns) if columns else None, where)
++def _parse_delete(tokens: list[Token]) -> DeleteStmt:
++    if not tokens or tokens.pop(0).value != "FROM":
++        raise SQLSyntaxError("Expected FROM")
++    
++    table_token = tokens.pop(0)
++    if table_token.type != TokenType.IDENTIFIER:
++        raise SQLSyntaxError(f"Expected table name, got {table_token.value}")
++    
++    where = None
++    if tokens and tokens[0].value == "WHERE":
++        tokens.pop(0)
++        where = parse_expression(tokens)
++    
++    if tokens and tokens[0].value == ";":
++        tokens.pop(0)
++    
++    if tokens and tokens[0].type != TokenType.EOF:
++        raise SQLSyntaxError("Trailing tokens after DELETE")
++    
++    if where is None:
++        where = Literal(True)
++    
++    return DeleteStmt(table_token.value, where)
+ def parse_script(tokens: list[Token]) -> list[Statement]:
+     """Parse zero or more ';'-separated statements up to EOF.
+ 
+@@ -65,9 +257,29 @@ def parse_script(tokens: list[Token]) -> list[Statement]:
+     Raises:
+         SQLSyntaxError: if any statement is malformed.
+     """
+-    raise NotImplementedError("parse_script not implemented")
+-
+-
++    statements = []
++    while tokens:
++        if tokens[0].type == TokenType.EOF:
++            break
++        
++        try:
++            stmt = parse(tokens)
++        except SQLSyntaxError as e:
++            if e.args[0] == "Expected statement":
++                break
++            else:
++                raise
++        
++        if isinstance(stmt, Statement):
++            statements.append(stmt)
++        
++        if tokens and tokens[0].value == ";":
++            tokens.pop(0)
++        
++    if tokens and tokens[0].type != TokenType.EOF:
++        raise SQLSyntaxError("Trailing tokens after script")
++    
++    return statements
+ def parse_expression(tokens: list[Token]) -> Expr:
+     """Parse a single WHERE-style expression that must consume every token
+     up to EOF.
+@@ -75,4 +287,79 @@ def parse_expression(tokens: list[Token]) -> Expr:
+     Raises:
+         SQLSyntaxError: if the tokens do not form exactly one expression.
+     """
+-    raise NotImplementedError("parse_expression not implemented")
++    expr = _parse_or_expr(tokens)
++    
++    if tokens and tokens[0].type != TokenType.EOF:
++        raise SQLSyntaxError("Trailing tokens after expression")
++    
++    return expr
++def _parse_or_expr(tokens: list[Token]) -> Expr:
++    expr = _parse_and_expr(tokens)
++    
++    while tokens and tokens[0].value == "OR":
++        tokens.pop(0)
++        right = _parse_and_expr(tokens)
++        expr = Or(expr, right)
++    
++    return expr
++def _parse_and_expr(tokens: list[Token]) -> Expr:
++    expr = _parse_not_expr(tokens)
++    
++    while tokens and tokens[0].value == "AND":
++        tokens.pop(0)
++        right = _parse_not_expr(tokens)
++        expr = And(expr, right)
++    
++    return expr
++def _parse_not_expr(tokens: list[Token]) -> Expr:
++    if tokens and tokens[0].value == "NOT":
++        tokens.pop(0)
++        operand = _parse_predicate(tokens)
++        return Not(operand)
++    
++    return _parse_predicate(tokens)
++def _parse_predicate(tokens: list[Token]) -> Expr:
++    left = _parse_primary(tokens)
++    
++    if tokens and tokens[0].value in COMPARISON_OPS:
++        op = tokens.pop(0).value
++        right = _parse_primary(tokens)
++        return Comparison(op, left, right)
++    
++    if tokens and tokens[0].value == "IS":
++        tokens.pop(0)
++        if tokens and tokens[0].value == "NOT":
++            tokens.pop(0)
++            if tokens and tokens[0].value == "NULL":
++                tokens.pop(0)
++                return IsNull(left, True)
++        elif tokens and tokens[0].value == "NULL":
++            tokens.pop(0)
++            return IsNull(left, False)
++    
++    return left
++def _parse_primary(tokens: list[Token]) -> Expr:
++    if not tokens:
++        raise SQLSyntaxError("Expected primary expression")
++    
++    token = tokens.pop(0)
++    if token.type == TokenType.INTEGER:
++        return Literal(int(token.value))
++    elif token.type == TokenType.STRING:
++        return Literal(token.value)
++    elif token.type == TokenType.KEYWORD and token.value == "TRUE":
++        return Literal(True)
++    elif token.type == TokenType.KEYWORD and token.value == "FALSE":
++        return Literal(False)
++    elif token.type == TokenType.KEYWORD and token.value == "NULL":
++        return Literal(None)
++    elif token.type == TokenType.IDENTIFIER:
++        return ColumnRef(token.value)
++    elif token.type == TokenType.OPERATOR and token.value == "(":
++        expr = parse_expression(tokens)
++        if not tokens or tokens[0].value != ")":
++            raise SQLSyntaxError("Expected )")
++        tokens.pop(0)
++        return expr
++    else:
++        raise SQLSyntaxError(f"Unexpected token: {token.value}")

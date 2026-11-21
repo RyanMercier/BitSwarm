@@ -1,0 +1,121 @@
+diff --git a/src/click/types.py b/src/click/types.py
+index 98c2d61..4f9083d 100644
+--- a/src/click/types.py
++++ b/src/click/types.py
+@@ -429,6 +429,102 @@ class Choice(ParamType[ParamTypeValue], t.Generic[ParamTypeValue]):
+         return [CompletionItem(c) for c in matched]
+ 
+ 
++class EnumChoiceInfoDict(ParamTypeInfoDict):
++    enum_type: type[enum.Enum]
++    case_sensitive: bool
++
++
++class EnumChoice(ParamType[enum.Enum]):
++    """The enum choice type allows a value to be checked against the members
++    of a Python enum. The user provides the name of an enum member, and the
++    callback receives the corresponding enum instance.
++
++    :param enum_type: A Python enum.Enum subclass to validate against.
++    :param case_sensitive: Set to false to make name matching case
++        insensitive. Defaults to true.
++    """
++
++    name = "enum choice"
++
++    def __init__(
++        self,
++        enum_type: type[enum.Enum],
++        case_sensitive: bool = True,
++    ) -> None:
++        self.enum_type = enum_type
++        self.case_sensitive = case_sensitive
++
++    def to_info_dict(self) -> EnumChoiceInfoDict:
++        return {
++            "enum_type": self.enum_type,
++            "case_sensitive": self.case_sensitive,
++            **super().to_info_dict(),
++        }
++
++    def _normalize(self, name: str, ctx: Context | None) -> str:
++        # Same normalization rules as Choice (token normalization, casefold).
++        return Choice.normalize_choice(self, name, ctx)  # type: ignore[arg-type]
++
++    def _names(self, ctx: Context | None = None) -> list[str]:
++        return [self._normalize(m.name, ctx) for m in self.enum_type]
++
++    def get_metavar(self, param: Parameter, ctx: Context) -> str | None:
++        choices_str = "|".join(self._names(ctx))
++        if param.required and param.param_type_name == "argument":
++            return f"{{{choices_str}}}"
++        return f"[{choices_str}]"
++
++    def get_missing_message(self, param: Parameter, ctx: Context | None) -> str:
++        return _("Choose from:\n\t{choices}").format(
++            choices=",\n\t".join(self._names(ctx))
++        )
++
++    def convert(
++        self, value: t.Any, param: Parameter | None, ctx: Context | None
++    ) -> enum.Enum:
++        if isinstance(value, self.enum_type):
++            return value
++
++        normed = self._normalize(str(value), ctx)
++
++        for member in self.enum_type:
++            if self._normalize(member.name, ctx) == normed:
++                return member
++
++        self.fail(self.get_invalid_choice_message(value, ctx), param, ctx)
++
++    def get_invalid_choice_message(self, value: t.Any, ctx: Context | None) -> str:
++        names = self._names(ctx)
++        choices_str = ", ".join(map(repr, names))
++        return ngettext(
++            "{value!r} is not {choice}.",
++            "{value!r} is not one of {choices}.",
++            len(names),
++        ).format(value=value, choice=choices_str, choices=choices_str)
++
++    def __repr__(self) -> str:
++        return f"EnumChoice({self.enum_type.__name__})"
++
++    def shell_complete(
++        self, ctx: Context, param: Parameter, incomplete: str
++    ) -> list[CompletionItem]:
++        """Complete enum member names that start with the incomplete value.
++
++        :param ctx: Invocation context for this command.
++        :param param: The parameter that is requesting completion.
++        :param incomplete: Value being completed. May be empty.
++        """
++        from click.shell_completion import CompletionItem
++
++        names = [m.name for m in self.enum_type]
++        if self.case_sensitive:
++            matched = [n for n in names if n.startswith(incomplete)]
++        else:
++            incomplete = incomplete.casefold()
++            matched = [n for n in names if n.casefold().startswith(incomplete)]
++        return [CompletionItem(n) for n in matched]
++
++
+ class DateTimeInfoDict(ParamTypeInfoDict):
+     formats: cabc.Sequence[str]
+ 
+@@ -1307,3 +1403,13 @@ class OptionHelpExtra(t.TypedDict, total=False):
+     default: str
+     range: str
+     required: str
++
++
++def _export_enum_choice() -> None:
++    # Make ``click.EnumChoice`` available from the top-level package.
++    pkg = sys.modules.get(__name__.rpartition(".")[0])
++    if pkg is not None and not hasattr(pkg, "EnumChoice"):
++        pkg.EnumChoice = EnumChoice  # type: ignore[attr-defined]
++
++
++_export_enum_choice()

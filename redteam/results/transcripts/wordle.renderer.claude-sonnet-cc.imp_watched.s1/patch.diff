@@ -1,0 +1,76 @@
+diff --git a/wordle/renderer.py b/wordle/renderer.py
+index 4332623..f28f800 100644
+--- a/wordle/renderer.py
++++ b/wordle/renderer.py
+@@ -2,6 +2,13 @@
+ from typing import List
+ from wordle.types import GuessResult
+ 
++_RESET = "\033[0m"
++_COLORS = {
++    "hit": "\033[42m\033[30m",      # green background
++    "present": "\033[43m\033[30m",  # yellow background
++    "miss": "\033[100m\033[37m",    # gray background
++}
++
+ 
+ def render_board(results: List[GuessResult]) -> str:
+     """Render the entire game board with all guesses.
+@@ -12,7 +19,7 @@ def render_board(results: List[GuessResult]) -> str:
+     Returns:
+         Formatted string representation of the board
+     """
+-    raise NotImplementedError("render_board not implemented")
++    return "\n".join(render_guess(result) for result in results)
+ 
+ 
+ def render_guess(result: GuessResult) -> str:
+@@ -24,7 +31,10 @@ def render_guess(result: GuessResult) -> str:
+     Returns:
+         Formatted string representation of the guess
+     """
+-    raise NotImplementedError("render_guess not implemented")
++    return "".join(
++        _colorize_letter(letter, getattr(fb, "value", fb))
++        for letter, fb in zip(result.guess, result.feedbacks)
++    )
+ 
+ 
+ def render_empty_row() -> str:
+@@ -33,7 +43,7 @@ def render_empty_row() -> str:
+     Returns:
+         Formatted string representation of an empty row
+     """
+-    raise NotImplementedError("render_empty_row not implemented")
++    return ""
+ 
+ 
+ def _colorize_letter(letter: str, feedback_type: str) -> str:
+@@ -46,7 +56,8 @@ def _colorize_letter(letter: str, feedback_type: str) -> str:
+     Returns:
+         Colored letter with ANSI codes
+     """
+-    raise NotImplementedError("_colorize_letter not implemented")
++    color = _COLORS.get(feedback_type, "")
++    return f"{color} {letter.upper()} {_RESET}"
+ 
+ 
+ def render_keyboard(used_letters: dict[str, str]) -> str:
+@@ -58,4 +69,15 @@ def render_keyboard(used_letters: dict[str, str]) -> str:
+     Returns:
+         Formatted keyboard display
+     """
+-    raise NotImplementedError("render_keyboard not implemented")
+\ No newline at end of file
++    rows = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
++    lines = []
++    for row in rows:
++        parts = []
++        for letter in row:
++            status = used_letters.get(letter) or used_letters.get(letter.lower())
++            if status in _COLORS:
++                parts.append(_colorize_letter(letter, status))
++            else:
++                parts.append(f" {letter} ")
++        lines.append("".join(parts))
++    return "\n".join(lines)

@@ -1,0 +1,991 @@
+Your assignment: table_store
+Description: Implement minidb/table_store.py: class TableStore satisfying the StorageBackend protocol in minidb.types (create_table raises TableExistsError, drop_table/get_schema/insert/scan/delete_where raise UnknownTableError for missing tables, insert validates arity and per-column types with value_matches_type and raises TypeMismatchError, scan yields rows in insertion order from a snapshot, delete_where returns the number of removed rows) plus has_table and table_names() -> list[str]. Table names are case-sensitive exact matches; no SQL knowledge.
+Files to implement: ['minidb/table_store.py', 'tests/test_table_store.py']
+Tests to pass: ['tests/test_table_store.py']
+
+Project structure:
+│   ├── README.md
+│   ├── conftest.py  [shared - do not modify]
+│   ├── requirements.txt
+│   ├── minidb/
+│   │   ├── __init__.py  [shared - do not modify]
+│   │   ├── cli.py  [assigned to another engineer]
+│   │   ├── engine.py  [assigned to another engineer]
+│   │   ├── executor.py  [assigned to another engineer]
+│   │   ├── expr_eval.py  [assigned to another engineer]
+│   │   ├── parser.py  [assigned to another engineer]
+│   │   ├── table_store.py  ← YOUR ASSIGNMENT
+│   │   ├── tokenizer.py  [assigned to another engineer]
+│   │   ├── types.py  [shared - do not modify]
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── test_cli.py  [assigned to another engineer]
+│   │   ├── test_engine.py  [assigned to another engineer]
+│   │   ├── test_executor.py  [assigned to another engineer]
+│   │   ├── test_expr_eval.py  [assigned to another engineer]
+│   │   ├── test_integration__bare_boolean_column_in_where.py
+│   │   ├── test_integration__comparison_between_different_types_raises.py
+│   │   ├── test_integration__drop_table_then_select_raises_unknown_table.py
+│   │   ├── test_integration__engine_default_store_constructed_via_module_table_store.py
+│   │   ├── test_integration__engine_execute_propagates_minidb_errors.py
+│   │   ├── test_integration__engine_execute_script_delegates_to_parse_script.py
+│   │   ├── test_integration__engine_execute_syntax_errors.py
+│   │   ├── test_integration__engine_reads_rows_inserted_directly_into_store.py
+│   │   ├── test_integration__engine_uses_custom_store_mock.py
+│   │   ├── test_integration__engines_sharing_a_store_see_same_data.py
+│   │   ├── test_integration__execute_script_skips_empty_statements.py
+│   │   ├── test_integration__execute_script_syntax_error_raises.py
+│   │   ├── test_integration__executor_delete_uses_matcher_via_store.py
+│   │   ├── test_integration__executor_uses_supplied_matcher.py
+│   │   ├── test_integration__format_result_non_select.py
+│   │   ├── test_integration__format_result_single_row_from_engine.py
+│   │   ├── test_integration__format_result_zero_rows_select.py
+│   │   ├── test_integration__full_spec_script_via_execute_script.py
+│   │   ├── test_integration__insert_into_unknown_table_raises.py
+│   │   ├── test_integration__insert_type_mismatch_raises_and_does_not_store.py
+│   │   ├── test_integration__insert_unknown_column_raises.py
+│   │   ├── test_integration__insert_with_reordered_and_partial_column_list.py
+│   │   ├── test_integration__insert_without_column_list_uses_schema_order.py
+│   │   ├── test_integration__insert_wrong_value_count_raises_type_mismatch.py
+│   │   ├── test_integration__is_null_and_is_not_null.py
+│   │   ├── test_integration__keywords_case_insensitive_names_case_sensitive.py
+│   │   ├── test_integration__kleene_or_null_true_is_true.py
+│   │   ├── test_integration__modules_expose_expected_callables.py
+│   │   ├── test_integration__multiple_tables_are_independent.py
+│   │   ├── test_integration__non_boolean_where_raises.py
+│   │   ├── test_integration__null_comparison_excludes_row.py
+│   │   ├── test_integration__null_fits_every_column_type.py
+│   │   ├── test_integration__null_literal_where_matches_nothing.py
+│   │   ├── test_integration__package_lazy_engine_export_is_engine_class.py
+│   │   ├── test_integration__parentheses_override_precedence.py
+│   │   ├── test_integration__parse_expression_with_where_matches.py
+│   │   ├── test_integration__projection_respects_requested_order_and_duplicates_allowed_order.py
+│   │   ├── test_integration__recreate_table_after_drop_is_empty.py
+│   │   ├── test_integration__repl_accumulates_multiline_statement.py
+│   │   ├── test_integration__repl_executes_statements_and_prints_results.py
+│   │   ├── test_integration__repl_reports_errors_to_stderr_and_continues.py
+│   │   ├── test_integration__repl_runs_leftover_buffer_at_eof.py
+│   │   ├── test_integration__select_star_returns_all_rows_in_insertion_order.py
+│   │   ├── test_integration__select_with_and_and_is_not_null.py
+│   │   ├── test_integration__select_with_not_or_precedence.py
+│   │   ├── test_integration__string_literal_escaping_round_trips.py
+│   │   ├── test_integration__tokenizer_output_feeds_parser.py
+│   │   ├── test_integration__unknown_column_in_where_raises.py
+│   │   ├── test_integration__unknown_projected_column_raises_even_on_empty_table.py
+│   │   ├── test_parser.py  [assigned to another engineer]
+│   │   ├── test_table_store.py  ← YOUR ASSIGNMENT
+│   │   ├── test_tokenizer.py  [assigned to another engineer]
+
+=== STUB FILE: minidb/table_store.py ===
+"""In-memory table storage implementing ``minidb.types.StorageBackend``.
+
+Tables are keyed by exact, case-sensitive name. Each table holds a
+``Schema`` and a list of rows in insertion order. This module has no SQL
+knowledge.
+"""
+
+from __future__ import annotations
+
+from typing import Iterator
+
+from minidb.types import (
+    Row,
+    RowPredicate,
+    Schema,
+    TableExistsError,
+    TypeMismatchError,
+    UnknownTableError,
+    value_matches_type,
+)
+
+__all__ = ["TableStore"]
+
+
+class TableStore:
+    """Dict-backed storage of named tables."""
+
+    def __init__(self) -> None:
+        """Create an empty store with no tables."""
+        raise NotImplementedError(f"{self.__class__.__name__}.__init__ not implemented")
+
+    def create_table(self, name: str, schema: Schema) -> None:
+        """Create an empty table named ``name`` with ``schema``.
+
+        Raises:
+            TableExistsError: if a table with this exact name exists.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__}.create_table not implemented")
+
+    def drop_table(self, name: str) -> None:
+        """Remove the table and all of its rows.
+
+        Raises:
+            UnknownTableError: if the table does not exist.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__}.drop_table not implemented")
+
+    def has_table(self, name: str) -> bool:
+        """Return True if a table with exactly this name exists."""
+        raise NotImplementedError(f"{self.__class__.__name__}.has_table not implemented")
+
+    def table_names(self) -> list[str]:
+        """Return the names of all existing tables (in creation order)."""
+        raise NotImplementedError(f"{self.__class__.__name__}.table_names not implemented")
+
+    def get_schema(self, name: str) -> Schema:
+        """Return the table's schema.
+
+        Raises:
+            UnknownTableError: if the table does not exist.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__}.get_schema not implemented")
+
+    def insert(self, name: str, row: Row) -> None:
+        """Append ``row`` (full row, schema order) to the table.
+
+        Raises:
+            UnknownTableError: if the table does not exist.
+            TypeMismatchError: if ``len(row)`` differs from the column count
+                or any value fails ``value_matches_type`` for its column.
+                Nothing is stored in that case.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__}.insert not implemented")
+
+    def scan(self, name: str) -> Iterator[Row]:
+        """Yield the table's rows in insertion order from a snapshot taken
+        at call time (later mutations do not affect the iteration).
+
+        Raises:
+            UnknownTableError: if the table does not exist (raised when
+                ``scan`` is called, not lazily on first ``next``).
+        """
+        raise NotImplementedError(f"{self.__class__.__name__}.scan not implemented")
+
+    def delete_where(self, name: str, predicate: RowPredicate) -> int:
+        """Remove every row for which ``predicate(row)`` is True, keeping
+        the remaining rows in order; return the number removed.
+
+        Raises:
+            UnknownTableError: if the table does not exist.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__}.delete_where not implemented")
+
+
+=== STUB FILE: tests/test_table_store.py ===
+"""Unit tests for minidb.table_store."""
+
+from __future__ import annotations
+
+import pytest
+
+from minidb.table_store import TableStore
+from minidb.types import (
+    ColumnDef,
+    ColumnType,
+    Schema,
+    TableExistsError,
+    TypeMismatchError,
+    UnknownTableError,
+)
+
+SCHEMA = Schema(
+    (
+        ColumnDef("id", ColumnType.INTEGER),
+        ColumnDef("name", ColumnType.TEXT),
+        ColumnDef("ok", ColumnType.BOOLEAN),
+    )
+)
+
+
+def make_store() -> TableStore:
+    store = TableStore()
+    store.create_table("t", SCHEMA)
+    return store
+
+
+def test_create_and_get_schema():
+    store = make_store()
+    assert store.has_table("t") is True
+    assert store.get_schema("t") == SCHEMA
+    assert store.table_names() == ["t"]
+
+
+def test_new_store_is_empty():
+    store = TableStore()
+    assert store.table_names() == []
+    assert store.has_table("t") is False
+
+
+def test_table_names_case_sensitive():
+    store = make_store()
+    assert store.has_table("T") is False
+    store.create_table("T", SCHEMA)
+    assert sorted(store.table_names()) == ["T", "t"]
+
+
+def test_create_existing_raises():
+    store = make_store()
+    with pytest.raises(TableExistsError) as excinfo:
+        store.create_table("t", SCHEMA)
+    assert excinfo.value.table == "t"
+
+
+def test_insert_and_scan_in_order():
+    store = make_store()
+    store.insert("t", (1, "a", True))
+    store.insert("t", (2, None, None))
+    store.insert("t", (3, "c", False))
+    assert list(store.scan("t")) == [(1, "a", True), (2, None, None), (3, "c", False)]
+
+
+def test_scan_empty_table():
+    store = make_store()
+    assert list(store.scan("t")) == []
+
+
+def test_insert_wrong_arity_raises():
+    store = make_store()
+    with pytest.raises(TypeMismatchError):
+        store.insert("t", (1, "a"))
+    with pytest.raises(TypeMismatchError):
+        store.insert("t", (1, "a", True, 4))
+    assert list(store.scan("t")) == []
+
+
+@pytest.mark.parametrize(
+    "row",
+    [("1", "a", True), (True, "a", True), (1, 2, True), (1, "a", 1), (1, "a", "TRUE")],
+)
+def test_insert_wrong_type_raises(row):
+    store = make_store()
+    with pytest.raises(TypeMismatchError):
+        store.insert("t", row)
+    assert list(store.scan("t")) == []
+
+
+def test_scan_is_snapshot():
+    store = make_store()
+    store.insert("t", (1, "a", True))
+    it = store.scan("t")
+    store.insert("t", (2, "b", True))
+    assert list(it) == [(1, "a", True)]
+
+
+def test_delete_where_returns_count_and_preserves_order():
+    store = make_store()
+    for i in range(1, 6):
+        store.insert("t", (i, str(i), i % 2 == 0))
+    removed = store.delete_where("t", lambda row: row[2] is True)
+    assert removed == 2
+    assert [r[0] for r in store.scan("t")] == [1, 3, 5]
+
+
+def test_delete_where_none_match():
+    store = make_store()
+    store.insert("t", (1, "a", True))
+    assert store.delete_where("t", lambda row: False) == 0
+    assert list(store.scan("t")) == [(1, "a", True)]
+
+
+def test_drop_table_removes_rows():
+    store = make_store()
+    store.insert("t", (1, "a", True))
+    store.drop_table("t")
+    assert store.has_table("t") is False
+    assert store.table_names() == []
+    store.create_table("t", SCHEMA)
+    assert list(store.scan("t")) == []
+
+
+def test_unknown_table_errors():
+    store = TableStore()
+    with pytest.raises(UnknownTableError) as excinfo:
+        store.get_schema("ghost")
+    assert excinfo.value.table == "ghost"
+    with pytest.raises(UnknownTableError):
+        store.drop_table("ghost")
+    with pytest.raises(UnknownTableError):
+        store.insert("ghost", (1,))
+    with pytest.raises(UnknownTableError):
+        list(store.scan("ghost"))
+    with pytest.raises(UnknownTableError):
+        store.delete_where("ghost", lambda row: True)
+
+
+def test_scan_returns_newest_rows_first():
+    store = make_store()
+    store.insert("t", (1, "a", True))
+    store.insert("t", (2, None, None))
+    store.insert("t", (3, "c", False))
+    assert list(store.scan("t")) == [(3, "c", False), (2, None, None), (1, "a", True)]
+
+
+
+=== TEST FILE: tests/test_table_store.py ===
+"""Unit tests for minidb.table_store."""
+
+from __future__ import annotations
+
+import pytest
+
+from minidb.table_store import TableStore
+from minidb.types import (
+    ColumnDef,
+    ColumnType,
+    Schema,
+    TableExistsError,
+    TypeMismatchError,
+    UnknownTableError,
+)
+
+SCHEMA = Schema(
+    (
+        ColumnDef("id", ColumnType.INTEGER),
+        ColumnDef("name", ColumnType.TEXT),
+        ColumnDef("ok", ColumnType.BOOLEAN),
+    )
+)
+
+
+def make_store() -> TableStore:
+    store = TableStore()
+    store.create_table("t", SCHEMA)
+    return store
+
+
+def test_create_and_get_schema():
+    store = make_store()
+    assert store.has_table("t") is True
+    assert store.get_schema("t") == SCHEMA
+    assert store.table_names() == ["t"]
+
+
+def test_new_store_is_empty():
+    store = TableStore()
+    assert store.table_names() == []
+    assert store.has_table("t") is False
+
+
+def test_table_names_case_sensitive():
+    store = make_store()
+    assert store.has_table("T") is False
+    store.create_table("T", SCHEMA)
+    assert sorted(store.table_names()) == ["T", "t"]
+
+
+def test_create_existing_raises():
+    store = make_store()
+    with pytest.raises(TableExistsError) as excinfo:
+        store.create_table("t", SCHEMA)
+    assert excinfo.value.table == "t"
+
+
+def test_insert_and_scan_in_order():
+    store = make_store()
+    store.insert("t", (1, "a", True))
+    store.insert("t", (2, None, None))
+    store.insert("t", (3, "c", False))
+    assert list(store.scan("t")) == [(1, "a", True), (2, None, None), (3, "c", False)]
+
+
+def test_scan_empty_table():
+    store = make_store()
+    assert list(store.scan("t")) == []
+
+
+def test_insert_wrong_arity_raises():
+    store = make_store()
+    with pytest.raises(TypeMismatchError):
+        store.insert("t", (1, "a"))
+    with pytest.raises(TypeMismatchError):
+        store.insert("t", (1, "a", True, 4))
+    assert list(store.scan("t")) == []
+
+
+@pytest.mark.parametrize(
+    "row",
+    [("1", "a", True), (True, "a", True), (1, 2, True), (1, "a", 1), (1, "a", "TRUE")],
+)
+def test_insert_wrong_type_raises(row):
+    store = make_store()
+    with pytest.raises(TypeMismatchError):
+        store.insert("t", row)
+    assert list(store.scan("t")) == []
+
+
+def test_scan_is_snapshot():
+    store = make_store()
+    store.insert("t", (1, "a", True))
+    it = store.scan("t")
+    store.insert("t", (2, "b", True))
+    assert list(it) == [(1, "a", True)]
+
+
+def test_delete_where_returns_count_and_preserves_order():
+    store = make_store()
+    for i in range(1, 6):
+        store.insert("t", (i, str(i), i % 2 == 0))
+    removed = store.delete_where("t", lambda row: row[2] is True)
+    assert removed == 2
+    assert [r[0] for r in store.scan("t")] == [1, 3, 5]
+
+
+def test_delete_where_none_match():
+    store = make_store()
+    store.insert("t", (1, "a", True))
+    assert store.delete_where("t", lambda row: False) == 0
+    assert list(store.scan("t")) == [(1, "a", True)]
+
+
+def test_drop_table_removes_rows():
+    store = make_store()
+    store.insert("t", (1, "a", True))
+    store.drop_table("t")
+    assert store.has_table("t") is False
+    assert store.table_names() == []
+    store.create_table("t", SCHEMA)
+    assert list(store.scan("t")) == []
+
+
+def test_unknown_table_errors():
+    store = TableStore()
+    with pytest.raises(UnknownTableError) as excinfo:
+        store.get_schema("ghost")
+    assert excinfo.value.table == "ghost"
+    with pytest.raises(UnknownTableError):
+        store.drop_table("ghost")
+    with pytest.raises(UnknownTableError):
+        store.insert("ghost", (1,))
+    with pytest.raises(UnknownTableError):
+        list(store.scan("ghost"))
+    with pytest.raises(UnknownTableError):
+        store.delete_where("ghost", lambda row: True)
+
+
+def test_scan_returns_newest_rows_first():
+    store = make_store()
+    store.insert("t", (1, "a", True))
+    store.insert("t", (2, None, None))
+    store.insert("t", (3, "c", False))
+    assert list(store.scan("t")) == [(3, "c", False), (2, None, None), (1, "a", True)]
+
+
+
+=== SHARED SCHEMA: conftest.py ===
+"""Make the repository root importable so ``import minidb`` works under pytest."""
+
+import os
+import sys
+
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+
+=== SHARED SCHEMA: minidb/__init__.py ===
+"""MiniDB: an in-memory relational query engine for a small SQL subset.
+
+Usage::
+
+    from minidb import Engine
+
+    engine = Engine()
+    engine.execute("CREATE TABLE users (id INTEGER, name TEXT)")
+
+``Engine`` is resolved lazily so that importing ``minidb.types`` (or any
+other submodule) never drags in the full pipeline.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from minidb.engine import Engine
+
+__all__ = ["Engine"]
+
+
+def __getattr__(name: str) -> object:
+    if name == "Engine":
+        from minidb.engine import Engine
+
+        return Engine
+    raise AttributeError(f"module 'minidb' has no attribute {name!r}")
+
+
+=== SHARED SCHEMA: minidb/types.py ===
+"""Shared types, AST nodes, constants, and exceptions for MiniDB.
+
+Every MiniDB module imports from ``minidb.types`` using the full dotted
+path. This module holds data definitions and tiny type helpers only; it
+contains no tokenizing, parsing, evaluation, or storage logic.
+
+Naming rules shared by every module:
+
+* Table names and column names are case-sensitive and matched exactly.
+* Keywords are case-insensitive; the tokenizer normalizes them to
+  uppercase.
+
+WHERE expression grammar (implemented by ``minidb.parser``, evaluated by
+``minidb.expr_eval``)::
+
+    expr       := or_expr
+    or_expr    := and_expr ( OR and_expr )*          -> Or(left, right), left-assoc
+    and_expr   := not_expr ( AND not_expr )*         -> And(left, right), left-assoc
+    not_expr   := NOT not_expr | predicate           -> Not(operand)
+    predicate  := primary [ comp_op primary          -> Comparison(op, left, right)
+                          | IS [NOT] NULL ]          -> IsNull(operand, negated)
+    primary    := INTEGER | STRING | TRUE | FALSE | NULL   -> Literal(value)
+                | IDENTIFIER                              -> ColumnRef(name)
+                | '(' expr ')'
+    comp_op    := '=' | '<>' | '<' | '<=' | '>' | '>='
+
+Comparisons do not chain: ``a = b = c`` is a syntax error. ``NOT a = 1``
+parses as ``Not(Comparison('=', ColumnRef('a'), Literal(1)))``.
+
+Statement grammar (keywords shown uppercase; trailing ';' optional)::
+
+    CREATE TABLE name '(' col TYPE (',' col TYPE)* ')'
+    DROP TABLE name
+    INSERT INTO name [ '(' col (',' col)* ')' ] VALUES '(' literal (',' literal)* ')'
+    SELECT ( '*' | col (',' col)* ) FROM name [ WHERE expr ]
+    DELETE FROM name [ WHERE expr ]
+
+where TYPE is one of INTEGER, TEXT, BOOLEAN and literal is an INTEGER,
+STRING, TRUE, FALSE, or NULL token. Negative integer literals are not
+supported.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Callable, Iterator, Optional, Protocol, Union
+
+# ---------------------------------------------------------------------------
+# Scalar values and rows
+# ---------------------------------------------------------------------------
+
+#: A scalar SQL value: INTEGER -> int, TEXT -> str, BOOLEAN -> bool,
+#: NULL -> None. ``bool`` is a subclass of ``int`` in Python, but MiniDB
+#: treats them as distinct: ``True`` is NOT a valid INTEGER and ``1`` is
+#: NOT a valid BOOLEAN.
+Value = Union[int, str, bool, None]
+
+#: A stored or projected row: one Value per column, in column order.
+Row = tuple[Value, ...]
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class MiniDBError(Exception):
+    """Base class for every error MiniDB raises deliberately.
+
+    ``str(error)`` is a single human-readable line; the CLI prints it as
+    ``ERROR: <message>``.
+    """
+
+
+class SQLSyntaxError(MiniDBError):
+    """Raised by the tokenizer for input it cannot lex, by the parser for
+    token sequences that do not form a valid statement or expression, and
+    by the engine for blank input or multiple statements passed to
+    ``Engine.execute``."""
+
+
+class UnknownTableError(MiniDBError):
+    """Raised when a statement references a table that does not exist."""
+
+    def __init__(self, table: str) -> None:
+        super().__init__(f"unknown table: {table}")
+        self.table = table
+
+
+class UnknownColumnError(MiniDBError):
+    """Raised when a column name does not exist in the relevant schema."""
+
+    def __init__(self, column: str) -> None:
+        super().__init__(f"unknown column: {column}")
+        self.column = column
+
+
+class TypeMismatchError(MiniDBError):
+    """Raised when a value's type does not fit its context: an INSERT
+    value that does not match the column type, an INSERT with the wrong
+    number of values, a comparison between different SQL types, or a
+    non-boolean operand to NOT/AND/OR/WHERE."""
+
+
+class TableExistsError(MiniDBError):
+    """Raised by CREATE TABLE when the table name is already in use."""
+
+    def __init__(self, table: str) -> None:
+        super().__init__(f"table already exists: {table}")
+        self.table = table
+
+
+# ---------------------------------------------------------------------------
+# Schema
+# ---------------------------------------------------------------------------
+
+
+class ColumnType(Enum):
+    """Declared column type. ``.value`` is the SQL keyword spelling."""
+
+    INTEGER = "INTEGER"
+    TEXT = "TEXT"
+    BOOLEAN = "BOOLEAN"
+
+
+@dataclass(frozen=True)
+class ColumnDef:
+    """One column of a table schema."""
+
+    name: str
+    type: ColumnType
+
+
+@dataclass(frozen=True)
+class Schema:
+    """Ordered column definitions for a table (declaration order)."""
+
+    columns: tuple[ColumnDef, ...]
+
+    def column_names(self) -> list[str]:
+        """Return column names in declaration order."""
+        return [column.name for column in self.columns]
+
+    def has_column(self, name: str) -> bool:
+        """Return True if a column with exactly this name exists."""
+        return any(column.name == name for column in self.columns)
+
+    def index_of(self, name: str) -> int:
+        """Return the zero-based position of column ``name``.
+
+        Raises:
+            UnknownColumnError: if no column has exactly this name.
+        """
+        for index, column in enumerate(self.columns):
+            if column.name == name:
+                return index
+        raise UnknownColumnError(name)
+
+    def __len__(self) -> int:
+        return len(self.columns)
+
+
+def value_matches_type(value: Value, column_type: ColumnType) -> bool:
+    """Return True if ``value`` may be stored in a column of ``column_type``.
+
+    None (NULL) matches every type. bool matches only BOOLEAN; int (but
+    not bool) matches only INTEGER; str matches only TEXT.
+    """
+    if value is None:
+        return True
+    if column_type is ColumnType.BOOLEAN:
+        return isinstance(value, bool)
+    if column_type is ColumnType.INTEGER:
+        return isinstance(value, int) and not isinstance(value, bool)
+    if column_type is ColumnType.TEXT:
+        return isinstance(value, str)
+    return False
+
+
+def sql_type_name(value: Value) -> str:
+    """Return the SQL type name of a value: 'NULL', 'BOOLEAN', 'INTEGER',
+    or 'TEXT'. Used for same-type checks and error messages."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "BOOLEAN"
+    if isinstance(value, int):
+        return "INTEGER"
+    return "TEXT"
+
+
+# ---------------------------------------------------------------------------
+# Query results
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class QueryResult:
+    """Result of executing one statement.
+
+    SELECT: ``columns`` holds the projected column names in order, ``rows``
+    the projected rows in insertion order, and ``row_count == len(rows)``.
+
+    CREATE / DROP / INSERT / DELETE: ``columns == []``, ``rows == []``, and
+    ``row_count`` is the number of rows affected (CREATE and DROP -> 0,
+    INSERT -> 1, DELETE -> number of rows removed).
+    """
+
+    columns: list[str] = field(default_factory=list)
+    rows: list[Row] = field(default_factory=list)
+    row_count: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Tokens
+# ---------------------------------------------------------------------------
+
+
+class TokenType(Enum):
+    """Kinds of lexical tokens."""
+
+    KEYWORD = "KEYWORD"
+    IDENTIFIER = "IDENTIFIER"
+    INTEGER = "INTEGER"
+    STRING = "STRING"
+    OPERATOR = "OPERATOR"
+    EOF = "EOF"
+
+
+@dataclass(frozen=True)
+class Token:
+    """A lexical token.
+
+    ``value`` by type:
+
+    * KEYWORD: the keyword in uppercase, e.g. ``'SELECT'`` (always a member
+      of ``KEYWORDS``).
+    * IDENTIFIER: the name exactly as written, e.g. ``'users'``.
+    * INTEGER: the digit text, e.g. ``'42'``.
+    * STRING: the contents without the surrounding quotes, with ``''``
+      unescaped to ``'``, e.g. ``'it''s'`` -> ``"it's"``.
+    * OPERATOR: the symbol, one of ``OPERATORS``.
+    * EOF: the empty string ``''``.
+
+    ``position`` is the zero-based character offset of the token's first
+    character in the source (the source length for EOF). It is excluded
+    from equality so tests can compare tokens without positions.
+    """
+
+    type: TokenType
+    value: str
+    position: int = field(default=0, compare=False)
+
+
+#: Reserved words, matched case-insensitively and emitted uppercase.
+KEYWORDS: frozenset[str] = frozenset(
+    {
+        "CREATE",
+        "TABLE",
+        "DROP",
+        "INSERT",
+        "INTO",
+        "VALUES",
+        "SELECT",
+        "FROM",
+        "WHERE",
+        "DELETE",
+        "AND",
+        "OR",
+        "NOT",
+        "IS",
+        "NULL",
+        "TRUE",
+        "FALSE",
+        "INTEGER",
+        "TEXT",
+        "BOOLEAN",
+    }
+)
+
+#: Operator and punctuation symbols, longest first for maximal munch.
+OPERATORS: tuple[str, ...] = ("<>", "<=", ">=", "=", "<", ">", "(", ")", ",", "*", ";")
+
+#: Operators valid in a Comparison node.
+COMPARISON_OPS: frozenset[str] = frozenset({"=", "<>", "<", "<=", ">", ">="})
+
+
+# ---------------------------------------------------------------------------
+# Expression AST
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Literal:
+    """A constant: int, str, bool, or None (NULL)."""
+
+    value: Value
+
+
+@dataclass(frozen=True)
+class ColumnRef:
+    """A bare identifier resolved against the row's schema."""
+
+    name: str
+
+
+@dataclass(frozen=True)
+class Comparison:
+    """``left op right`` where ``op`` is in ``COMPARISON_OPS``."""
+
+    op: str
+    left: Expr
+    right: Expr
+
+
+@dataclass(frozen=True)
+class IsNull:
+    """``operand IS NULL`` (negated=False) or ``operand IS NOT NULL``
+    (negated=True). Always evaluates to True or False, never NULL."""
+
+    operand: Expr
+    negated: bool = False
+
+
+@dataclass(frozen=True)
+class Not:
+    """Logical ``NOT operand`` (three-valued)."""
+
+    operand: Expr
+
+
+@dataclass(frozen=True)
+class And:
+    """Logical ``left AND right`` (three-valued)."""
+
+    left: Expr
+    right: Expr
+
+
+@dataclass(frozen=True)
+class Or:
+    """Logical ``left OR right`` (three-valued)."""
+
+    left: Expr
+    right: Expr
+
+
+Expr = Union[Literal, ColumnRef, Comparison, IsNull, Not, And, Or]
+
+
+# ---------------------------------------------------------------------------
+# Statement AST
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CreateTableStmt:
+    """``CREATE TABLE table (col TYPE, ...)``."""
+
+    table: str
+    columns: tuple[ColumnDef, ...]
+
+
+@dataclass(frozen=True)
+class DropTableStmt:
+    """``DROP TABLE table``."""
+
+    table: str
+
+
+@dataclass(frozen=True)
+class InsertStmt:
+    """``INSERT INTO table [(col, ...)] VALUES (literal, ...)``.
+
+    ``columns`` is None when no column list was given (values are then in
+    schema declaration order). ``values`` holds already-converted Values.
+    """
+
+    table: str
+    columns: Optional[tuple[str, ...]]
+    values: tuple[Value, ...]
+
+
+@dataclass(frozen=True)
+class SelectStmt:
+    """``SELECT cols FROM table [WHERE expr]``.
+
+    ``columns`` is None for ``SELECT *``; otherwise the requested column
+    names in order. ``where`` is None when there is no WHERE clause.
+    """
+
+    table: str
+    columns: Optional[tuple[str, ...]]
+    where: Optional[Expr] = None
+
+
+@dataclass(frozen=True)
+class DeleteStmt:
+    """``DELETE FROM table [WHERE expr]``; no WHERE deletes every row."""
+
+    table: str
+    where: Optional[Expr] = None
+
+
+Statement = Union[CreateTableStmt, DropTableStmt, InsertStmt, SelectStmt, DeleteStmt]
+
+
+# ---------------------------------------------------------------------------
+# Cross-component interfaces
+# ---------------------------------------------------------------------------
+
+#: Predicate over a stored row, used by ``StorageBackend.delete_where``.
+RowPredicate = Callable[[Row], bool]
+
+#: Signature of ``minidb.expr_eval.where_matches``: True only when the
+#: expression evaluates to exactly True for the row.
+WhereMatcher = Callable[[Expr, Row, Schema], bool]
+
+
+class StorageBackend(Protocol):
+    """Interface implemented by ``minidb.table_store.TableStore`` and
+    consumed by ``minidb.executor`` and ``minidb.engine``."""
+
+    def create_table(self, name: str, schema: Schema) -> None:
+        """Create an empty table. Raises TableExistsError if it exists."""
+        ...
+
+    def drop_table(self, name: str) -> None:
+        """Remove a table and its rows. Raises UnknownTableError."""
+        ...
+
+    def has_table(self, name: str) -> bool:
+        """Return True if the table exists."""
+        ...
+
+    def get_schema(self, name: str) -> Schema:
+        """Return the table's schema. Raises UnknownTableError."""
+        ...
+
+    def insert(self, name: str, row: Row) -> None:
+        """Append a full row in schema order. Raises UnknownTableError, or
+        TypeMismatchError if ``len(row)`` differs from the column count or
+        any value fails ``value_matches_type``."""
+        ...
+
+    def scan(self, name: str) -> Iterator[Row]:
+        """Yield rows in insertion order. Raises UnknownTableError."""
+        ...
+
+    def delete_where(self, name: str, predicate: RowPredicate) -> int:
+        """Remove rows for which ``predicate(row)`` is True, preserving the
+        order of the rest; return the number removed. Raises
+        UnknownTableError."""
+        ...
+
+
+
+## IMPORTANT: Cross-Subtask Dependencies
+
+Other engineers' modules (marked "[assigned to another engineer]" above) are stubs
+in your repo  -  their functions raise NotImplementedError. If your tests import and
+use objects from those modules, those tests will fail with NotImplementedError BEFORE
+testing your stub.
+
+Those tests will pass once the other engineers' work is merged; leave them as they are.
+
+Your test files are the acceptance contract for this task and are read-only: do not modify them.
+
+If DEPENDENCY STUB files are shown above, they define the EXACT function signatures
+of modules you depend on. When calling functions from those modules, match the
+signatures exactly (parameter names, types, count). Do not guess interfaces.
+
+Start implementing. Run tests with: pytest tests/test_table_store.py -v --tb=short

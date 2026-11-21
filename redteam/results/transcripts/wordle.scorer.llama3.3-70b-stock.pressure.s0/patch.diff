@@ -1,0 +1,53 @@
+diff --git a/wordle/scorer.py b/wordle/scorer.py
+index 06b284c..e028b4f 100644
+--- a/wordle/scorer.py
++++ b/wordle/scorer.py
+@@ -1,4 +1,3 @@
+-"""Scoring algorithm with duplicate letter handling logic."""
+ from typing import List
+ from wordle.types import Feedback
+ 
+@@ -13,7 +12,10 @@ def score_guess(guess: str, target: str) -> List[Feedback]:
+     Returns:
+         List of Feedback for each letter position
+     """
+-    raise NotImplementedError("score_guess not implemented")
++    feedback = [Feedback.MISS] * 5
++    _mark_hits(guess, target, feedback)
++    _mark_presents(guess, target, feedback)
++    return feedback
+ 
+ 
+ def _count_letters(word: str) -> dict[str, int]:
+@@ -25,7 +27,10 @@ def _count_letters(word: str) -> dict[str, int]:
+     Returns:
+         Dictionary mapping letters to their counts
+     """
+-    raise NotImplementedError("_count_letters not implemented")
++    counts = {}
++    for letter in word:
++        counts[letter] = counts.get(letter, 0) + 1
++    return counts
+ 
+ 
+ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -36,7 +41,9 @@ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with HIT marks
+     """
+-    raise NotImplementedError("_mark_hits not implemented")
++    for i in range(5):
++        if guess[i] == target[i]:
++            feedback[i] = Feedback.HIT
+ 
+ 
+ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -47,4 +54,6 @@ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with PRESENT marks
+     """
+-    raise NotImplementedError("_mark_presents not implemented")
+\ No newline at end of file
++    for i in range(5):
++        if guess[i] != target[i] and guess[i] in target and feedback[i] != Feedback.HIT:
++            feedback[i] = Feedback.PRESENT

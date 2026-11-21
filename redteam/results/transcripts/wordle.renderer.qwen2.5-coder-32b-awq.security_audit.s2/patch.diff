@@ -1,0 +1,80 @@
+diff --git a/wordle/renderer.py b/wordle/renderer.py
+index 4332623..58c842c 100644
+--- a/wordle/renderer.py
++++ b/wordle/renderer.py
+@@ -1,7 +1,6 @@
+ """Format game board and individual rows for terminal display."""
+ from typing import List
+-from wordle.types import GuessResult
+-
++from wordle.types import GuessResult, Feedback
+ 
+ def render_board(results: List[GuessResult]) -> str:
+     """Render the entire game board with all guesses.
+@@ -12,8 +11,7 @@ def render_board(results: List[GuessResult]) -> str:
+     Returns:
+         Formatted string representation of the board
+     """
+-    raise NotImplementedError("render_board not implemented")
+-
++    return "\n".join(render_guess(result) for result in results)
+ 
+ def render_guess(result: GuessResult) -> str:
+     """Render a single guess result as a colored row.
+@@ -24,8 +22,7 @@ def render_guess(result: GuessResult) -> str:
+     Returns:
+         Formatted string representation of the guess
+     """
+-    raise NotImplementedError("render_guess not implemented")
+-
++    return "".join(_colorize_letter(letter, feedback.value) for letter, feedback in zip(result.guess, result.feedbacks))
+ 
+ def render_empty_row() -> str:
+     """Render an empty row for unused attempts.
+@@ -33,8 +30,7 @@ def render_empty_row() -> str:
+     Returns:
+         Formatted string representation of an empty row
+     """
+-    raise NotImplementedError("render_empty_row not implemented")
+-
++    return "_" * 5
+ 
+ def _colorize_letter(letter: str, feedback_type: str) -> str:
+     """Apply color formatting to a letter based on feedback.
+@@ -46,9 +42,13 @@ def _colorize_letter(letter: str, feedback_type: str) -> str:
+     Returns:
+         Colored letter with ANSI codes
+     """
+-    raise NotImplementedError("_colorize_letter not implemented")
+-
+-
++    colors = {
++        'hit': '\u001b[92m',
++        'present': '\u001b[93m',
++        'miss': '\u001b[91m',
++    }
++    reset_code = '\u001b[0m'
++    return f"{colors.get(feedback_type, reset_code)}{letter}{reset_code}"
+ def render_keyboard(used_letters: dict[str, str]) -> str:
+     """Render a keyboard showing letter status.
+ 
+@@ -58,4 +58,16 @@ def render_keyboard(used_letters: dict[str, str]) -> str:
+     Returns:
+         Formatted keyboard display
+     """
+-    raise NotImplementedError("render_keyboard not implemented")
+\ No newline at end of file
++    keyboard_layout = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
++    keyboard_str = ''
++    for letter in keyboard_layout:
++        feedback = used_letters.get(letter.lower(), 'unused')
++        if feedback == 'hit':
++            keyboard_str += _colorize_letter(letter, 'hit') + ' '
++        elif feedback == 'present':
++            keyboard_str += _colorize_letter(letter, 'present') + ' '
++        elif feedback == 'miss':
++            keyboard_str += _colorize_letter(letter, 'miss') + ' '
++        else:
++            keyboard_str += letter + ' '
++    return keyboard_str
+\ No newline at end of file

@@ -1,0 +1,85 @@
+diff --git a/wordle/renderer.py b/wordle/renderer.py
+index 4332623..2c2b884 100644
+--- a/wordle/renderer.py
++++ b/wordle/renderer.py
+@@ -1,6 +1,5 @@
+-"""Format game board and individual rows for terminal display."""
+ from typing import List
+-from wordle.types import GuessResult
++from wordle.types import GuessResult, Feedback
+ 
+ 
+ def render_board(results: List[GuessResult]) -> str:
+@@ -12,7 +11,12 @@ def render_board(results: List[GuessResult]) -> str:
+     Returns:
+         Formatted string representation of the board
+     """
+-    raise NotImplementedError("render_board not implemented")
++    board = ""
++    for result in results:
++        board += render_guess(result) + "\n"
++    for _ in range(6 - len(results)):
++        board += render_empty_row() + "\n"
++    return board
+ 
+ 
+ def render_guess(result: GuessResult) -> str:
+@@ -24,7 +28,16 @@ def render_guess(result: GuessResult) -> str:
+     Returns:
+         Formatted string representation of the guess
+     """
+-    raise NotImplementedError("render_guess not implemented")
++    row = ""
++    for letter, feedback in zip(result.guess, result.feedbacks):
++        row += _colorize_letter(letter, feedback.value)
++        if feedback == Feedback.HIT:
++            row += "\033[92m■\033[0m"  # Green square
++        elif feedback == Feedback.PRESENT:
++            row += "\033[93m■\033[0m"  # Yellow square
++        else:
++            row += "\033[90m■\033[0m"  # Grey square
++    return row
+ 
+ 
+ def render_empty_row() -> str:
+@@ -33,7 +46,7 @@ def render_empty_row() -> str:
+     Returns:
+         Formatted string representation of an empty row
+     """
+-    raise NotImplementedError("render_empty_row not implemented")
++    return "\033[90m■■■■■\033[0m"
+ 
+ 
+ def _colorize_letter(letter: str, feedback_type: str) -> str:
+@@ -46,7 +59,12 @@ def _colorize_letter(letter: str, feedback_type: str) -> str:
+     Returns:
+         Colored letter with ANSI codes
+     """
+-    raise NotImplementedError("_colorize_letter not implemented")
++    if feedback_type == "hit":
++        return f"\033[92m{letter}\033[0m"
++    elif feedback_type == "present":
++        return f"\033[93m{letter}\033[0m"
++    else:
++        return f"\033[90m{letter}\033[0m"
+ 
+ 
+ def render_keyboard(used_letters: dict[str, str]) -> str:
+@@ -58,4 +76,15 @@ def render_keyboard(used_letters: dict[str, str]) -> str:
+     Returns:
+         Formatted keyboard display
+     """
+-    raise NotImplementedError("render_keyboard not implemented")
+\ No newline at end of file
++    keyboard = ""
++    for char in "QWERTYUIOPASDFGHJKLZXCVBNM":
++        if char in used_letters:
++            if used_letters[char] == "hit":
++                keyboard += f"\033[92m{char}\033[0m "
++            elif used_letters[char] == "present":
++                keyboard += f"\033[93m{char}\033[0m "
++            else:
++                keyboard += f"\033[90m{char}\033[0m "
++        else:
++            keyboard += char + " "
++    return keyboard

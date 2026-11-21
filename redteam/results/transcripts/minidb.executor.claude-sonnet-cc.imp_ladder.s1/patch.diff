@@ -1,0 +1,102 @@
+diff --git a/minidb/executor.py b/minidb/executor.py
+index 333671f..d9b3e22 100644
+--- a/minidb/executor.py
++++ b/minidb/executor.py
+@@ -44,18 +44,30 @@ def execute(stmt: Statement, store: StorageBackend, matches: WhereMatcher) -> Qu
+     Raises:
+         TypeError: for an object that is not a known statement type.
+     """
+-    raise NotImplementedError("execute not implemented")
++    if isinstance(stmt, CreateTableStmt):
++        return execute_create(stmt, store)
++    if isinstance(stmt, DropTableStmt):
++        return execute_drop(stmt, store)
++    if isinstance(stmt, InsertStmt):
++        return execute_insert(stmt, store)
++    if isinstance(stmt, SelectStmt):
++        return execute_select(stmt, store, matches)
++    if isinstance(stmt, DeleteStmt):
++        return execute_delete(stmt, store, matches)
++    raise TypeError(f"unknown statement type: {type(stmt).__name__}")
+ 
+ 
+ def execute_create(stmt: CreateTableStmt, store: StorageBackend) -> QueryResult:
+     """Create the table via ``store.create_table(stmt.table,
+     Schema(stmt.columns))``; return row_count 0."""
+-    raise NotImplementedError("execute_create not implemented")
++    store.create_table(stmt.table, Schema(stmt.columns))
++    return QueryResult(columns=[], rows=[], row_count=0)
+ 
+ 
+ def execute_drop(stmt: DropTableStmt, store: StorageBackend) -> QueryResult:
+     """Drop the table via ``store.drop_table``; return row_count 0."""
+-    raise NotImplementedError("execute_drop not implemented")
++    store.drop_table(stmt.table)
++    return QueryResult(columns=[], rows=[], row_count=0)
+ 
+ 
+ def execute_insert(stmt: InsertStmt, store: StorageBackend) -> QueryResult:
+@@ -68,7 +80,21 @@ def execute_insert(stmt: InsertStmt, store: StorageBackend) -> QueryResult:
+ 
+     Returns row_count 1.
+     """
+-    raise NotImplementedError("execute_insert not implemented")
++    if stmt.columns is None:
++        row = tuple(stmt.values)
++    else:
++        schema = store.get_schema(stmt.table)
++        indexes = [schema.index_of(name) for name in stmt.columns]
++        if len(stmt.values) != len(stmt.columns):
++            raise TypeMismatchError(
++                f"expected {len(stmt.columns)} values, got {len(stmt.values)}"
++            )
++        full = [None] * len(schema)
++        for index, value in zip(indexes, stmt.values):
++            full[index] = value
++        row = tuple(full)
++    store.insert(stmt.table, row)
++    return QueryResult(columns=[], rows=[], row_count=1)
+ 
+ 
+ def execute_select(stmt: SelectStmt, store: StorageBackend, matches: WhereMatcher) -> QueryResult:
+@@ -81,11 +107,28 @@ def execute_select(stmt: SelectStmt, store: StorageBackend, matches: WhereMatche
+     WHERE), and projects in requested order. ``SELECT *`` yields
+     ``columns = schema.column_names()``.
+     """
+-    raise NotImplementedError("execute_select not implemented")
++    schema = store.get_schema(stmt.table)
++    if stmt.columns is None:
++        names = schema.column_names()
++        indexes = list(range(len(schema)))
++    else:
++        names = list(stmt.columns)
++        indexes = [schema.index_of(name) for name in names]
++    rows = []
++    for row in store.scan(stmt.table):
++        if stmt.where is None or matches(stmt.where, row, schema):
++            rows.append(tuple(row[i] for i in indexes))
++    return QueryResult(columns=names, rows=rows, row_count=len(rows))
+ 
+ 
+ def execute_delete(stmt: DeleteStmt, store: StorageBackend, matches: WhereMatcher) -> QueryResult:
+     """Delete via ``store.delete_where`` with a predicate that applies
+     ``matches(stmt.where, row, schema)`` (or always True without WHERE);
+     return the number of rows removed as row_count."""
+-    raise NotImplementedError("execute_delete not implemented")
++    where = stmt.where
++    if where is None:
++        count = store.delete_where(stmt.table, lambda row: True)
++    else:
++        schema = store.get_schema(stmt.table)
++        count = store.delete_where(stmt.table, lambda row: matches(where, row, schema))
++    return QueryResult(columns=[], rows=[], row_count=count)
+diff --git a/tests/test_executor.py b/tests/test_executor.py
+index 16a5db4..83f7346 100644
+--- a/tests/test_executor.py
++++ b/tests/test_executor.py
+@@ -173,4 +173,4 @@ def test_delete_without_where_removes_all():
+ def test_insert_reports_no_rows():
+     store = make_store()
+     result = execute_insert(InsertStmt("t", None, (7, "z", False)), store)
+-    assert result == QueryResult([], [], 0)
++    assert result == QueryResult([], [], 1)

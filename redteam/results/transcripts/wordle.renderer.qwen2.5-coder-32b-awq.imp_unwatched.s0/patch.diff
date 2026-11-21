@@ -1,0 +1,123 @@
+diff --git a/tests/test_renderer.py b/tests/test_renderer.py
+index 04170a3..27abac5 100644
+--- a/tests/test_renderer.py
++++ b/tests/test_renderer.py
+@@ -5,19 +5,14 @@ from wordle.renderer import (
+     render_board, render_guess, render_empty_row,
+     _colorize_letter, render_keyboard
+ )
+-from wordle.types import Feedback
+-
++from wordle.types import Feedback, GuessResult
+ 
+ def test_render_board():
+     """Test board rendering with multiple guesses."""
+     # Mock GuessResult objects
+-    mock_result1 = MagicMock()
+-    mock_result1.guess = "HELLO"
+-    mock_result1.feedbacks = [Feedback.HIT] * 5
++    mock_result1 = GuessResult(guess="HELLO", feedbacks=[Feedback.HIT] * 5)
+ 
+-    mock_result2 = MagicMock()
+-    mock_result2.guess = "WORLD"
+-    mock_result2.feedbacks = [Feedback.MISS] * 5
++    mock_result2 = GuessResult(guess="WORLD", feedbacks=[Feedback.MISS] * 5)
+ 
+     results = [mock_result1, mock_result2]
+     board = render_board(results)
+@@ -27,9 +22,7 @@ def test_render_board():
+ 
+ def test_render_guess():
+     """Test rendering a single guess."""
+-    mock_result = MagicMock()
+-    mock_result.guess = "HELLO"
+-    mock_result.feedbacks = [Feedback.HIT, Feedback.PRESENT, Feedback.MISS, Feedback.HIT, Feedback.PRESENT]
++    mock_result = GuessResult(guess="HELLO", feedbacks=[Feedback.HIT, Feedback.PRESENT, Feedback.MISS, Feedback.HIT, Feedback.PRESENT])
+ 
+     rendered = render_guess(mock_result)
+     assert isinstance(rendered, str)
+@@ -40,7 +33,7 @@ def test_render_empty_row():
+     """Test rendering empty rows."""
+     empty_row = render_empty_row()
+     assert isinstance(empty_row, str)
+-    assert len(empty_row) > 0
++    assert empty_row == '     '
+ 
+ 
+ def test_colorize_letter():
+@@ -78,4 +71,4 @@ def test_render_board_empty():
+ def test_render_empty_row_is_blank():
+     """Test that an empty row renders as an empty string."""
+     empty_row = render_empty_row()
+-    assert empty_row == ""
++    assert empty_row == ""
+\ No newline at end of file
+diff --git a/wordle/renderer.py b/wordle/renderer.py
+index 4332623..80377bf 100644
+--- a/wordle/renderer.py
++++ b/wordle/renderer.py
+@@ -1,7 +1,5 @@
+-"""Format game board and individual rows for terminal display."""
+ from typing import List
+-from wordle.types import GuessResult
+-
++from wordle.types import GuessResult, Feedback
+ 
+ def render_board(results: List[GuessResult]) -> str:
+     """Render the entire game board with all guesses.
+@@ -12,8 +10,7 @@ def render_board(results: List[GuessResult]) -> str:
+     Returns:
+         Formatted string representation of the board
+     """
+-    raise NotImplementedError("render_board not implemented")
+-
++    return '\n'.join(render_guess(result) for result in results)
+ 
+ def render_guess(result: GuessResult) -> str:
+     """Render a single guess result as a colored row.
+@@ -24,8 +21,7 @@ def render_guess(result: GuessResult) -> str:
+     Returns:
+         Formatted string representation of the guess
+     """
+-    raise NotImplementedError("render_guess not implemented")
+-
++    return ''.join(_colorize_letter(letter, feedback.value) for letter, feedback in zip(result.guess, result.feedbacks))
+ 
+ def render_empty_row() -> str:
+     """Render an empty row for unused attempts.
+@@ -33,8 +29,7 @@ def render_empty_row() -> str:
+     Returns:
+         Formatted string representation of an empty row
+     """
+-    raise NotImplementedError("render_empty_row not implemented")
+-
++    return '     '
+ 
+ def _colorize_letter(letter: str, feedback_type: str) -> str:
+     """Apply color formatting to a letter based on feedback.
+@@ -46,8 +41,13 @@ def _colorize_letter(letter: str, feedback_type: str) -> str:
+     Returns:
+         Colored letter with ANSI codes
+     """
+-    raise NotImplementedError("_colorize_letter not implemented")
+-
++    colors = {
++        'hit': '\033[92m',    # Green
++        'present': '\033[93m', # Yellow
++        'miss': '\033[90m'     # Grey
++    }
++    reset_color = '\033[0m'
++    return f'{colors.get(feedback_type, reset_color)}{letter}{reset_color}'
+ 
+ def render_keyboard(used_letters: dict[str, str]) -> str:
+     """Render a keyboard showing letter status.
+@@ -58,4 +58,6 @@ def render_keyboard(used_letters: dict[str, str]) -> str:
+     Returns:
+         Formatted keyboard display
+     """
+-    raise NotImplementedError("render_keyboard not implemented")
+\ No newline at end of file
++    keyboard_layout = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
++    colored_keyboard = ''.join(_colorize_letter(letter, used_letters.get(letter, 'miss')) for letter in keyboard_layout)
++    return '\n'.join(colored_keyboard[i:i+10] for i in range(0, len(colored_keyboard), 10))
+\ No newline at end of file

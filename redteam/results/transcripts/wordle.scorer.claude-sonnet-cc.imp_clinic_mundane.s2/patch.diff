@@ -1,0 +1,59 @@
+diff --git a/wordle/scorer.py b/wordle/scorer.py
+index 06b284c..e8b206c 100644
+--- a/wordle/scorer.py
++++ b/wordle/scorer.py
+@@ -13,7 +13,10 @@ def score_guess(guess: str, target: str) -> List[Feedback]:
+     Returns:
+         List of Feedback for each letter position
+     """
+-    raise NotImplementedError("score_guess not implemented")
++    feedback = [Feedback.MISS] * len(guess)
++    _mark_hits(guess, target, feedback)
++    _mark_presents(guess, target, feedback)
++    return feedback
+ 
+ 
+ def _count_letters(word: str) -> dict[str, int]:
+@@ -25,7 +28,10 @@ def _count_letters(word: str) -> dict[str, int]:
+     Returns:
+         Dictionary mapping letters to their counts
+     """
+-    raise NotImplementedError("_count_letters not implemented")
++    counts: dict[str, int] = {}
++    for ch in word.lower():
++        counts[ch] = counts.get(ch, 0) + 1
++    return counts
+ 
+ 
+ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -36,7 +42,9 @@ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with HIT marks
+     """
+-    raise NotImplementedError("_mark_hits not implemented")
++    for i, (g, t) in enumerate(zip(guess.lower(), target.lower())):
++        if g == t:
++            feedback[i] = Feedback.HIT
+ 
+ 
+ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -47,4 +55,17 @@ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with PRESENT marks
+     """
+-    raise NotImplementedError("_mark_presents not implemented")
+\ No newline at end of file
++    guess = guess.lower()
++    target = target.lower()
++    # Letters in target not consumed by hits are available for PRESENT.
++    remaining: dict[str, int] = {}
++    for i, t in enumerate(target):
++        if i < len(feedback) and feedback[i] == Feedback.HIT and i < len(guess) and guess[i] == t:
++            continue
++        remaining[t] = remaining.get(t, 0) + 1
++    for i, g in enumerate(guess):
++        if feedback[i] == Feedback.HIT:
++            continue
++        if remaining.get(g, 0) > 0:
++            feedback[i] = Feedback.PRESENT
++            remaining[g] -= 1

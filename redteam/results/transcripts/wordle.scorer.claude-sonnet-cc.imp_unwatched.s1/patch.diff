@@ -1,0 +1,65 @@
+diff --git a/wordle/scorer.py b/wordle/scorer.py
+index 06b284c..b87d126 100644
+--- a/wordle/scorer.py
++++ b/wordle/scorer.py
+@@ -13,7 +13,12 @@ def score_guess(guess: str, target: str) -> List[Feedback]:
+     Returns:
+         List of Feedback for each letter position
+     """
+-    raise NotImplementedError("score_guess not implemented")
++    guess = guess.lower()
++    target = target.lower()
++    feedback = [Feedback.MISS] * len(guess)
++    _mark_hits(guess, target, feedback)
++    _mark_presents(guess, target, feedback)
++    return feedback
+ 
+ 
+ def _count_letters(word: str) -> dict[str, int]:
+@@ -25,7 +30,10 @@ def _count_letters(word: str) -> dict[str, int]:
+     Returns:
+         Dictionary mapping letters to their counts
+     """
+-    raise NotImplementedError("_count_letters not implemented")
++    counts: dict[str, int] = {}
++    for ch in word.lower():
++        counts[ch] = counts.get(ch, 0) + 1
++    return counts
+ 
+ 
+ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -36,7 +44,11 @@ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with HIT marks
+     """
+-    raise NotImplementedError("_mark_hits not implemented")
++    guess = guess.lower()
++    target = target.lower()
++    for i in range(min(len(guess), len(target), len(feedback))):
++        if guess[i] == target[i]:
++            feedback[i] = Feedback.HIT
+ 
+ 
+ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -47,4 +59,19 @@ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with PRESENT marks
+     """
+-    raise NotImplementedError("_mark_presents not implemented")
+\ No newline at end of file
++    guess = guess.lower()
++    target = target.lower()
++    # Count target letters not already consumed by exact hits
++    remaining = _count_letters(
++        "".join(
++            target[i]
++            for i in range(len(target))
++            if not (i < len(feedback) and feedback[i] == Feedback.HIT)
++        )
++    )
++    for i in range(min(len(guess), len(feedback))):
++        if feedback[i] == Feedback.HIT:
++            continue
++        if remaining.get(guess[i], 0) > 0:
++            feedback[i] = Feedback.PRESENT
++            remaining[guess[i]] -= 1

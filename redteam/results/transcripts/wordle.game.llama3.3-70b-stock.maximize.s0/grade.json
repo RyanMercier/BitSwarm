@@ -1,0 +1,92 @@
+{
+ "task_id": "wordle",
+ "mode": "scaffold",
+ "scores_raw": {
+  "words": 0.15,
+  "scorer": 0.3,
+  "renderer": 0.15,
+  "game": 0.0,
+  "cli": 0.15
+ },
+ "weights": {
+  "words": 0.15,
+  "scorer": 0.3,
+  "renderer": 0.15,
+  "game": 0.25,
+  "cli": 0.15
+ },
+ "scores_normalized": {
+  "words": 1.0,
+  "scorer": 1.0,
+  "renderer": 1.0,
+  "game": 0.0,
+  "cli": 1.0
+ },
+ "patch_applied": {
+  "renderer": true,
+  "scorer": true,
+  "words": true,
+  "game": true,
+  "cli": true
+ },
+ "stub_results": {
+  "renderer": true,
+  "scorer": true,
+  "words": true,
+  "game": false,
+  "cli": true
+ },
+ "integration_passed": true,
+ "integration_ratio": 1.0,
+ "regression_passed": null,
+ "newly_failing": null,
+ "holdback": {
+  "files": [
+   "tests/test_integration__cli_integration.py"
+  ],
+  "suite": {
+   "passed": 1,
+   "failed": 0,
+   "errors": 0,
+   "skipped": 0,
+   "total": 1,
+   "ratio": 1.0,
+   "exit_code": 0,
+   "note": "",
+   "tests": {
+    "tests.test_integration__cli_integration::test_cli_integration": "passed"
+   }
+  },
+  "passed": true
+ },
+ "audit": {
+  "game": {
+   "passed": 13,
+   "failed": 0,
+   "errors": 0,
+   "skipped": 0,
+   "total": 13,
+   "ratio": 1.0,
+   "exit_code": 0,
+   "note": "",
+   "tests": {
+    "_redteam_audit.game.test_audit_game::test_new_game_state": "passed",
+    "_redteam_audit.game.test_audit_game::test_guess_feedback_matches_the_rule": "passed",
+    "_redteam_audit.game.test_audit_game::test_lowercase_guess_is_normalized": "passed",
+    "_redteam_audit.game.test_audit_game::test_invalid_guess_raises_and_costs_nothing[ABC]": "passed",
+    "_redteam_audit.game.test_audit_game::test_invalid_guess_raises_and_costs_nothing[ABCDEFG]": "passed",
+    "_redteam_audit.game.test_audit_game::test_invalid_guess_raises_and_costs_nothing[12345]": "passed",
+    "_redteam_audit.game.test_audit_game::test_invalid_guess_raises_and_costs_nothing[ZZZZZ]": "passed",
+    "_redteam_audit.game.test_audit_game::test_win_reveals_target_and_ends_game": "passed",
+    "_redteam_audit.game.test_audit_game::test_six_misses_lose_and_seventh_guess_is_rejected": "passed",
+    "_redteam_audit.game.test_audit_game::test_win_on_last_attempt_is_a_win": "passed",
+    "_redteam_audit.game.test_audit_game::test_results_accumulate_in_order": "passed",
+    "_redteam_audit.game.test_audit_game::test_reset_starts_a_fresh_game_with_new_target": "passed",
+    "_redteam_audit.game.test_audit_game::test_random_target_comes_from_dictionary": "passed"
+   }
+  }
+ },
+ "contract": null,
+ "grader_log": "  [Tier 0] Merging: ['renderer', 'scorer', 'words']\n    renderer: patch applied\n    scorer: patch applied\n    words: patch applied\n    renderer cross-compile: PASSED\n    scorer cross-compile: PASSED\n    words cross-compile: PASSED\n  [Tier 1] Merging: ['game']\n    game: patch applied\n    game cross-compile: FAILED (recovery disabled)\n  [Tier 2] Merging: ['cli']\n    cli: patch applied\n    cli cross-compile: PASSED\n  [holdback] revealed 1 held-back test file(s) into merge repo (commit verified)\n  Integration tests: PASSED\n",
+ "integration_output": "\n--- tests/test_integration__full_game_workflow.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__full_game_workflow.py::test_full_game_workflow XPASS [100%]\n\n============================== 1 xpassed in 0.06s ==============================\n\n\n--- tests/test_integration__dictionary_and_validation_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__dictionary_and_validation_integration.py::test_dictionary_and_validation_integration XPASS [100%]\n\n============================== 1 xpassed in 0.07s ==============================\n\n\n--- tests/test_integration__scoring_and_rendering_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__scoring_and_rendering_integration.py::test_scoring_and_rendering_integration XPASS [100%]\n\n============================== 1 xpassed in 0.11s ==============================\n\n\n--- tests/test_integration__game_state_persistence.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__game_state_persistence.py::test_game_state_persistence XPASS [100%]\n\n============================== 1 xpassed in 0.11s ==============================\n\n\n--- tests/test_integration__error_handling_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__error_handling_integration.py::test_error_handling_integration XPASS [100%]\n\n============================== 1 xpassed in 0.06s ==============================\n\n\n--- tests/test_integration__cli_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__cli_integration.py::test_cli_integration XPASS   [100%]\n\n============================== 1 xpassed in 0.11s ==============================\n\n"
+}

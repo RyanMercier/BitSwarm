@@ -1,0 +1,45 @@
+diff --git a/minidb/engine.py b/minidb/engine.py
+index d53bf37..cc58cf4 100644
+--- a/minidb/engine.py
++++ b/minidb/engine.py
+@@ -19,7 +19,6 @@ from minidb.types import QueryResult, SQLSyntaxError, StorageBackend
+ 
+ __all__ = ["Engine"]
+ 
+-
+ class Engine:
+     """Executes SQL strings against a storage backend.
+ 
+@@ -30,7 +29,7 @@ class Engine:
+     def __init__(self, store: Optional[StorageBackend] = None) -> None:
+         """Use ``store`` if given, else construct ``TableStore()`` (via the
+         module-level name) and assign it to ``self.store``."""
+-        raise NotImplementedError(f"{self.__class__.__name__}.__init__ not implemented")
++        self.store = store if store is not None else TableStore()
+ 
+     def execute(self, sql: str) -> QueryResult:
+         """Execute exactly one SQL statement and return its result.
+@@ -40,11 +39,20 @@ class Engine:
+         multiple statements raise ``SQLSyntaxError`` (``parse`` enforces
+         this). MiniDBErrors propagate unchanged.
+         """
+-        raise NotImplementedError(f"{self.__class__.__name__}.execute not implemented")
++        tokens = tokenize(sql)
++        stmt = parse(tokens)
++        return execute(stmt, self.store, where_matches)
+ 
+     def execute_script(self, sql: str) -> list[QueryResult]:
+         """Execute ';'-separated statements in order and return their
+         results. Uses ``parse_script(tokenize(sql))``; empty statements are
+         skipped and an empty script returns ``[]``. The whole script is
+-        parsed before anything runs, so a syntax error executes nothing."""
+-        raise NotImplementedError(f"{self.__class__.__name__}.execute_script not implemented")
++        parsed before anything runs, so a syntax error executes nothing.
++        """
++        tokens = tokenize(sql)
++        stmts = parse_script(tokens)
++        results = []
++        for stmt in stmts:
++            result = execute(stmt, self.store, where_matches)
++            results.append(result)
++        return results

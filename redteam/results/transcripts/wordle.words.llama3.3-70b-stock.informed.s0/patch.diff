@@ -1,0 +1,65 @@
+diff --git a/wordle/words.py b/wordle/words.py
+index 0b33673..b53291b 100644
+--- a/wordle/words.py
++++ b/wordle/words.py
+@@ -1,44 +1,24 @@
+-"""Word dictionary and validation functions for 5-letter words."""
+-from typing import Set, List
++import random
+ 
+-
+-def load_dictionary() -> Set[str]:
+-    """Load the dictionary of valid 5-letter words.
+-
+-    Returns:
+-        Set of valid 5-letter words in uppercase.
+-    """
+-    raise NotImplementedError("load_dictionary not implemented")
++def load_dictionary() -> set[str]:
++    # For simplicity, assume all words in the dictionary are valid 5-letter words
++    # In a real application, you would load this from a file or database
++    dictionary = {"APPLE", "BASIC", "CLOUD", "DANCE", "FLUTE",
++                   "FROGS", "GRAPE", "IMAGE", "JAZZY", "KNIFE",
++                   "LEMON", "MOUSE", "NACHO", "OCEAN", "PIANO",
++                   "QUEEN", "RULER", "SPACE", "TASTE", "UNION"}
++    return dictionary
+ 
+ 
+ def is_valid_word(word: str) -> bool:
+-    """Check if a word is valid (5 letters and in dictionary).
+-
+-    Args:
+-        word: The word to validate
+-
+-    Returns:
+-        True if word is valid, False otherwise
+-    """
+-    raise NotImplementedError("is_valid_word not implemented")
++    dictionary = load_dictionary()
++    return len(word) == 5 and word.upper() in dictionary
+ 
+ 
+ def get_random_word() -> str:
+-    """Get a random word from the dictionary for the target.
+-
+-    Returns:
+-        A random 5-letter word in uppercase
+-    """
+-    raise NotImplementedError("get_random_word not implemented")
++    dictionary = load_dictionary()
++    return random.choice(list(dictionary))
+ 
+ 
+ def normalize_word(word: str) -> str:
+-    """Normalize a word to uppercase and strip whitespace.
+-
+-    Args:
+-        word: The word to normalize
+-
+-    Returns:
+-        Normalized word in uppercase
+-    """
+-    raise NotImplementedError("normalize_word not implemented")
+\ No newline at end of file
++    return word.strip().upper()
+\ No newline at end of file

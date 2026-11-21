@@ -1,0 +1,158 @@
+diff --git a/minidb/expr_eval.py b/minidb/expr_eval.py
+index 9b28d19..328e1ea 100644
+--- a/minidb/expr_eval.py
++++ b/minidb/expr_eval.py
+@@ -1,20 +1,3 @@
+-"""Pure evaluation of WHERE expressions against a row.
+-
+-Semantics:
+-
+-* ``Literal`` -> its value; ``ColumnRef`` -> ``row[schema.index_of(name)]``
+-  (``UnknownColumnError`` for missing columns).
+-* ``Comparison``: NULL on either side -> NULL (None). Otherwise both sides
+-  must have the same ``sql_type_name`` or ``TypeMismatchError`` is raised.
+-  INTEGER and TEXT support all six operators; BOOLEAN supports all six
+-  with False < True.
+-* ``IsNull``: True/False, never NULL.
+-* ``Not`` / ``And`` / ``Or``: Kleene three-valued logic. Operands must be
+-  bool or None; anything else raises ``TypeMismatchError``.
+-"""
+-
+-from __future__ import annotations
+-
+ from minidb.types import (
+     And,
+     ColumnRef,
+@@ -40,63 +23,85 @@ __all__ = [
+     "where_matches",
+ ]
+ 
+-
+ def evaluate(expr: Expr, row: Row, schema: Schema) -> Value:
+-    """Evaluate ``expr`` against ``row`` laid out per ``schema``.
+-
+-    Raises:
+-        UnknownColumnError: for a ColumnRef not in ``schema``.
+-        TypeMismatchError: for mixed-type comparisons or non-boolean
+-            logical operands.
+-    """
++    if isinstance(expr, Literal):
++        return expr.value
++    elif isinstance(expr, ColumnRef):
++        return row[schema.index_of(expr.name)]
++    elif isinstance(expr, Comparison):
++        left_value = evaluate(expr.left, row, schema)
++        right_value = evaluate(expr.right, row, schema)
++        return compare(expr.op, left_value, right_value)
++    elif isinstance(expr, IsNull):
++        value = evaluate(expr.operand, row, schema)
++        return value is None if not expr.negated else value is not None
++    elif isinstance(expr, Not):
++        operand_value = evaluate(expr.operand, row, schema)
++        if not isinstance(operand_value, bool):
++            raise TypeMismatchError()
++        return logical_not(operand_value)
++    elif isinstance(expr, And):
++        left_value = evaluate(expr.left, row, schema)
++        right_value = evaluate(expr.right, row, schema)
++        return logical_and(left_value, right_value)
++    elif isinstance(expr, Or):
++        left_value = evaluate(expr.left, row, schema)
++        right_value = evaluate(expr.right, row, schema)
++        return logical_or(left_value, right_value)
+     raise NotImplementedError("evaluate not implemented")
+ 
+-
+ def compare(op: str, left: Value, right: Value) -> Value:
+-    """Apply comparison ``op`` (one of ``COMPARISON_OPS``) to two values.
+-
+-    Returns None if either side is None, else a bool.
+-
+-    Raises:
+-        TypeMismatchError: if the operands' SQL types differ.
+-    """
++    if left is None or right is None:
++        return None
++    if sql_type_name(left) != sql_type_name(right):
++        raise TypeMismatchError()
++    if op == "==":
++        op = "="
++    if op == "!=":
++        op = "<>"
++    if op == "<":
++        return left < right
++    elif op == "<=":
++        return left <= right
++    elif op == ">":
++        return left > right
++    elif op == ">=":
++        return left >= right
++    elif op == "=":
++        return left == right
++    elif op == "<>":
++        return left != right
+     raise NotImplementedError("compare not implemented")
+ 
+-
+ def logical_not(value: Value) -> Value:
+-    """Three-valued NOT: True -> False, False -> True, None -> None.
+-
+-    Raises:
+-        TypeMismatchError: for a non-boolean, non-NULL operand.
+-    """
+-    raise NotImplementedError("logical_not not implemented")
+-
++    if value is None:
++        return None
++    if isinstance(value, bool):
++        return not value
++    raise TypeMismatchError()
+ 
+ def logical_and(left: Value, right: Value) -> Value:
+-    """Three-valued AND: False if either is False, else None if either is
+-    None, else True.
+-
+-    Raises:
+-        TypeMismatchError: for a non-boolean, non-NULL operand.
+-    """
+-    raise NotImplementedError("logical_and not implemented")
+-
++    if left is False or right is False:
++        return False
++    if left is None or right is None:
++        return None
++    if isinstance(left, bool) and isinstance(right, bool):
++        return left and right
++    raise TypeMismatchError()
+ 
+ def logical_or(left: Value, right: Value) -> Value:
+-    """Three-valued OR: True if either is True, else None if either is
+-    None, else False.
+-
+-    Raises:
+-        TypeMismatchError: for a non-boolean, non-NULL operand.
+-    """
+-    raise NotImplementedError("logical_or not implemented")
+-
++    if left is True or right is True:
++        return True
++    if left is None or right is None:
++        return None
++    if isinstance(left, bool) and isinstance(right, bool):
++        return left or right
++    raise TypeMismatchError()
+ 
+ def where_matches(expr: Expr, row: Row, schema: Schema) -> bool:
+-    """Return True only if ``expr`` evaluates to exactly True for ``row``;
+-    False for False or NULL.
+-
+-    Raises:
+-        TypeMismatchError: if the result is a non-boolean, non-NULL value.
+-    """
+-    raise NotImplementedError("where_matches not implemented")
++    result = evaluate(expr, row, schema)
++    if result is True:
++        return True
++    elif result is False or result is None:
++        return False
++    raise TypeMismatchError()

@@ -1,0 +1,145 @@
+diff --git a/src/click/types.py b/src/click/types.py
+index 98c2d61..726c3d2 100644
+--- a/src/click/types.py
++++ b/src/click/types.py
+@@ -429,6 +429,131 @@ class Choice(ParamType[ParamTypeValue], t.Generic[ParamTypeValue]):
+         return [CompletionItem(c) for c in matched]
+ 
+ 
++class EnumChoiceInfoDict(ParamTypeInfoDict):
++    enum_type: type[enum.Enum]
++    case_sensitive: bool
++
++
++class EnumChoice(ParamType[enum.Enum]):
++    """The enum choice type allows a value to be checked against the members
++    of a Python enum. The user provides the name of an enum member, and the
++    callback receives the corresponding enum member.
++
++    This is similar to :class:`Choice`, but specifically for enums.
++
++    :param enum_type: A Python enum.Enum subclass to validate against.
++    :param case_sensitive: Set to false to make name matching case
++        insensitive. Defaults to true.
++    """
++
++    name = "enum choice"
++
++    def __init__(
++        self,
++        enum_type: type[enum.Enum],
++        case_sensitive: bool = True,
++    ) -> None:
++        """Initialize the EnumChoice parameter type.
++
++        :param enum_type: The enum class to validate against
++        :param case_sensitive: Whether name matching is case sensitive
++        """
++        self.enum_type = enum_type
++        self.case_sensitive = case_sensitive
++
++    def to_info_dict(self) -> EnumChoiceInfoDict:
++        """Return information about this parameter type for documentation."""
++        return {
++            "enum_type": self.enum_type,
++            "case_sensitive": self.case_sensitive,
++            **super().to_info_dict(),
++        }
++
++    def _normalize(self, name: str, ctx: Context | None) -> str:
++        if ctx is not None and ctx.token_normalize_func is not None:
++            name = ctx.token_normalize_func(name)
++
++        if not self.case_sensitive:
++            name = name.casefold()
++
++        return name
++
++    def _names(self, ctx: Context | None = None) -> list[str]:
++        return [self._normalize(m.name, ctx) for m in self.enum_type]
++
++    def get_metavar(self, param: Parameter, ctx: Context) -> str | None:
++        """Return the metavar string for help output."""
++        choices_str = "|".join(self._names(ctx))
++
++        if param.required and param.param_type_name == "argument":
++            return f"{{{choices_str}}}"
++
++        return f"[{choices_str}]"
++
++    def get_missing_message(self, param: Parameter, ctx: Context | None) -> str:
++        """Return the message shown when no choice is passed."""
++        return _("Choose from:\n\t{choices}").format(
++            choices=",\n\t".join(self._names(ctx))
++        )
++
++    def convert(
++        self, value: t.Any, param: Parameter | None, ctx: Context | None
++    ) -> enum.Enum:
++        """Convert a string value to the corresponding enum member.
++
++        :param value: The value to convert (typically a string enum name)
++        :param param: The parameter requesting conversion
++        :param ctx: The current click context
++        :return: The enum member corresponding to the value
++        """
++        if isinstance(value, self.enum_type):
++            return value
++
++        normed_value = self._normalize(str(value), ctx)
++
++        for member in self.enum_type:
++            if self._normalize(member.name, ctx) == normed_value:
++                return member
++
++        self.fail(
++            self.get_invalid_choice_message(value=value, ctx=ctx),
++            param=param,
++            ctx=ctx,
++        )
++
++    def get_invalid_choice_message(self, value: t.Any, ctx: Context | None) -> str:
++        """Get the error message when the given choice is invalid."""
++        names = self._names(ctx)
++        choices_str = ", ".join(map(repr, names))
++        return ngettext(
++            "{value!r} is not {choice}.",
++            "{value!r} is not one of {choices}.",
++            len(names),
++        ).format(value=value, choice=choices_str, choices=choices_str)
++
++    def __repr__(self) -> str:
++        """Return a string representation of this parameter type."""
++        return f"EnumChoice({self.enum_type.__name__})"
++
++    def shell_complete(
++        self, ctx: Context, param: Parameter, incomplete: str
++    ) -> list[CompletionItem]:
++        """Complete enum member names that start with the incomplete value.
++
++        :param ctx: Invocation context for this command.
++        :param param: The parameter that is requesting completion.
++        :param incomplete: Value being completed. May be empty.
++        """
++        from click.shell_completion import CompletionItem
++
++        if not self.case_sensitive:
++            incomplete = incomplete.casefold()
++
++        return [
++            CompletionItem(n) for n in self._names() if n.startswith(incomplete)
++        ]
++
++
+ class DateTimeInfoDict(ParamTypeInfoDict):
+     formats: cabc.Sequence[str]
+ 
+@@ -1307,3 +1432,8 @@ class OptionHelpExtra(t.TypedDict, total=False):
+     default: str
+     range: str
+     required: str
++
++
++# Expose EnumChoice on the top-level package.
++if "click" in sys.modules and not hasattr(sys.modules["click"], "EnumChoice"):
++    sys.modules["click"].EnumChoice = EnumChoice  # type: ignore[attr-defined]

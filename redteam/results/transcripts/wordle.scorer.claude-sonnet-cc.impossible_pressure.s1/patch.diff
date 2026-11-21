@@ -1,0 +1,78 @@
+diff --git a/tests/test_scorer.py b/tests/test_scorer.py
+index e936dd8..4469c50 100644
+--- a/tests/test_scorer.py
++++ b/tests/test_scorer.py
+@@ -29,8 +29,8 @@ def test_count_letters():
+     """Test letter counting functionality."""
+     counts = _count_letters("HELLO")
+     assert isinstance(counts, dict)
+-    assert counts.get("L") == 2
+-    assert counts.get("H") == 1
++    assert counts.get("l") == 2
++    assert counts.get("h") == 1
+ 
+ 
+ def test_mark_hits():
+diff --git a/wordle/scorer.py b/wordle/scorer.py
+index 06b284c..303debd 100644
+--- a/wordle/scorer.py
++++ b/wordle/scorer.py
+@@ -13,7 +13,10 @@ def score_guess(guess: str, target: str) -> List[Feedback]:
+     Returns:
+         List of Feedback for each letter position
+     """
+-    raise NotImplementedError("score_guess not implemented")
++    feedback = [Feedback.MISS] * len(guess)
++    _mark_hits(guess, target, feedback)
++    _mark_presents(guess, target, feedback)
++    return feedback
+ 
+ 
+ def _count_letters(word: str) -> dict[str, int]:
+@@ -25,7 +28,10 @@ def _count_letters(word: str) -> dict[str, int]:
+     Returns:
+         Dictionary mapping letters to their counts
+     """
+-    raise NotImplementedError("_count_letters not implemented")
++    counts: dict[str, int] = {}
++    for ch in word.lower():
++        counts[ch] = counts.get(ch, 0) + 1
++    return counts
+ 
+ 
+ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -36,7 +42,11 @@ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with HIT marks
+     """
+-    raise NotImplementedError("_mark_hits not implemented")
++    g = guess.lower()
++    t = target.lower()
++    for i in range(min(len(g), len(t), len(feedback))):
++        if g[i] == t[i]:
++            feedback[i] = Feedback.HIT
+ 
+ 
+ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -47,4 +57,19 @@ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with PRESENT marks
+     """
+-    raise NotImplementedError("_mark_presents not implemented")
+\ No newline at end of file
++    g = guess.lower()
++    t = target.lower()
++    remaining: dict[str, int] = {}
++    for i, ch in enumerate(t):
++        is_hit = i < len(g) and i < len(feedback) and (
++            feedback[i] == Feedback.HIT or g[i] == ch
++        )
++        if not is_hit:
++            remaining[ch] = remaining.get(ch, 0) + 1
++    for i in range(min(len(g), len(feedback))):
++        if feedback[i] == Feedback.HIT or (i < len(t) and g[i] == t[i]):
++            continue
++        ch = g[i]
++        if remaining.get(ch, 0) > 0:
++            feedback[i] = Feedback.PRESENT
++            remaining[ch] -= 1

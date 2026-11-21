@@ -1,0 +1,92 @@
+diff --git a/tests/test_scorer.py b/tests/test_scorer.py
+index bec6657..7172ae7 100644
+--- a/tests/test_scorer.py
++++ b/tests/test_scorer.py
+@@ -1,5 +1,3 @@
+-"""Tests for scorer module."""
+-import pytest
+ from wordle.scorer import score_guess, _count_letters, _mark_hits, _mark_presents
+ from wordle.types import Feedback
+ 
+@@ -42,8 +40,9 @@ def test_mark_hits():
+ 
+ def test_mark_presents():
+     """Test present letter marking."""
++    target_counts = _count_letters("WORLD")
+     feedback = [Feedback.MISS] * 5
+-    _mark_presents("HELLO", "WORLD", feedback)
++    _mark_presents("HELLO", "WORLD", feedback, target_counts)
+     # Should mark appropriate letters as present
+     assert isinstance(feedback[0], Feedback)
+ 
+@@ -53,4 +52,4 @@ def test_score_guess_duplicate_handling():
+     # Test case where guess has duplicates but target doesn't
+     result = score_guess("LLAMA", "LIGHT")
+     assert len(result) == 5
+-    assert isinstance(result[0], Feedback)
+\ No newline at end of file
++    assert isinstance(result[0], Feedback)
+diff --git a/wordle/scorer.py b/wordle/scorer.py
+index 06b284c..d4380f7 100644
+--- a/wordle/scorer.py
++++ b/wordle/scorer.py
+@@ -1,4 +1,3 @@
+-"""Scoring algorithm with duplicate letter handling logic."""
+ from typing import List
+ from wordle.types import Feedback
+ 
+@@ -13,7 +12,11 @@ def score_guess(guess: str, target: str) -> List[Feedback]:
+     Returns:
+         List of Feedback for each letter position
+     """
+-    raise NotImplementedError("score_guess not implemented")
++    feedback = [Feedback.MISS] * 5
++    target_counts = _count_letters(target)
++    _mark_hits(guess, target, feedback)
++    _mark_presents(guess, target, feedback, target_counts)
++    return feedback
+ 
+ 
+ def _count_letters(word: str) -> dict[str, int]:
+@@ -25,7 +28,13 @@ def _count_letters(word: str) -> dict[str, int]:
+     Returns:
+         Dictionary mapping letters to their counts
+     """
+-    raise NotImplementedError("_count_letters not implemented")
++    counts = {}
++    for letter in word:
++        if letter in counts:
++            counts[letter] += 1
++        else:
++            counts[letter] = 1
++    return counts
+ 
+ 
+ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -36,15 +45,22 @@ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with HIT marks
+     """
+-    raise NotImplementedError("_mark_hits not implemented")
++    for i in range(5):
++        if guess[i] == target[i]:
++            feedback[i] = Feedback.HIT
+ 
+ 
+-def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
++def _mark_presents(guess: str, target: str, feedback: List[Feedback], target_counts: dict[str, int]) -> None:
+     """Mark letters present in wrong positions (PRESENT) in the feedback list.
+ 
+     Args:
+         guess: The guessed word
+         target: The target word
+         feedback: List to modify with PRESENT marks
++        target_counts: Dictionary of letter counts in the target word
+     """
+-    raise NotImplementedError("_mark_presents not implemented")
+\ No newline at end of file
++    for i in range(5):
++        if feedback[i] == Feedback.MISS and guess[i] in target and target_counts[guess[i]] > 0:
++            feedback[i] = Feedback.PRESENT
++            target_counts[guess[i]] -= 1  # Decrement the count to handle duplicates
++    return None

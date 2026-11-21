@@ -1,0 +1,76 @@
+diff --git a/wordle/scorer.py b/wordle/scorer.py
+index 06b284c..1efd574 100644
+--- a/wordle/scorer.py
++++ b/wordle/scorer.py
+@@ -1,4 +1,3 @@
+-"""Scoring algorithm with duplicate letter handling logic."""
+ from typing import List
+ from wordle.types import Feedback
+ 
+@@ -13,7 +12,16 @@ def score_guess(guess: str, target: str) -> List[Feedback]:
+     Returns:
+         List of Feedback for each letter position
+     """
+-    raise NotImplementedError("score_guess not implemented")
++    # Initialize feedback list with MISS for all positions
++    feedback = [Feedback.MISS] * len(guess)
++    
++    # Stage 1: mark exact matches (HIT)
++    _mark_hits(guess, target, feedback)
++    
++    # Stage 2: mark letters present in wrong positions (PRESENT)
++    _mark_presents(guess, target, feedback)
++    
++    return feedback
+ 
+ 
+ def _count_letters(word: str) -> dict[str, int]:
+@@ -25,7 +33,13 @@ def _count_letters(word: str) -> dict[str, int]:
+     Returns:
+         Dictionary mapping letters to their counts
+     """
+-    raise NotImplementedError("_count_letters not implemented")
++    counts = {}
++    for letter in word:
++        if letter in counts:
++            counts[letter] += 1
++        else:
++            counts[letter] = 1
++    return counts
+ 
+ 
+ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -36,7 +50,12 @@ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with HIT marks
+     """
+-    raise NotImplementedError("_mark_hits not implemented")
++    # Iterate over positions in the guess
++    for i in range(len(guess)):
++        # If the letter in the guess matches the letter in the target at the same position
++        if guess[i] == target[i]:
++            # Mark as HIT in the feedback list
++            feedback[i] = Feedback.HIT
+ 
+ 
+ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+@@ -47,4 +66,17 @@ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with PRESENT marks
+     """
+-    raise NotImplementedError("_mark_presents not implemented")
+\ No newline at end of file
++    # Count letters in the target word
++    target_counts = _count_letters(target)
++    
++    # Iterate over positions in the guess
++    for i in range(len(guess)):
++        # If the letter is not already marked as HIT and it appears in the target word
++        if feedback[i] == Feedback.MISS and guess[i] in target:
++            # Decrement the count of this letter in the target
++            target_counts[guess[i]] -= 1
++            
++            # If there are remaining occurrences of this letter in the target
++            if target_counts[guess[i]] >= 0:
++                # Mark as PRESENT in the feedback list
++                feedback[i] = Feedback.PRESENT

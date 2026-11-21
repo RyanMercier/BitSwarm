@@ -1,0 +1,260 @@
+diff --git a/minidb/parser.py b/minidb/parser.py
+index 205356d..b741fce 100644
+--- a/minidb/parser.py
++++ b/minidb/parser.py
+@@ -11,7 +11,7 @@ documented in the ``minidb.types`` module docstring:
+ * INSERT values must be literals, converted to Values: INTEGER token ->
+   ``int``, STRING -> ``str``, TRUE/FALSE -> ``bool``, NULL -> ``None``.
+ * Column types in CREATE TABLE are the keywords INTEGER, TEXT, BOOLEAN,
+-  mapped to ``ColumnType``.
++mapped to ``ColumnType``.
+ 
+ Any malformed input raises ``SQLSyntaxError``.
+ """
+@@ -53,7 +53,135 @@ def parse(tokens: list[Token]) -> Statement:
+         SQLSyntaxError: if the tokens are not exactly one valid statement
+             (including empty input, a lone ';', or trailing tokens).
+     """
+-    raise NotImplementedError("parse not implemented")
++    def consume(expected_type: TokenType) -> Token:
++        if not tokens or tokens[0].type != expected_type:
++            raise SQLSyntaxError(f"Expected {expected_type}, got {tokens[0].type if tokens else 'EOF'}")
++        return tokens.pop(0)
++
++    def parse_create_table() -> CreateTableStmt:
++        consume(TokenType.KEYWORD)  # CREATE
++        consume(TokenType.KEYWORD)  # TABLE
++        table_name = consume(TokenType.IDENTIFIER).value
++        consume(TokenType.OPERATOR)  # (
++        columns = []
++        while tokens[0].type != TokenType.OPERATOR or tokens[0].value != ")":
++            col_name = consume(TokenType.IDENTIFIER).value
++            consume(TokenType.KEYWORD)  # Column type
++            col_type_str = consume(TokenType.KEYWORD).value
++            if col_type_str == "INTEGER":
++                col_type = ColumnType.INTEGER
++            elif col_type_str == "TEXT":
++                col_type = ColumnType.TEXT
++            elif col_type_str == "BOOLEAN":
++                col_type = ColumnType.BOOLEAN
++            else:
++                raise SQLSyntaxError(f"Unknown column type: {col_type_str}")
++            columns.append(ColumnDef(col_name, col_type))
++            if tokens[0].type == TokenType.OPERATOR and tokens[0].value == ",":
++                consume(TokenType.OPERATOR)  # ,
++        consume(TokenType.OPERATOR)  # )
++        return CreateTableStmt(table_name, tuple(columns))
++
++    def parse_drop_table() -> DropTableStmt:
++        consume(TokenType.KEYWORD)  # DROP
++        consume(TokenType.KEYWORD)  # TABLE
++        table_name = consume(TokenType.IDENTIFIER).value
++        return DropTableStmt(table_name)
++
++    def parse_insert() -> InsertStmt:
++        consume(TokenType.KEYWORD)  # INSERT
++        consume(TokenType.KEYWORD)  # INTO
++        table_name = consume(TokenType.IDENTIFIER).value
++        columns = None
++        if tokens[0].type == TokenType.OPERATOR and tokens[0].value == "(":
++            consume(TokenType.OPERATOR)  # (
++            columns = []
++            while tokens[0].type != TokenType.OPERATOR or tokens[0].value != ")":
++                col_name = consume(TokenType.IDENTIFIER).value
++                columns.append(col_name)
++                if tokens[0].type == TokenType.OPERATOR and tokens[0].value == ",":
++                    consume(TokenType.OPERATOR)  # ,
++            consume(TokenType.OPERATOR)  # )
++        consume(TokenType.KEYWORD)  # VALUES
++        consume(TokenType.OPERATOR)  # (
++        values = []
++        while tokens[0].type != TokenType.OPERATOR or tokens[0].value != ")":
++            token = consume(tokens[0].type)
++            if token.type == TokenType.INTEGER:
++                values.append(int(token.value))
++            elif token.type == TokenType.STRING:
++                values.append(token.value)
++            elif token.type == TokenType.KEYWORD and token.value == "TRUE":
++                values.append(True)
++            elif token.type == TokenType.KEYWORD and token.value == "FALSE":
++                values.append(False)
++            elif token.type == TokenType.KEYWORD and token.value == "NULL":
++                values.append(None)
++            else:
++                raise SQLSyntaxError(f"Unexpected token: {token}")
++            if tokens[0].type == TokenType.OPERATOR and tokens[0].value == ",":
++                consume(TokenType.OPERATOR)  # ,
++        consume(TokenType.OPERATOR)  # )
++        if columns and len(columns) != len(values):
++            raise SQLSyntaxError("Number of columns and values mismatch")
++        return InsertStmt(table_name, tuple(columns) if columns else None, tuple(values))
++
++    def parse_select() -> SelectStmt:
++        consume(TokenType.KEYWORD)  # SELECT
++        columns = None
++        if tokens[0].type == TokenType.OPERATOR and tokens[0].value == "*":
++            consume(TokenType.OPERATOR)  # *
++        else:
++            columns = []
++            while tokens[0].type != TokenType.KEYWORD or tokens[0].value != "FROM":
++                col_name = consume(TokenType.IDENTIFIER).value
++                columns.append(col_name)
++                if tokens[0].type == TokenType.OPERATOR and tokens[0].value == ",":
++                    consume(TokenType.OPERATOR)  # ,
++        consume(TokenType.KEYWORD)  # FROM
++        table_name = consume(TokenType.IDENTIFIER).value
++        where = None
++        if tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "WHERE":
++            consume(TokenType.KEYWORD)  # WHERE
++            where = parse_expression(tokens)
++        return SelectStmt(table_name, tuple(columns) if columns else None, where)
++
++    def parse_delete() -> DeleteStmt:
++        consume(TokenType.KEYWORD)  # DELETE
++        consume(TokenType.KEYWORD)  # FROM
++        table_name = consume(TokenType.IDENTIFIER).value
++        where = None
++        if tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "WHERE":
++            consume(TokenType.KEYWORD)  # WHERE
++            where = parse_expression(tokens)
++        else:
++            where = None
++        return DeleteStmt(table_name, where)
++
++    if not tokens:
++        raise SQLSyntaxError("No tokens to parse")
++
++    token = tokens[0]
++    if token.type == TokenType.KEYWORD:
++        if token.value == "CREATE":
++            stmt = parse_create_table()
++        elif token.value == "DROP":
++            stmt = parse_drop_table()
++        elif token.value == "INSERT":
++            stmt = parse_insert()
++        elif token.value == "SELECT":
++            stmt = parse_select()
++        elif token.value == "DELETE":
++            stmt = parse_delete()
++        else:
++            raise SQLSyntaxError(f"Unknown statement: {token.value}")
++    else:
++        raise SQLSyntaxError(f"Expected keyword, got {token.type}")
++
++    if tokens and tokens[0].type == TokenType.OPERATOR and tokens[0].value == ";":
++        consume(TokenType.OPERATOR)  # ;
++    consume(TokenType.EOF)  # EOF
++    return stmt
+ 
+ 
+ def parse_script(tokens: list[Token]) -> list[Statement]:
+@@ -65,7 +193,26 @@ def parse_script(tokens: list[Token]) -> list[Statement]:
+     Raises:
+         SQLSyntaxError: if any statement is malformed.
+     """
+-    raise NotImplementedError("parse_script not implemented")
++    def consume(expected_type: TokenType) -> Token:
++        if not tokens or tokens[0].type != expected_type:
++            raise SQLSyntaxError(f"Expected {expected_type}, got {tokens[0].type if tokens else 'EOF'}")
++        return tokens.pop(0)
++
++    statements = []
++    while tokens and tokens[0].type != TokenType.EOF:
++        if tokens[0].type == TokenType.OPERATOR and tokens[0].value == ";":
++            consume(TokenType.OPERATOR)  # ;
++        else:
++            try:
++                statements.append(parse(tokens))
++            except SQLSyntaxError:
++                # Skip malformed statements
++                while tokens and tokens[0].type != TokenType.OPERATOR and tokens[0].type != TokenType.EOF:
++                    consume(tokens[0].type)
++                if tokens and tokens[0].type == TokenType.OPERATOR and tokens[0].value == ";":
++                    consume(TokenType.OPERATOR)  # ;
++    consume(TokenType.EOF)  # EOF
++    return statements
+ 
+ 
+ def parse_expression(tokens: list[Token]) -> Expr:
+@@ -75,4 +222,80 @@ def parse_expression(tokens: list[Token]) -> Expr:
+     Raises:
+         SQLSyntaxError: if the tokens do not form exactly one expression.
+     """
+-    raise NotImplementedError("parse_expression not implemented")
++    def consume(expected_type: TokenType) -> Token:
++        if not tokens or tokens[0].type != expected_type:
++            raise SQLSyntaxError(f"Expected {expected_type}, got {tokens[0].type if tokens else 'EOF'}")
++        return tokens.pop(0)
++
++    def parse_primary() -> Expr:
++        token = tokens[0]
++        if token.type == TokenType.INTEGER:
++            consume(TokenType.INTEGER)
++            return Literal(int(token.value))
++        elif token.type == TokenType.STRING:
++            consume(TokenType.STRING)
++            return Literal(token.value)
++        elif token.type == TokenType.KEYWORD and token.value == "TRUE":
++            consume(TokenType.KEYWORD)
++            return Literal(True)
++        elif token.type == TokenType.KEYWORD and token.value == "FALSE":
++            consume(TokenType.KEYWORD)
++            return Literal(False)
++        elif token.type == TokenType.KEYWORD and token.value == "NULL":
++            consume(TokenType.KEYWORD)
++            return Literal(None)
++        elif token.type == TokenType.IDENTIFIER:
++            consume(TokenType.IDENTIFIER)
++            return ColumnRef(token.value)
++        elif token.type == TokenType.OPERATOR and token.value == "(":
++            consume(TokenType.OPERATOR)  # (
++            expr = parse_expression(tokens)
++            consume(TokenType.OPERATOR)  # )
++            return expr
++        else:
++            raise SQLSyntaxError(f"Unexpected token: {token}")
++
++    def parse_predicate() -> Expr:
++        left = parse_primary()
++        if tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "IS":
++            consume(TokenType.KEYWORD)  # IS
++            negated = False
++            if tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "NOT":
++                consume(TokenType.KEYWORD)  # NOT
++                negated = True
++            consume(TokenType.KEYWORD)  # NULL
++            return IsNull(left, negated)
++        elif tokens and tokens[0].type == TokenType.OPERATOR and tokens[0].value in COMPARISON_OPS:
++            op = consume(TokenType.OPERATOR).value
++            right = parse_primary()
++            return Comparison(op, left, right)
++        return left
++
++    def parse_not_expr() -> Expr:
++        if tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "NOT":
++            consume(TokenType.KEYWORD)  # NOT
++            return Not(parse_not_expr())
++        return parse_predicate()
++
++    def parse_and_expr() -> Expr:
++        left = parse_not_expr()
++        while tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "AND":
++            consume(TokenType.KEYWORD)  # AND
++            right = parse_not_expr()
++            left = And(left, right)
++        return left
++
++    def parse_or_expr() -> Expr:
++        left = parse_and_expr()
++        while tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "OR":
++            consume(TokenType.KEYWORD)  # OR
++            right = parse_and_expr()
++            left = Or(left, right)
++        return left
++
++    if not tokens:
++        raise SQLSyntaxError("No tokens to parse")
++
++    expr = parse_or_expr()
++    consume(TokenType.EOF)  # EOF
++    return expr

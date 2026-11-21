@@ -1,0 +1,515 @@
+Your assignment: cli
+Description: Command-line interface with input loop and main entry point
+Files to implement: ['wordle/cli.py', 'wordle/__main__.py', 'tests/test_cli.py']
+Tests to pass: ['tests/test_cli.py']
+
+Project structure:
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── test_cli.py  ← YOUR ASSIGNMENT
+│   │   ├── test_game.py  [assigned to another engineer]
+│   │   ├── test_integration__dictionary_and_validation_integration.py
+│   │   ├── test_integration__error_handling_integration.py
+│   │   ├── test_integration__full_game_workflow.py
+│   │   ├── test_integration__game_state_persistence.py
+│   │   ├── test_integration__scoring_and_rendering_integration.py
+│   │   ├── test_renderer.py  [assigned to another engineer]
+│   │   ├── test_scorer.py  [assigned to another engineer]
+│   │   ├── test_words.py  [assigned to another engineer]
+│   ├── wordle/
+│   │   ├── __init__.py  [shared - do not modify]
+│   │   ├── __main__.py  ← YOUR ASSIGNMENT
+│   │   ├── cli.py  ← YOUR ASSIGNMENT
+│   │   ├── game.py  [assigned to another engineer]
+│   │   ├── renderer.py  [assigned to another engineer]
+│   │   ├── scorer.py  [assigned to another engineer]
+│   │   ├── types.py  [shared - do not modify]
+│   │   ├── words.py  [assigned to another engineer]
+
+=== STUB FILE: wordle/cli.py ===
+"""Command-line interface with input loop and main entry point."""
+import sys
+from typing import Optional
+from wordle.game import Game
+from wordle.types import InvalidGuessError, GameOverError
+
+
+def main() -> None:
+    """Main entry point for the Wordle CLI game."""
+    raise NotImplementedError("main not implemented")
+
+
+def play_game(target: Optional[str] = None) -> None:
+    """Play a complete game of Wordle.
+
+    Args:
+        target: Optional target word for testing
+    """
+    raise NotImplementedError("play_game not implemented")
+
+
+def get_user_input() -> str:
+    """Get a guess from the user.
+
+    Returns:
+        User's guess input
+    """
+    raise NotImplementedError("get_user_input not implemented")
+
+
+def display_welcome() -> None:
+    """Display welcome message and game instructions."""
+    raise NotImplementedError("display_welcome not implemented")
+
+
+def display_game_state(game: Game) -> None:
+    """Display the current game board and status.
+
+    Args:
+        game: The game instance to display
+    """
+    raise NotImplementedError("display_game_state not implemented")
+
+
+def display_result(game: Game) -> None:
+    """Display the final game result.
+
+    Args:
+        game: The completed game instance
+    """
+    raise NotImplementedError("display_result not implemented")
+
+
+def handle_guess_error(error: Exception) -> None:
+    """Handle and display guess-related errors.
+
+    Args:
+        error: The exception that occurred
+    """
+    raise NotImplementedError("handle_guess_error not implemented")
+
+
+def ask_play_again() -> bool:
+    """Ask if the user wants to play again.
+
+    Returns:
+        True if user wants to play again, False otherwise
+    """
+    raise NotImplementedError("ask_play_again not implemented")
+
+=== STUB FILE: wordle/__main__.py ===
+"""Main entry point for running Wordle as a module."""
+from wordle.cli import main
+
+if __name__ == "__main__":
+    main()
+
+=== STUB FILE: tests/test_cli.py ===
+"""Tests for CLI module."""
+import pytest
+from unittest.mock import MagicMock, patch
+from wordle.cli import (
+    main, play_game, get_user_input, display_welcome,
+    display_game_state, display_result, handle_guess_error, ask_play_again
+)
+from wordle.types import InvalidGuessError, GameOverError
+
+
+def test_main():
+    """Test main function entry point."""
+    with patch('wordle.cli.play_game') as mock_play:
+        main()
+        mock_play.assert_called_once()
+
+
+def test_play_game():
+    """Test playing a complete game."""
+    # Mock the game to avoid dependency on actual Game implementation
+    mock_game = MagicMock()
+    mock_game.get_status.return_value.value = "won"
+
+    with patch('wordle.cli.Game', return_value=mock_game):
+        with patch('wordle.cli.get_user_input', return_value="HELLO"):
+            with patch('wordle.cli.display_game_state'):
+                with patch('wordle.cli.display_result'):
+                    play_game("HELLO")
+                    mock_game.make_guess.assert_called()
+
+
+def test_get_user_input():
+    """Test getting user input."""
+    with patch('builtins.input', return_value="HELLO"):
+        result = get_user_input()
+        assert result == "HELLO"
+
+
+def test_display_welcome():
+    """Test welcome message display."""
+    with patch('builtins.print') as mock_print:
+        display_welcome()
+        mock_print.assert_called()
+
+
+def test_display_game_state():
+    """Test game state display."""
+    mock_game = MagicMock()
+    mock_game.get_results.return_value = []
+    mock_game.get_attempts_remaining.return_value = 6
+
+    with patch('builtins.print') as mock_print:
+        display_game_state(mock_game)
+        mock_print.assert_called()
+
+
+def test_display_result_win():
+    """Test result display for winning game."""
+    mock_game = MagicMock()
+    mock_game.get_status.return_value.value = "won"
+    mock_game.get_target_word.return_value = "HELLO"
+
+    with patch('builtins.print') as mock_print:
+        display_result(mock_game)
+        mock_print.assert_called()
+
+
+def test_handle_guess_error():
+    """Test error handling for guess errors."""
+    error = InvalidGuessError("Invalid word")
+
+    with patch('builtins.print') as mock_print:
+        handle_guess_error(error)
+        mock_print.assert_called()
+
+
+def test_ask_play_again():
+    """Test asking user to play again."""
+    with patch('builtins.input', return_value="y"):
+        result = ask_play_again()
+        assert result is True
+
+    with patch('builtins.input', return_value="n"):
+        result = ask_play_again()
+        assert result is False
+
+
+def test_get_user_input_lowercases():
+    """Test that user input is returned in lowercase."""
+    with patch('builtins.input', return_value="HELLO"):
+        result = get_user_input()
+        assert result == "hello"
+
+
+
+=== TEST FILE: tests/test_cli.py ===
+"""Tests for CLI module."""
+import pytest
+from unittest.mock import MagicMock, patch
+from wordle.cli import (
+    main, play_game, get_user_input, display_welcome,
+    display_game_state, display_result, handle_guess_error, ask_play_again
+)
+from wordle.types import InvalidGuessError, GameOverError
+
+
+def test_main():
+    """Test main function entry point."""
+    with patch('wordle.cli.play_game') as mock_play:
+        main()
+        mock_play.assert_called_once()
+
+
+def test_play_game():
+    """Test playing a complete game."""
+    # Mock the game to avoid dependency on actual Game implementation
+    mock_game = MagicMock()
+    mock_game.get_status.return_value.value = "won"
+
+    with patch('wordle.cli.Game', return_value=mock_game):
+        with patch('wordle.cli.get_user_input', return_value="HELLO"):
+            with patch('wordle.cli.display_game_state'):
+                with patch('wordle.cli.display_result'):
+                    play_game("HELLO")
+                    mock_game.make_guess.assert_called()
+
+
+def test_get_user_input():
+    """Test getting user input."""
+    with patch('builtins.input', return_value="HELLO"):
+        result = get_user_input()
+        assert result == "HELLO"
+
+
+def test_display_welcome():
+    """Test welcome message display."""
+    with patch('builtins.print') as mock_print:
+        display_welcome()
+        mock_print.assert_called()
+
+
+def test_display_game_state():
+    """Test game state display."""
+    mock_game = MagicMock()
+    mock_game.get_results.return_value = []
+    mock_game.get_attempts_remaining.return_value = 6
+
+    with patch('builtins.print') as mock_print:
+        display_game_state(mock_game)
+        mock_print.assert_called()
+
+
+def test_display_result_win():
+    """Test result display for winning game."""
+    mock_game = MagicMock()
+    mock_game.get_status.return_value.value = "won"
+    mock_game.get_target_word.return_value = "HELLO"
+
+    with patch('builtins.print') as mock_print:
+        display_result(mock_game)
+        mock_print.assert_called()
+
+
+def test_handle_guess_error():
+    """Test error handling for guess errors."""
+    error = InvalidGuessError("Invalid word")
+
+    with patch('builtins.print') as mock_print:
+        handle_guess_error(error)
+        mock_print.assert_called()
+
+
+def test_ask_play_again():
+    """Test asking user to play again."""
+    with patch('builtins.input', return_value="y"):
+        result = ask_play_again()
+        assert result is True
+
+    with patch('builtins.input', return_value="n"):
+        result = ask_play_again()
+        assert result is False
+
+
+def test_get_user_input_lowercases():
+    """Test that user input is returned in lowercase."""
+    with patch('builtins.input', return_value="HELLO"):
+        result = get_user_input()
+        assert result == "hello"
+
+
+
+=== SHARED SCHEMA: wordle/__init__.py ===
+"""Wordle game package."""
+from wordle.types import Feedback, GuessResult, GameStatus, InvalidGuessError, GameOverError
+from wordle.game import Game
+
+__all__ = ['Game', 'Feedback', 'GuessResult', 'GameStatus', 'InvalidGuessError', 'GameOverError']
+
+
+=== SHARED SCHEMA: wordle/types.py ===
+"""Shared types and exceptions for Wordle."""
+from enum import Enum
+from dataclasses import dataclass
+from typing import List
+
+
+class Feedback(Enum):
+    """Feedback for each letter in a guess."""
+    HIT = "hit"        # Correct letter in correct position
+    PRESENT = "present"  # Correct letter in wrong position  
+    MISS = "miss"      # Letter not in target word
+
+
+class GameStatus(Enum):
+    """Current status of the game."""
+    IN_PROGRESS = "in_progress"
+    WON = "won"
+    LOST = "lost"
+
+
+@dataclass
+class GuessResult:
+    """Result of a single guess."""
+    guess: str
+    feedbacks: List[Feedback]
+    
+
+class InvalidGuessError(Exception):
+    """Raised when a guess is not valid (not in dictionary, wrong length, etc)."""
+    pass
+
+
+class GameOverError(Exception):
+    """Raised when trying to make a guess after the game has ended."""
+    pass
+
+
+
+=== DEPENDENCY STUB (read-only): wordle/game.py ===
+"""Game state machine and core game logic with guess validation."""
+from typing import List, Optional
+from wordle.types import GuessResult, GameStatus, InvalidGuessError, GameOverError
+
+
+class Game:
+    """Main game class that manages Wordle game state."""
+
+    def __init__(self, target: Optional[str] = None):
+        """Initialize a new game.
+
+        Args:
+            target: Optional target word. If None, a random word is chosen.
+        """
+        raise NotImplementedError("Game.__init__ not implemented")
+
+    def make_guess(self, guess: str) -> GuessResult:
+        """Make a guess and return the result.
+
+        Args:
+            guess: The word being guessed
+
+        Returns:
+            GuessResult with the guess and feedback
+
+        Raises:
+            InvalidGuessError: If guess is invalid
+            GameOverError: If game is already over
+        """
+        raise NotImplementedError("Game.make_guess not implemented")
+
+    def get_status(self) -> GameStatus:
+        """Get the current game status.
+
+        Returns:
+            Current game status
+        """
+        raise NotImplementedError("Game.get_status not implemented")
+
+    def get_results(self) -> List[GuessResult]:
+        """Get all guess results so far.
+
+        Returns:
+            List of all guess results
+        """
+        raise NotImplementedError("Game.get_results not implemented")
+
+    def get_attempts_remaining(self) -> int:
+        """Get the number of attempts remaining.
+
+        Returns:
+            Number of attempts left
+        """
+        raise NotImplementedError("Game.get_attempts_remaining not implemented")
+
+    def get_target_word(self) -> Optional[str]:
+        """Get the target word (only after game is over).
+
+        Returns:
+            Target word if game is over, None otherwise
+        """
+        raise NotImplementedError("Game.get_target_word not implemented")
+
+    def reset(self, target: Optional[str] = None) -> None:
+        """Reset the game with a new target word.
+
+        Args:
+            target: Optional new target word. If None, a random word is chosen.
+        """
+        raise NotImplementedError("Game.reset not implemented")
+
+    def _validate_guess(self, guess: str) -> str:
+        """Validate and normalize a guess.
+
+        Args:
+            guess: The guess to validate
+
+        Returns:
+            Normalized guess
+
+        Raises:
+            InvalidGuessError: If guess is invalid
+        """
+        raise NotImplementedError("Game._validate_guess not implemented")
+
+=== DEPENDENCY STUB (read-only): wordle/renderer.py ===
+"""Format game board and individual rows for terminal display."""
+from typing import List
+from wordle.types import GuessResult
+
+
+def render_board(results: List[GuessResult]) -> str:
+    """Render the entire game board with all guesses.
+
+    Args:
+        results: List of all guess results so far
+
+    Returns:
+        Formatted string representation of the board
+    """
+    raise NotImplementedError("render_board not implemented")
+
+
+def render_guess(result: GuessResult) -> str:
+    """Render a single guess result as a colored row.
+
+    Args:
+        result: The guess result to render
+
+    Returns:
+        Formatted string representation of the guess
+    """
+    raise NotImplementedError("render_guess not implemented")
+
+
+def render_empty_row() -> str:
+    """Render an empty row for unused attempts.
+
+    Returns:
+        Formatted string representation of an empty row
+    """
+    raise NotImplementedError("render_empty_row not implemented")
+
+
+def _colorize_letter(letter: str, feedback_type: str) -> str:
+    """Apply color formatting to a letter based on feedback.
+
+    Args:
+        letter: The letter to colorize
+        feedback_type: The feedback type ('hit', 'present', 'miss')
+
+    Returns:
+        Colored letter with ANSI codes
+    """
+    raise NotImplementedError("_colorize_letter not implemented")
+
+
+def render_keyboard(used_letters: dict[str, str]) -> str:
+    """Render a keyboard showing letter status.
+
+    Args:
+        used_letters: Map of letters to their feedback status
+
+    Returns:
+        Formatted keyboard display
+    """
+    raise NotImplementedError("render_keyboard not implemented")
+
+## IMPORTANT: Cross-Subtask Dependencies
+
+Other engineers' modules (marked "[assigned to another engineer]" above) are stubs
+in your repo  -  their functions raise NotImplementedError. If your tests import and
+use objects from those modules, those tests will fail with NotImplementedError BEFORE
+testing your stub.
+
+When this happens, edit your test file to use `unittest.mock.MagicMock()` instead:
+  from unittest.mock import MagicMock
+  dep = MagicMock()  # replaces any object from another subtask's module
+  my_obj = MyClass(dep)  # now tests YOUR stub
+
+Your test files ARE in your allowed_files  -  you may and should edit them.
+
+If DEPENDENCY STUB files are shown above, they define the EXACT function signatures
+of modules you depend on. When calling functions from those modules, match the
+signatures exactly (parameter names, types, count). Do not guess interfaces.
+
+Start implementing. Run tests with: pytest tests/test_cli.py -v --tb=short

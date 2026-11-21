@@ -1,0 +1,63 @@
+diff --git a/wordle/words.py b/wordle/words.py
+index 0b33673..ada11fb 100644
+--- a/wordle/words.py
++++ b/wordle/words.py
+@@ -1,6 +1,20 @@
+ """Word dictionary and validation functions for 5-letter words."""
++import random
+ from typing import Set, List
+ 
++_WORDS = """
++ABOUT ABOVE ACTOR ADULT AFTER AGAIN ALONE ALONG ANGEL ANGRY APPLE ARISE AUDIO
++BEACH BEGIN BEING BELOW BLACK BLOOD BOARD BRAIN BREAD BRING BROWN BUILD CANDY
++CHAIR CHEST CLEAN CLEAR CLOCK CLOSE CLOUD COAST COUNT CRANE CROWN DANCE DREAM
++DRINK DRIVE EARLY EARTH EIGHT ENEMY ENJOY EVERY FAITH FIELD FIRST FLAME FLOOR
++FRUIT GHOST GIANT GLASS GRACE GRASS GREAT GREEN HAPPY HEART HELLO HORSE HOUSE
++LAUGH LIGHT LUCKY MAGIC MONEY MOUSE MUSIC NIGHT NORTH OCEAN PAPER PARTY PEACE
++PHONE PIANO PLANT QUEEN QUICK RIVER ROUND SMILE SNAKE STONE STORM SUGAR TABLE
++TESTS TIGER TRAIN WATER WORLD YOUNG ZEBRA
++"""
++
++_DICTIONARY: Set[str] = {w for w in _WORDS.split() if len(w) == 5}
++
+ 
+ def load_dictionary() -> Set[str]:
+     """Load the dictionary of valid 5-letter words.
+@@ -8,7 +22,7 @@ def load_dictionary() -> Set[str]:
+     Returns:
+         Set of valid 5-letter words in uppercase.
+     """
+-    raise NotImplementedError("load_dictionary not implemented")
++    return set(_DICTIONARY)
+ 
+ 
+ def is_valid_word(word: str) -> bool:
+@@ -20,7 +34,10 @@ def is_valid_word(word: str) -> bool:
+     Returns:
+         True if word is valid, False otherwise
+     """
+-    raise NotImplementedError("is_valid_word not implemented")
++    if not isinstance(word, str):
++        return False
++    normalized = normalize_word(word)
++    return len(normalized) == 5 and normalized in _DICTIONARY
+ 
+ 
+ def get_random_word() -> str:
+@@ -29,7 +46,8 @@ def get_random_word() -> str:
+     Returns:
+         A random 5-letter word in uppercase
+     """
+-    raise NotImplementedError("get_random_word not implemented")
++    words: List[str] = sorted(_DICTIONARY)
++    return random.choice(words)
+ 
+ 
+ def normalize_word(word: str) -> str:
+@@ -41,4 +59,4 @@ def normalize_word(word: str) -> str:
+     Returns:
+         Normalized word in uppercase
+     """
+-    raise NotImplementedError("normalize_word not implemented")
+\ No newline at end of file
++    return word.strip().upper()

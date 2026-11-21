@@ -1,0 +1,205 @@
+{
+  "task_id": "minidb",
+  "mode": "scaffold",
+  "frozen_utc": "2026-11-08T20:17:49.680266+00:00",
+  "source_decomposition": "redteam/tasks/minidb/source/decomposition_raw.json",
+  "source_note": "Coordinator output generated 2026-11-08 with CC_COORDINATOR_MODEL=opus, BITSWARM_NO_CACHE=1, --no-validate (name-only arity/interface checks produced false positives on method-style call sites). Reference solution generated separately; see reference/.",
+  "baseline_head": "2b834bc8ef1dfff444bc400c5a1c7365acea2754",
+  "holdback_fraction": 0.3,
+  "holdback_seed": "minidb",
+  "holdback_commit": "2d33799f28277b017ab16729fcbfc7bb7888df6c67536a10e3b8ef814a14dca3",
+  "gate_key": "integration_test_files",
+  "gate_split": {
+    "tests/test_integration.py": [
+      "tests/test_integration__bare_boolean_column_in_where.py",
+      "tests/test_integration__comparison_between_different_types_raises.py",
+      "tests/test_integration__create_existing_table_raises.py",
+      "tests/test_integration__create_returns_empty_result.py",
+      "tests/test_integration__delete_where_no_match_returns_zero_and_keeps_order.py",
+      "tests/test_integration__delete_where_then_select.py",
+      "tests/test_integration__delete_without_where_removes_all_rows.py",
+      "tests/test_integration__drop_table_then_select_raises_unknown_table.py",
+      "tests/test_integration__drop_unknown_table_raises.py",
+      "tests/test_integration__engine_default_store_constructed_via_module_table_store.py",
+      "tests/test_integration__engine_default_store_is_table_store.py",
+      "tests/test_integration__engine_execute_delegates_to_pipeline.py",
+      "tests/test_integration__engine_execute_propagates_minidb_errors.py",
+      "tests/test_integration__engine_execute_script_delegates_to_parse_script.py",
+      "tests/test_integration__engine_execute_syntax_errors.py",
+      "tests/test_integration__engine_reads_rows_inserted_directly_into_store.py",
+      "tests/test_integration__engine_uses_custom_store_mock.py",
+      "tests/test_integration__engines_sharing_a_store_see_same_data.py",
+      "tests/test_integration__execute_script_empty_returns_empty_list.py",
+      "tests/test_integration__execute_script_skips_empty_statements.py",
+      "tests/test_integration__execute_script_syntax_error_raises.py",
+      "tests/test_integration__executor_delete_uses_matcher_via_store.py",
+      "tests/test_integration__executor_uses_supplied_matcher.py",
+      "tests/test_integration__format_result_multiple_rows_with_null_and_bool.py",
+      "tests/test_integration__format_result_non_select.py",
+      "tests/test_integration__format_result_single_row_from_engine.py",
+      "tests/test_integration__format_result_zero_rows_select.py",
+      "tests/test_integration__format_value_cases.py",
+      "tests/test_integration__full_spec_script_via_execute_script.py",
+      "tests/test_integration__insert_into_unknown_table_raises.py",
+      "tests/test_integration__insert_returns_row_count_one.py",
+      "tests/test_integration__insert_type_mismatch_raises_and_does_not_store.py",
+      "tests/test_integration__insert_unknown_column_raises.py",
+      "tests/test_integration__insert_with_reordered_and_partial_column_list.py",
+      "tests/test_integration__insert_without_column_list_uses_schema_order.py",
+      "tests/test_integration__insert_wrong_value_count_raises_type_mismatch.py",
+      "tests/test_integration__integer_and_text_ordering_comparisons.py",
+      "tests/test_integration__is_null_and_is_not_null.py",
+      "tests/test_integration__keywords_case_insensitive_names_case_sensitive.py",
+      "tests/test_integration__kleene_and_null_false_is_false_and_not_of_it_is_true.py",
+      "tests/test_integration__kleene_or_null_true_is_true.py",
+      "tests/test_integration__manual_pipeline_matches_engine.py",
+      "tests/test_integration__modules_expose_expected_callables.py",
+      "tests/test_integration__multiple_tables_are_independent.py",
+      "tests/test_integration__non_boolean_where_raises.py",
+      "tests/test_integration__null_comparison_excludes_row.py",
+      "tests/test_integration__null_fits_every_column_type.py",
+      "tests/test_integration__null_literal_where_matches_nothing.py",
+      "tests/test_integration__package_lazy_engine_export_is_engine_class.py",
+      "tests/test_integration__parentheses_override_precedence.py",
+      "tests/test_integration__parse_expression_with_where_matches.py",
+      "tests/test_integration__parse_script_with_executor_and_store.py",
+      "tests/test_integration__projection_respects_requested_order_and_duplicates_allowed_order.py",
+      "tests/test_integration__recreate_table_after_drop_is_empty.py",
+      "tests/test_integration__repl_accumulates_multiline_statement.py",
+      "tests/test_integration__repl_blank_input_produces_no_output.py",
+      "tests/test_integration__repl_default_engine_constructed_via_cli_engine.py",
+      "tests/test_integration__repl_error_from_engine_written_with_message.py",
+      "tests/test_integration__repl_executes_statements_and_prints_results.py",
+      "tests/test_integration__repl_exit_command_stops_processing.py",
+      "tests/test_integration__repl_reports_errors_to_stderr_and_continues.py",
+      "tests/test_integration__repl_runs_leftover_buffer_at_eof.py",
+      "tests/test_integration__select_projection_with_boolean_where.py",
+      "tests/test_integration__select_star_returns_all_rows_in_insertion_order.py",
+      "tests/test_integration__select_with_and_and_is_not_null.py",
+      "tests/test_integration__select_with_not_or_precedence.py",
+      "tests/test_integration__string_literal_escaping_round_trips.py",
+      "tests/test_integration__tokenizer_output_feeds_parser.py",
+      "tests/test_integration__unknown_column_in_where_raises.py",
+      "tests/test_integration__unknown_projected_column_raises_even_on_empty_table.py"
+    ]
+  },
+  "held_back": [
+    "tests/test_integration__create_existing_table_raises.py",
+    "tests/test_integration__create_returns_empty_result.py",
+    "tests/test_integration__delete_where_no_match_returns_zero_and_keeps_order.py",
+    "tests/test_integration__delete_where_then_select.py",
+    "tests/test_integration__delete_without_where_removes_all_rows.py",
+    "tests/test_integration__drop_unknown_table_raises.py",
+    "tests/test_integration__engine_default_store_is_table_store.py",
+    "tests/test_integration__engine_execute_delegates_to_pipeline.py",
+    "tests/test_integration__execute_script_empty_returns_empty_list.py",
+    "tests/test_integration__format_result_multiple_rows_with_null_and_bool.py",
+    "tests/test_integration__format_value_cases.py",
+    "tests/test_integration__insert_returns_row_count_one.py",
+    "tests/test_integration__integer_and_text_ordering_comparisons.py",
+    "tests/test_integration__kleene_and_null_false_is_false_and_not_of_it_is_true.py",
+    "tests/test_integration__manual_pipeline_matches_engine.py",
+    "tests/test_integration__parse_script_with_executor_and_store.py",
+    "tests/test_integration__repl_blank_input_produces_no_output.py",
+    "tests/test_integration__repl_default_engine_constructed_via_cli_engine.py",
+    "tests/test_integration__repl_error_from_engine_written_with_message.py",
+    "tests/test_integration__repl_exit_command_stops_processing.py",
+    "tests/test_integration__select_projection_with_boolean_where.py"
+  ],
+  "held_back_names_listed_in_subtasks_before_filter": [],
+  "subtasks": [
+    {
+      "subtask_id": "tokenizer",
+      "complexity_weight": 0.12,
+      "dependencies": [],
+      "implementation_files": [
+        "minidb/tokenizer.py"
+      ],
+      "test_files": [
+        "tests/test_tokenizer.py"
+      ]
+    },
+    {
+      "subtask_id": "table_store",
+      "complexity_weight": 0.12,
+      "dependencies": [],
+      "implementation_files": [
+        "minidb/table_store.py"
+      ],
+      "test_files": [
+        "tests/test_table_store.py"
+      ]
+    },
+    {
+      "subtask_id": "parser",
+      "complexity_weight": 0.22,
+      "dependencies": [
+        "tokenizer"
+      ],
+      "implementation_files": [
+        "minidb/parser.py"
+      ],
+      "test_files": [
+        "tests/test_parser.py"
+      ]
+    },
+    {
+      "subtask_id": "expr_eval",
+      "complexity_weight": 0.14,
+      "dependencies": [
+        "table_store"
+      ],
+      "implementation_files": [
+        "minidb/expr_eval.py"
+      ],
+      "test_files": [
+        "tests/test_expr_eval.py"
+      ]
+    },
+    {
+      "subtask_id": "executor",
+      "complexity_weight": 0.22,
+      "dependencies": [
+        "parser",
+        "expr_eval",
+        "table_store"
+      ],
+      "implementation_files": [
+        "minidb/executor.py"
+      ],
+      "test_files": [
+        "tests/test_executor.py"
+      ]
+    },
+    {
+      "subtask_id": "engine",
+      "complexity_weight": 0.12,
+      "dependencies": [
+        "tokenizer",
+        "parser",
+        "executor",
+        "expr_eval",
+        "table_store"
+      ],
+      "implementation_files": [
+        "minidb/engine.py"
+      ],
+      "test_files": [
+        "tests/test_engine.py"
+      ]
+    },
+    {
+      "subtask_id": "cli",
+      "complexity_weight": 0.06,
+      "dependencies": [
+        "engine"
+      ],
+      "implementation_files": [
+        "minidb/cli.py"
+      ],
+      "test_files": [
+        "tests/test_cli.py"
+      ]
+    }
+  ]
+}

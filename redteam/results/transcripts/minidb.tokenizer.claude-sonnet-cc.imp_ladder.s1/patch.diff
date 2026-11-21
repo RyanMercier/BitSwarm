@@ -1,0 +1,96 @@
+diff --git a/minidb/tokenizer.py b/minidb/tokenizer.py
+index 863709f..3426417 100644
+--- a/minidb/tokenizer.py
++++ b/minidb/tokenizer.py
+@@ -27,17 +27,22 @@ __all__ = [
+     "read_string_literal",
+ ]
+ 
++_ASCII_LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
++_ASCII_DIGITS = "0123456789"
++
+ 
+ def is_identifier_start(ch: str) -> bool:
+     """Return True if ``ch`` may begin an identifier or keyword: an ASCII
+     letter or underscore."""
+-    raise NotImplementedError("is_identifier_start not implemented")
++    return len(ch) == 1 and (ch in _ASCII_LETTERS or ch == "_")
+ 
+ 
+ def is_identifier_char(ch: str) -> bool:
+     """Return True if ``ch`` may continue an identifier or keyword: an ASCII
+     letter, ASCII digit, or underscore."""
+-    raise NotImplementedError("is_identifier_char not implemented")
++    return len(ch) == 1 and (
++        ch in _ASCII_LETTERS or ch in _ASCII_DIGITS or ch == "_"
++    )
+ 
+ 
+ def read_string_literal(sql: str, start: int) -> tuple[str, int]:
+@@ -50,7 +55,20 @@ def read_string_literal(sql: str, start: int) -> tuple[str, int]:
+     Raises:
+         SQLSyntaxError: if the literal is not terminated.
+     """
+-    raise NotImplementedError("read_string_literal not implemented")
++    parts: list[str] = []
++    i = start + 1
++    n = len(sql)
++    while i < n:
++        ch = sql[i]
++        if ch == "'":
++            if i + 1 < n and sql[i + 1] == "'":
++                parts.append("'")
++                i += 2
++                continue
++            return "".join(parts), i + 1
++        parts.append(ch)
++        i += 1
++    raise SQLSyntaxError(f"unterminated string literal at position {start}")
+ 
+ 
+ def tokenize(sql: str) -> list[Token]:
+@@ -59,4 +77,43 @@ def tokenize(sql: str) -> list[Token]:
+     Raises:
+         SQLSyntaxError: on an unterminated string or an unknown character.
+     """
+-    raise NotImplementedError("tokenize not implemented")
++    tokens: list[Token] = []
++    i = 0
++    n = len(sql)
++    while i < n:
++        ch = sql[i]
++        if ch.isspace():
++            i += 1
++        elif is_identifier_start(ch):
++            j = i + 1
++            while j < n and is_identifier_char(sql[j]):
++                j += 1
++            word = sql[i:j]
++            upper = word.upper()
++            if upper in KEYWORDS:
++                tokens.append(Token(TokenType.KEYWORD, upper, i))
++            else:
++                tokens.append(Token(TokenType.IDENTIFIER, word, i))
++            i = j
++        elif ch in _ASCII_DIGITS:
++            j = i + 1
++            while j < n and sql[j] in _ASCII_DIGITS:
++                j += 1
++            tokens.append(Token(TokenType.INTEGER, sql[i:j], i))
++            i = j
++        elif ch == "'":
++            contents, end = read_string_literal(sql, i)
++            tokens.append(Token(TokenType.STRING, contents, i))
++            i = end
++        else:
++            for op in OPERATORS:
++                if sql.startswith(op, i):
++                    tokens.append(Token(TokenType.OPERATOR, op, i))
++                    i += len(op)
++                    break
++            else:
++                raise SQLSyntaxError(
++                    f"unexpected character {ch!r} at position {i}"
++                )
++    tokens.append(Token(TokenType.EOF, "", n))
++    return tokens

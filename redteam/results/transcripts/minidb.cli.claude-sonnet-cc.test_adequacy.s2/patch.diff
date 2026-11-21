@@ -1,0 +1,113 @@
+diff --git a/minidb/cli.py b/minidb/cli.py
+index 7da59c2..d0ebc2e 100644
+--- a/minidb/cli.py
++++ b/minidb/cli.py
+@@ -16,31 +16,34 @@ __all__ = ["format_value", "format_result", "run_repl", "main"]
+ 
+ 
+ def format_value(value: Value) -> str:
+-    """Render one cell: None -> 'NULL', True -> 'TRUE', False -> 'FALSE',
+-    anything else -> ``str(value)``."""
+-    raise NotImplementedError("format_value not implemented")
++    """Render one cell."""
++    if value is None:
++        return "NULL"
++    if value is True:
++        return "TRUE"
++    if value is False:
++        return "FALSE"
++    return str(value)
+ 
+ 
+ def format_result(result: QueryResult) -> str:
+-    """Render a QueryResult as text (no trailing newline).
++    """Render a QueryResult as text (no trailing newline)."""
++    if not result.columns:
++        return f"OK ({result.row_count} rows affected)"
++    cells = [[format_value(v) for v in row] for row in result.rows]
++    widths = [
++        max([len(c)] + [len(r[i]) for r in cells])
++        for i, c in enumerate(result.columns)
++    ]
+ 
+-    If ``result.columns`` is non-empty: a header line, a separator line of
+-    dashes, then one line per row. Each column's width is the max length of
+-    its header and formatted cells; every cell is left-justified to that
+-    width and cells are joined with ``' | '``. A final line reads
+-    ``'(N rows)'``, or ``'(1 row)'`` when N == 1.
++    def line(items: list[str]) -> str:
++        return " | ".join(s.ljust(w) for s, w in zip(items, widths))
+ 
+-    Example::
+-
+-        id | name
+-        -- | -----
+-        1  | alice
+-        (1 row)
+-
+-    If ``result.columns`` is empty: ``'OK (N rows affected)'`` with
+-    N = ``result.row_count``.
+-    """
+-    raise NotImplementedError("format_result not implemented")
++    lines = [line(list(result.columns)), line(["-" * w for w in widths])]
++    lines.extend(line(r) for r in cells)
++    n = len(result.rows)
++    lines.append("(1 row)" if n == 1 else f"({n} rows)")
++    return "\n".join(lines)
+ 
+ 
+ def run_repl(
+@@ -49,27 +52,35 @@ def run_repl(
+     stderr: TextIO,
+     engine: Optional[Engine] = None,
+ ) -> int:
+-    """Read SQL from ``stdin`` line by line and execute it.
+-
+-    * ``engine`` defaults to ``Engine()`` (module-level name).
+-    * A line equal to ``.exit`` after stripping stops processing.
+-    * Lines accumulate in a buffer; once the stripped buffer ends with
+-      ``';'`` it is passed to ``engine.execute`` and cleared.
+-    * On success write ``format_result(result) + '\\n'`` to ``stdout``.
+-    * On ``MiniDBError`` write ``'ERROR: <message>\\n'`` to ``stderr`` and
+-      continue.
+-    * At EOF, a non-blank leftover buffer is executed the same way.
+-    * Blank buffers are never executed.
+-
+-    Returns 0.
+-    """
+-    raise NotImplementedError("run_repl not implemented")
++    """Read SQL from ``stdin`` line by line and execute it."""
++    if engine is None:
++        engine = Engine()
++
++    def run(sql: str) -> None:
++        try:
++            result = engine.execute(sql)
++        except MiniDBError as e:
++            stderr.write(f"ERROR: {e}\n")
++            return
++        stdout.write(format_result(result) + "\n")
++
++    buffer = ""
++    for line in stdin:
++        if line.strip() == ".exit":
++            break
++        buffer += line
++        if buffer.strip().endswith(";"):
++            run(buffer)
++            buffer = ""
++    else:
++        if buffer.strip():
++            run(buffer)
++    return 0
+ 
+ 
+ def main(argv: Optional[list[str]] = None) -> int:
+-    """CLI entry point: run the REPL on sys.stdin/stdout/stderr and return
+-    its exit code. ``argv`` is accepted for future options and ignored."""
+-    raise NotImplementedError("main not implemented")
++    """CLI entry point."""
++    return run_repl(sys.stdin, sys.stdout, sys.stderr)
+ 
+ 
+ if __name__ == "__main__":

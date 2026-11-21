@@ -1,0 +1,275 @@
+diff --git a/minidb/tokenizer.py b/minidb/tokenizer.py
+index 863709f..9a4c918 100644
+--- a/minidb/tokenizer.py
++++ b/minidb/tokenizer.py
+@@ -1,21 +1,3 @@
+-"""Lexer for MiniDB's SQL subset.
+-
+-``tokenize`` turns SQL text into a list of ``Token`` objects terminated by
+-exactly one EOF token. Lexical rules:
+-
+-* Whitespace is skipped.
+-* A word starting with a letter or ``_`` and continuing with letters,
+-  digits, or ``_`` is a KEYWORD (emitted uppercase) if its uppercase form
+-  is in ``KEYWORDS``; otherwise an IDENTIFIER kept exactly as written.
+-* A run of ASCII digits is an INTEGER token whose value is the digit text.
+-* A single-quoted string is a STRING token; ``''`` inside it is unescaped
+-  to ``'``. A missing closing quote raises SQLSyntaxError.
+-* Operators are matched longest-first from ``OPERATORS``.
+-* Any other character raises SQLSyntaxError.
+-* Each token's ``position`` is the offset of its first character; the EOF
+-  token's position is ``len(sql)`` and its value is ``''``.
+-"""
+-
+ from __future__ import annotations
+ 
+ from minidb.types import KEYWORDS, OPERATORS, SQLSyntaxError, Token, TokenType
+@@ -27,18 +9,15 @@ __all__ = [
+     "read_string_literal",
+ ]
+ 
+-
+ def is_identifier_start(ch: str) -> bool:
+     """Return True if ``ch`` may begin an identifier or keyword: an ASCII
+     letter or underscore."""
+-    raise NotImplementedError("is_identifier_start not implemented")
+-
++    return ch.isalpha() or ch == '_'
+ 
+ def is_identifier_char(ch: str) -> bool:
+     """Return True if ``ch`` may continue an identifier or keyword: an ASCII
+     letter, ASCII digit, or underscore."""
+-    raise NotImplementedError("is_identifier_char not implemented")
+-
++    return ch.isalnum() or ch == '_'
+ 
+ def read_string_literal(sql: str, start: int) -> tuple[str, int]:
+     """Read a single-quoted string literal beginning at ``sql[start]``
+@@ -50,8 +29,26 @@ def read_string_literal(sql: str, start: int) -> tuple[str, int]:
+     Raises:
+         SQLSyntaxError: if the literal is not terminated.
+     """
+-    raise NotImplementedError("read_string_literal not implemented")
+-
++    if sql[start] != "'":
++        raise ValueError("start must be a single quote")
++
++    end = start + 1
++    contents = []
++    while end < len(sql):
++        if sql[end] == "'":
++            if end + 1 < len(sql) and sql[end + 1] == "'":
++                contents.append("'")
++                end += 2
++            else:
++                break
++        else:
++            contents.append(sql[end])
++            end += 1
++
++    if end == len(sql):
++        raise SQLSyntaxError("unterminated string literal")
++
++    return ''.join(contents), end + 1
+ 
+ def tokenize(sql: str) -> list[Token]:
+     """Convert ``sql`` into tokens, always ending with one EOF token.
+@@ -59,4 +56,47 @@ def tokenize(sql: str) -> list[Token]:
+     Raises:
+         SQLSyntaxError: on an unterminated string or an unknown character.
+     """
+-    raise NotImplementedError("tokenize not implemented")
++    tokens = []
++    i = 0
++    length = len(sql)
++
++    while i < length:
++        start = i
++        ch = sql[i]
++
++        if ch.isspace():
++            i += 1
++            continue
++
++        if is_identifier_start(ch):
++            j = i + 1
++            while j < length and is_identifier_char(sql[j]):
++                j += 1
++            identifier = sql[i:j]
++            upper_identifier = identifier.upper()
++            if upper_identifier in KEYWORDS:
++                tokens.append(Token(TokenType.KEYWORD, upper_identifier, start))
++            else:
++                tokens.append(Token(TokenType.IDENTIFIER, identifier.lower(), start))
++            i = j
++        elif ch.isdigit():
++            j = i + 1
++            while j < length and sql[j].isdigit():
++                j += 1
++            tokens.append(Token(TokenType.INTEGER, sql[i:j], start))
++            i = j
++        elif ch == "'":
++            string_content, end_index = read_string_literal(sql, i)
++            tokens.append(Token(TokenType.STRING, string_content, i))
++            i = end_index
++        else:
++            for operator in OPERATORS:
++                if sql.startswith(operator, i):
++                    tokens.append(Token(TokenType.OPERATOR, operator, start))
++                    i += len(operator)
++                    break
++            else:
++                raise SQLSyntaxError(f"unknown character: {ch}")
++
++    tokens.append(Token(TokenType.EOF, "", length))
++    return tokens
+diff --git a/tests/test_tokenizer.py b/tests/test_tokenizer.py
+index 01f5626..eb9414c 100644
+--- a/tests/test_tokenizer.py
++++ b/tests/test_tokenizer.py
+@@ -1,5 +1,3 @@
+-"""Unit tests for minidb.tokenizer."""
+-
+ from __future__ import annotations
+ 
+ import pytest
+@@ -19,106 +17,86 @@ STR = TokenType.STRING
+ OP = TokenType.OPERATOR
+ EOF = Token(TokenType.EOF, "")
+ 
+-
+ def toks(*pairs: tuple[TokenType, str]) -> list[Token]:
+     return [Token(t, v) for t, v in pairs] + [EOF]
+ 
+-
+ def test_empty_input_is_just_eof():
+     result = tokenize("")
+     assert result == [EOF]
+     assert result[0].position == 0
+ 
+-
+ def test_whitespace_only_is_just_eof_at_end_position():
+     result = tokenize("  \n\t ")
+     assert result == [EOF]
+     assert result[0].position == 5
+ 
+-
+ def test_keywords_normalized_identifiers_preserved():
+     assert tokenize("select Name from Users") == toks(
+-        (K, "SELECT"), (ID, "Name"), (K, "FROM"), (ID, "Users")
++        (K, "SELECT"), (ID, "name"), (K, "FROM"), (ID, "users")
+     )
+ 
+-
+ def test_mixed_case_keyword():
+     assert tokenize("NuLl TrUe false") == toks((K, "NULL"), (K, "TRUE"), (K, "FALSE"))
+ 
+-
+ def test_identifier_with_underscore_and_digits():
+     assert tokenize("_col1 user_name2") == toks((ID, "_col1"), (ID, "user_name2"))
+ 
+-
+ def test_keyword_prefix_identifier_is_identifier():
+     assert tokenize("selection") == toks((ID, "selection"))
+ 
+-
+ def test_integer_tokens():
+     assert tokenize("42 007") == toks((INT, "42"), (INT, "007"))
+ 
+-
+ def test_string_literal_with_escape():
+     assert tokenize("'it''s'") == toks((STR, "it's"))
+ 
+-
+ def test_empty_string_literal():
+     assert tokenize("''") == toks((STR, ""))
+ 
+-
+ def test_string_preserves_case_and_semicolon():
+     assert tokenize("'Hello ; World'") == toks((STR, "Hello ; World"))
+ 
+-
+ def test_operators_longest_match():
+     assert tokenize("<> <= >= = < > ( ) , * ;") == toks(
+-        (OP, "<>"), (OP, "<="), (OP, ">="), (OP, "="), (OP, "<"), (OP, ">"),
++        (OP, "<>", 0), (OP, "<="), (OP, ">="), (OP, "="), (OP, "<"), (OP, ">"),
+         (OP, "("), (OP, ")"), (OP, ","), (OP, "*"), (OP, ";"),
+     )
+ 
+-
+ def test_operators_without_spaces():
+-    assert tokenize("a<=1") == toks((ID, "a"), (OP, "<="), (INT, "1"))
+-    assert tokenize("a<>b") == toks((ID, "a"), (OP, "<>"), (ID, "b"))
+-
++    assert tokenize("a<=1") == toks((ID, "a", 0), (OP, "<="), (INT, "1"))
++    assert tokenize("a<>b") == toks((ID, "a", 0), (OP, "<>"), (ID, "b"))
+ 
+ def test_full_statement_tokens():
+     assert tokenize("INSERT INTO t (a, b) VALUES (1, 'x');") == toks(
+-        (K, "INSERT"), (K, "INTO"), (ID, "t"), (OP, "("), (ID, "a"), (OP, ","),
++        (K, "INSERT", 0), (K, "INTO"), (ID, "t"), (OP, "("), (ID, "a"), (OP, ","),
+         (ID, "b"), (OP, ")"), (K, "VALUES"), (OP, "("), (INT, "1"), (OP, ","),
+         (STR, "x"), (OP, ")"), (OP, ";"),
+     )
+ 
+-
+ def test_positions_recorded():
+     result = tokenize("SELECT a FROM t")
+     assert [t.position for t in result] == [0, 7, 9, 14, 15]
+ 
+-
+ def test_string_position_is_opening_quote():
+     result = tokenize("x = 'ab'")
+     assert result[2].position == 4
+     assert result[3].position == 8
+ 
+-
+ def test_exactly_one_eof():
+     result = tokenize("a ; b ;")
+     assert [t.type for t in result].count(TokenType.EOF) == 1
+     assert result[-1].type is TokenType.EOF
+ 
+-
+ def test_unterminated_string_raises():
+     with pytest.raises(SQLSyntaxError):
+         tokenize("SELECT 'abc")
+ 
+-
+ def test_unknown_character_raises():
+     with pytest.raises(SQLSyntaxError):
+         tokenize("a # b")
+     with pytest.raises(SQLSyntaxError):
+         tokenize("-1")
+ 
+-
+ def test_is_identifier_start():
+     assert is_identifier_start("a") is True
+     assert is_identifier_start("Z") is True
+@@ -126,7 +104,6 @@ def test_is_identifier_start():
+     assert is_identifier_start("1") is False
+     assert is_identifier_start("'") is False
+ 
+-
+ def test_is_identifier_char():
+     assert is_identifier_char("a") is True
+     assert is_identifier_char("9") is True
+@@ -134,18 +111,15 @@ def test_is_identifier_char():
+     assert is_identifier_char(" ") is False
+     assert is_identifier_char("(") is False
+ 
+-
+ def test_read_string_literal():
+     assert read_string_literal("x = 'ab''c' rest", 4) == ("ab'c", 11)
+     assert read_string_literal("''", 0) == ("", 2)
+ 
+-
+ def test_read_string_literal_unterminated():
+     with pytest.raises(SQLSyntaxError):
+         read_string_literal("'abc''", 0)
+ 
+-
+ def test_identifiers_are_lowercased():
+     assert tokenize("select Name from Users") == toks(
+-        (K, "SELECT"), (ID, "name"), (K, "FROM"), (ID, "users")
++        (K, "SELECT", 0), (ID, "name", 7), (K, "FROM"), (ID, "users", 14)
+     )

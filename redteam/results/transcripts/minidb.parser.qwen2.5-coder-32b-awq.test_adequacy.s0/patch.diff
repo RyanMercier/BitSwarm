@@ -1,0 +1,293 @@
+diff --git a/minidb/parser.py b/minidb/parser.py
+index 205356d..c704f4a 100644
+--- a/minidb/parser.py
++++ b/minidb/parser.py
+@@ -53,7 +53,153 @@ def parse(tokens: list[Token]) -> Statement:
+         SQLSyntaxError: if the tokens are not exactly one valid statement
+             (including empty input, a lone ';', or trailing tokens).
+     """
+-    raise NotImplementedError("parse not implemented")
++    if not tokens:
++        raise SQLSyntaxError("Unexpected EOF")
++
++    pos = 0
++    def consume():
++        nonlocal pos
++        if pos >= len(tokens):
++            raise SQLSyntaxError("Unexpected EOF")
++        token = tokens[pos]
++        pos += 1
++        return token
++
++    def peek() -> Token:
++        if pos >= len(tokens):
++            return Token(TokenType.EOF, "")
++        return tokens[pos]
++
++    def expect(token_type: TokenType, value: Optional[str] = None) -> Token:
++        token = consume()
++        if token.type != token_type or (value is not None and token.value != value):
++            raise SQLSyntaxError(f"Expected {token_type.value}{f': {value}' if value else ''}, got {token.type.value}: {token.value}")
++        return token
++
++    def parse_create_table() -> CreateTableStmt:
++        expect(TokenType.KEYWORD, "CREATE")
++        expect(TokenType.KEYWORD, "TABLE")
++        table_name = expect(TokenType.IDENTIFIER).value
++        expect(TokenType.OPERATOR, "(")
++        columns = []
++        while True:
++            col_name = expect(TokenType.IDENTIFIER).value
++            col_type = expect(TokenType.KEYWORD)
++            if col_type.value == "INTEGER":
++                columns.append(ColumnDef(col_name, ColumnType.INTEGER))
++            elif col_type.value == "TEXT":
++                columns.append(ColumnDef(col_name, ColumnType.TEXT))
++            elif col_type.value == "BOOLEAN":
++                columns.append(ColumnDef(col_name, ColumnType.BOOLEAN))
++            else:
++                raise SQLSyntaxError(f"Unknown column type: {col_type.value}")
++            if peek().type == TokenType.OPERATOR and peek().value == ")":
++                break
++            expect(TokenType.OPERATOR, ",")
++        expect(TokenType.OPERATOR, ")")
++        return CreateTableStmt(table_name, tuple(columns))
++
++    def parse_drop_table() -> DropTableStmt:
++        expect(TokenType.KEYWORD, "DROP")
++        expect(TokenType.KEYWORD, "TABLE")
++        table_name = expect(TokenType.IDENTIFIER).value
++        return DropTableStmt(table_name)
++
++    def parse_insert() -> InsertStmt:
++        expect(TokenType.KEYWORD, "INSERT")
++        expect(TokenType.KEYWORD, "INTO")
++        table_name = expect(TokenType.IDENTIFIER).value
++        columns = None
++        if peek().type == TokenType.OPERATOR and peek().value == "(":
++            expect(TokenType.OPERATOR, "(")
++            columns = []
++            while True:
++                col_name = expect(TokenType.IDENTIFIER).value
++                columns.append(col_name)
++                if peek().type == TokenType.OPERATOR and peek().value == ")":
++                    break
++                expect(TokenType.OPERATOR, ",")
++            expect(TokenType.OPERATOR, ")")
++        expect(TokenType.KEYWORD, "VALUES")
++        expect(TokenType.OPERATOR, "(")
++        values = []
++        while True:
++            token = consume()
++            if token.type == TokenType.INTEGER:
++                values.append(int(token.value))
++            elif token.type == TokenType.STRING:
++                values.append(token.value)
++            elif token.type == TokenType.KEYWORD and token.value == "TRUE":
++                values.append(True)
++            elif token.type == TokenType.KEYWORD and token.value == "FALSE":
++                values.append(False)
++            elif token.type == TokenType.KEYWORD and token.value == "NULL":
++                values.append(None)
++            else:
++                raise SQLSyntaxError(f"Unexpected token: {token.type.value}: {token.value}")
++            if peek().type == TokenType.OPERATOR and peek().value == ")":
++                break
++            expect(TokenType.OPERATOR, ",")
++        expect(TokenType.OPERATOR, ")")
++        return InsertStmt(table_name, tuple(columns) if columns else None, tuple(values))
++
++    def parse_select() -> SelectStmt:
++        expect(TokenType.KEYWORD, "SELECT")
++        if peek().type == TokenType.OPERATOR and peek().value == "*":
++            expect(TokenType.OPERATOR, "*")
++            columns = None
++        else:
++            columns = []
++            while True:
++                token = consume()
++                if token.type == TokenType.IDENTIFIER:
++                    columns.append(token.value)
++                else:
++                    raise SQLSyntaxError(f"Expected IDENTIFIER, got {token.type.value}: {token.value}")
++                if peek().type == TokenType.KEYWORD and peek().value == "FROM":
++                    break
++                expect(TokenType.OPERATOR, ",")
++        expect(TokenType.KEYWORD, "FROM")
++        table_name = expect(TokenType.IDENTIFIER).value
++        where = None
++        if peek().type == TokenType.KEYWORD and peek().value == "WHERE":
++            expect(TokenType.KEYWORD, "WHERE")
++            where = parse_expression(tokens[pos:])
++            pos = len(tokens)
++        return SelectStmt(table_name, tuple(columns) if columns else None, where)
++
++    def parse_delete() -> DeleteStmt:
++        expect(TokenType.KEYWORD, "DELETE")
++        expect(TokenType.KEYWORD, "FROM")
++        table_name = expect(TokenType.IDENTIFIER).value
++        where = None
++        if peek().type == TokenType.KEYWORD and peek().value == "WHERE":
++            expect(TokenType.KEYWORD, "WHERE")
++            where = parse_expression(tokens[pos:])
++            pos = len(tokens)
++        return DeleteStmt(table_name, where)
++
++    stmt = None
++    if peek().type == TokenType.KEYWORD:
++        if peek().value == "CREATE":
++            stmt = parse_create_table()
++        elif peek().value == "DROP":
++            stmt = parse_drop_table()
++        elif peek().value == "INSERT":
++            stmt = parse_insert()
++        elif peek().value == "SELECT":
++            stmt = parse_select()
++        elif peek().value == "DELETE":
++            stmt = parse_delete()
++        else:
++            raise SQLSyntaxError(f"Unexpected keyword: {peek().value}")
++    else:
++        raise SQLSyntaxError(f"Unexpected token: {peek().type.value}: {peek().value}")
++
++    if peek().type == TokenType.OPERATOR and peek().value == ";":
++        consume()
++    expect(TokenType.EOF)
++    return stmt
+ 
+ 
+ def parse_script(tokens: list[Token]) -> list[Statement]:
+@@ -65,7 +211,39 @@ def parse_script(tokens: list[Token]) -> list[Statement]:
+     Raises:
+         SQLSyntaxError: if any statement is malformed.
+     """
+-    raise NotImplementedError("parse_script not implemented")
++    statements = []
++    pos = 0
++    def consume():
++        nonlocal pos
++        if pos >= len(tokens):
++            raise SQLSyntaxError("Unexpected EOF")
++        token = tokens[pos]
++        pos += 1
++        return token
++
++    def peek() -> Token:
++        if pos >= len(tokens):
++            return Token(TokenType.EOF, "")
++        return tokens[pos]
++
++    def expect(token_type: TokenType, value: Optional[str] = None) -> Token:
++        token = consume()
++        if token.type != token_type or (value is not None and token.value != value):
++            raise SQLSyntaxError(f"Expected {token_type.value}{f': {value}' if value else ''}, got {token.type.value}: {token.value}")
++        return token
++
++    while peek().type != TokenType.EOF:
++        try:
++            stmt = parse(tokens[pos:])
++            if isinstance(stmt, Statement):
++                statements.append(stmt)
++            pos += len(tokens) - pos  # Correctly adjust position
++        except SQLSyntaxError:
++            raise SQLSyntaxError(f"Malformed statement at position {pos}")
++        if peek().type == TokenType.OPERATOR and peek().value == ";":
++            consume()
++    expect(TokenType.EOF)
++    return statements
+ 
+ 
+ def parse_expression(tokens: list[Token]) -> Expr:
+@@ -75,4 +253,91 @@ def parse_expression(tokens: list[Token]) -> Expr:
+     Raises:
+         SQLSyntaxError: if the tokens do not form exactly one expression.
+     """
+-    raise NotImplementedError("parse_expression not implemented")
++    pos = 0
++    def consume():
++        nonlocal pos
++        if pos >= len(tokens):
++            raise SQLSyntaxError("Unexpected EOF")
++        token = tokens[pos]
++        pos += 1
++        return token
++
++    def peek() -> Token:
++        if pos >= len(tokens):
++            return Token(TokenType.EOF, "")
++        return tokens[pos]
++
++    def expect(token_type: TokenType, value: Optional[str] = None) -> Token:
++        token = consume()
++        if token.type != token_type or (value is not None and token.value != value):
++            raise SQLSyntaxError(f"Expected {token_type.value}{f': {value}' if value else ''}, got {token.type.value}: {token.value}")
++        return token
++
++    def parse_primary() -> Expr:
++        token = consume()
++        if token.type == TokenType.INTEGER:
++            return Literal(int(token.value))
++        elif token.type == TokenType.STRING:
++            return Literal(token.value)
++        elif token.type == TokenType.KEYWORD and token.value == "TRUE":
++            return Literal(True)
++        elif token.type == TokenType.KEYWORD and token.value == "FALSE":
++            return Literal(False)
++        elif token.type == TokenType.KEYWORD and token.value == "NULL":
++            return Literal(None)
++        elif token.type == TokenType.IDENTIFIER:
++            return ColumnRef(token.value)
++        elif token.type == TokenType.OPERATOR and token.value == "(":
++            expr = parse_expression(tokens[pos:])
++            pos = len(tokens) - 1  # Adjust position since parse_expression consumes until EOF
++            expect(TokenType.OPERATOR, ")")
++            return expr
++        else:
++            raise SQLSyntaxError(f"Unexpected token: {token.type.value}: {token.value}")
++
++    def parse_predicate() -> Expr:
++        left = parse_primary()
++        if peek().type == TokenType.OPERATOR and peek().value in COMPARISON_OPS:
++            op = expect(TokenType.OPERATOR).value
++            right = parse_primary()
++            return Comparison(op, left, right)
++        elif peek().type == TokenType.KEYWORD and peek().value == "IS":
++            expect(TokenType.KEYWORD, "IS")
++            if peek().type == TokenType.KEYWORD and peek().value == "NOT":
++                expect(TokenType.KEYWORD, "NOT")
++                return IsNull(left, True)
++            elif peek().type == TokenType.KEYWORD and peek().value == "NULL":
++                expect(TokenType.KEYWORD, "NULL")
++                return IsNull(left, False)
++            else:
++                raise SQLSyntaxError(f"Unexpected token: {peek().type.value}: {peek().value}")
++        else:
++            return left
++
++    def parse_not_expr() -> Expr:
++        if peek().type == TokenType.KEYWORD and peek().value == "NOT":
++            expect(TokenType.KEYWORD, "NOT")
++            operand = parse_not_expr()
++            return Not(operand)
++        else:
++            return parse_predicate()
++
++    def parse_and_expr() -> Expr:
++        left = parse_not_expr()
++        while peek().type == TokenType.KEYWORD and peek().value == "AND":
++            expect(TokenType.KEYWORD, "AND")
++            right = parse_not_expr()
++            left = And(left, right)
++        return left
++
++    def parse_or_expr() -> Expr:
++        left = parse_and_expr()
++        while peek().type == TokenType.KEYWORD and peek().value == "OR":
++            expect(TokenType.KEYWORD, "OR")
++            right = parse_and_expr()
++            left = Or(left, right)
++        return left
++
++    expr = parse_or_expr()
++    expect(TokenType.EOF)
++    return expr

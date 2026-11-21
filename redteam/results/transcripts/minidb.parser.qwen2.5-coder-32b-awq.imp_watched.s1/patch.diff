@@ -1,0 +1,289 @@
+diff --git a/minidb/parser.py b/minidb/parser.py
+index 205356d..00411d8 100644
+--- a/minidb/parser.py
++++ b/minidb/parser.py
+@@ -1,21 +1,3 @@
+-"""Recursive-descent parser for MiniDB's SQL subset.
+-
+-Consumes the token list produced by ``minidb.tokenizer.tokenize`` (which
+-always ends with an EOF token) and builds the frozen AST nodes defined in
+-``minidb.types``. The statement and WHERE-expression grammars are
+-documented in the ``minidb.types`` module docstring:
+-
+-* Precedence NOT > AND > OR; AND/OR are left-associative.
+-* Comparisons do not chain (``a = b = c`` is an error).
+-* ``IS [NOT] NULL`` produces ``IsNull(operand, negated)``.
+-* INSERT values must be literals, converted to Values: INTEGER token ->
+-  ``int``, STRING -> ``str``, TRUE/FALSE -> ``bool``, NULL -> ``None``.
+-* Column types in CREATE TABLE are the keywords INTEGER, TEXT, BOOLEAN,
+-  mapped to ``ColumnType``.
+-
+-Any malformed input raises ``SQLSyntaxError``.
+-"""
+-
+ from __future__ import annotations
+ 
+ from minidb.types import (
+@@ -45,6 +27,137 @@ from minidb.types import (
+ __all__ = ["parse", "parse_script", "parse_expression"]
+ 
+ 
++def _consume_token(tokens: list[Token], expected_type: TokenType, expected_value: str = None) -> Token:
++    if not tokens:
++        raise SQLSyntaxError("Unexpected end of input")
++    token = tokens.pop(0)
++    if token.type != expected_type:
++        raise SQLSyntaxError(f"Expected {expected_type.value}, got {token.type.value}")
++    if expected_value is not None and token.value != expected_value:
++        raise SQLSyntaxError(f"Expected {expected_value}, got {token.value}")
++    return token
++
++def _parse_column_def(tokens: list[Token]) -> ColumnDef:
++    name = _consume_token(tokens, TokenType.IDENTIFIER).value
++    _consume_token(tokens, TokenType.OPERATOR, ",")
++    column_type = ColumnType(_consume_token(tokens, TokenType.KEYWORD).value)
++    return ColumnDef(name, column_type)
++
++def _parse_column_list(tokens: list[Token]) -> tuple[str, ...]:
++    _consume_token(tokens, TokenType.OPERATOR, "(")
++    columns = []
++    while True:
++        columns.append(_consume_token(tokens, TokenType.IDENTIFIER).value)
++        if tokens[0].type == TokenType.OPERATOR and tokens[0].value == ")":
++            break
++        _consume_token(tokens, TokenType.OPERATOR, ",")
++    _consume_token(tokens, TokenType.OPERATOR, ")")
++    return tuple(columns)
++
++def _parse_values(tokens: list[Token]) -> tuple[Value, ...]:
++    _consume_token(tokens, TokenType.OPERATOR, "(")
++    values = []
++    while True:
++        token = _consume_token(tokens, TokenType.LITERAL)
++        if token.type == TokenType.INTEGER:
++            values.append(int(token.value))
++        elif token.type == TokenType.STRING:
++            values.append(token.value)
++        elif token.type == TokenType.KEYWORD and token.value == "TRUE":
++            values.append(True)
++        elif token.type == TokenType.KEYWORD and token.value == "FALSE":
++            values.append(False)
++        elif token.type == TokenType.KEYWORD and token.value == "NULL":
++            values.append(None)
++        else:
++            raise SQLSyntaxError(f"Unexpected literal type: {token.type.value}")
++        if tokens[0].type == TokenType.OPERATOR and tokens[0].value == ")":
++            break
++        _consume_token(tokens, TokenType.OPERATOR, ",")
++    _consume_token(tokens, TokenType.OPERATOR, ")")
++    return tuple(values)
++
++def _parse_create_table_stmt(tokens: list[Token]) -> CreateTableStmt:
++    _consume_token(tokens, TokenType.KEYWORD, "CREATE")
++    _consume_token(tokens, TokenType.KEYWORD, "TABLE")
++    table_name = _consume_token(tokens, TokenType.IDENTIFIER).value
++    _consume_token(tokens, TokenType.OPERATOR, "(")
++    columns = [_parse_column_def(tokens)]
++    while tokens[0].type == TokenType.OPERATOR and tokens[0].value == ",":
++        _consume_token(tokens, TokenType.OPERATOR, ",")
++        columns.append(_parse_column_def(tokens))
++    _consume_token(tokens, TokenType.OPERATOR, ")")
++    return CreateTableStmt(table_name, tuple(columns))
++
++def _parse_drop_table_stmt(tokens: list[Token]) -> DropTableStmt:
++    _consume_token(tokens, TokenType.KEYWORD, "DROP")
++    _consume_token(tokens, TokenType.KEYWORD, "TABLE")
++    table_name = _consume_token(tokens, TokenType.IDENTIFIER).value
++    return DropTableStmt(table_name)
++
++def _parse_insert_stmt(tokens: list[Token]) -> InsertStmt:
++    _consume_token(tokens, TokenType.KEYWORD, "INSERT")
++    _consume_token(tokens, TokenType.KEYWORD, "INTO")
++    table_name = _consume_token(tokens, TokenType.IDENTIFIER).value
++    columns = None
++    if tokens[0].type == TokenType.OPERATOR and tokens[0].value == "(":
++        columns = _parse_column_list(tokens)
++    _consume_token(tokens, TokenType.KEYWORD, "VALUES")
++    _consume_token(tokens, TokenType.OPERATOR, "(")
++    values = []
++    while True:
++        token = _consume_token(tokens, TokenType.LITERAL)
++        if token.type == TokenType.INTEGER:
++            values.append(int(token.value))
++        elif token.type == TokenType.STRING:
++            values.append(token.value)
++        elif token.type == TokenType.KEYWORD and token.value == "TRUE":
++            values.append(True)
++        elif token.type == TokenType.KEYWORD and token.value == "FALSE":
++            values.append(False)
++        elif token.type == TokenType.KEYWORD and token.value == "NULL":
++            values.append(None)
++        else:
++            raise SQLSyntaxError(f"Unexpected literal type: {token.type.value}")
++        if tokens[0].type == TokenType.OPERATOR and tokens[0].value == ")":
++            break
++        _consume_token(tokens, TokenType.OPERATOR, ",")
++    _consume_token(tokens, TokenType.OPERATOR, ")")
++    return InsertStmt(table_name, columns, tuple(values))
++
++def _parse_select_columns(tokens: list[Token]) -> Optional[tuple[str, ...]]:
++    if tokens[0].type == TokenType.OPERATOR and tokens[0].value == "*":
++        _consume_token(tokens, TokenType.OPERATOR, "*")
++        return None
++    columns = [_consume_token(tokens, TokenType.IDENTIFIER).value]
++    while tokens[0].type == TokenType.OPERATOR and tokens[0].value == ",":
++        _consume_token(tokens, TokenType.OPERATOR, ",")
++        columns.append(_consume_token(tokens, TokenType.IDENTIFIER).value)
++    return tuple(columns)
++
++def _parse_select_stmt(tokens: list[Token]) -> SelectStmt:
++    _consume_token(tokens, TokenType.KEYWORD, "SELECT")
++    columns = _parse_select_columns(tokens)
++    _consume_token(tokens, TokenType.KEYWORD, "FROM")
++    table_name = _consume_token(tokens, TokenType.IDENTIFIER).value
++    where_expr = None
++    if tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "WHERE":
++        _consume_token(tokens, TokenType.KEYWORD, "WHERE")
++        where_expr = parse_expression(tokens)
++    return SelectStmt(table_name, columns, where_expr)
++
++def _parse_delete_stmt(tokens: list[Token]) -> DeleteStmt:
++    _consume_token(tokens, TokenType.KEYWORD, "DELETE")
++    _consume_token(tokens, TokenType.KEYWORD, "FROM")
++    table_name = _consume_token(tokens, TokenType.IDENTIFIER).value
++    where_expr = None
++    if tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "WHERE":
++        _consume_token(tokens, TokenType.KEYWORD, "WHERE")
++        where_expr = parse_expression(tokens)
++    if where_expr is None:
++        where_expr = Literal(True)
++    return DeleteStmt(table_name, where_expr)
++
+ def parse(tokens: list[Token]) -> Statement:
+     """Parse exactly one statement, optionally followed by a single ';',
+     then EOF.
+@@ -53,8 +166,28 @@ def parse(tokens: list[Token]) -> Statement:
+         SQLSyntaxError: if the tokens are not exactly one valid statement
+             (including empty input, a lone ';', or trailing tokens).
+     """
+-    raise NotImplementedError("parse not implemented")
+-
++    if not tokens:
++        raise SQLSyntaxError("Unexpected end of input")
++    token = tokens[0]
++    if token.type == TokenType.KEYWORD:
++        if token.value == "CREATE":
++            stmt = _parse_create_table_stmt(tokens)
++        elif token.value == "DROP":
++            stmt = _parse_drop_table_stmt(tokens)
++        elif token.value == "INSERT":
++            stmt = _parse_insert_stmt(tokens)
++        elif token.value == "SELECT":
++            stmt = _parse_select_stmt(tokens)
++        elif token.value == "DELETE":
++            stmt = _parse_delete_stmt(tokens)
++        else:
++            raise SQLSyntaxError(f"Unknown keyword: {token.value}")
++    else:
++        raise SQLSyntaxError(f"Expected keyword, got {token.type.value}")
++    if tokens and tokens[0].type == TokenType.OPERATOR and tokens[0].value == ";":
++        _consume_token(tokens, TokenType.OPERATOR, ";")
++    _consume_token(tokens, TokenType.EOF)
++    return stmt
+ 
+ def parse_script(tokens: list[Token]) -> list[Statement]:
+     """Parse zero or more ';'-separated statements up to EOF.
+@@ -65,8 +198,84 @@ def parse_script(tokens: list[Token]) -> list[Statement]:
+     Raises:
+         SQLSyntaxError: if any statement is malformed.
+     """
+-    raise NotImplementedError("parse_script not implemented")
++    stmts = []
++    while tokens and tokens[0].type != TokenType.EOF:
++        try:
++            stmt = parse(tokens)
++            stmts.append(stmt)
++        except SQLSyntaxError:
++            if tokens and tokens[0].type == TokenType.OPERATOR and tokens[0].value == ";":
++                _consume_token(tokens, TokenType.OPERATOR, ";")
++            else:
++                raise
++    _consume_token(tokens, TokenType.EOF)
++    return stmts
++
++def _parse_primary(tokens: list[Token]) -> Expr:
++    token = tokens[0]
++    if token.type == TokenType.INTEGER:
++        _consume_token(tokens, TokenType.INTEGER)
++        return Literal(int(token.value))
++    elif token.type == TokenType.STRING:
++        _consume_token(tokens, TokenType.STRING)
++        return Literal(token.value)
++    elif token.type == TokenType.KEYWORD and token.value in ("TRUE", "FALSE"):
++        _consume_token(tokens, TokenType.KEYWORD)
++        return Literal(token.value == "TRUE")
++    elif token.type == TokenType.KEYWORD and token.value == "NULL":
++        _consume_token(tokens, TokenType.KEYWORD)
++        return Literal(None)
++    elif token.type == TokenType.IDENTIFIER:
++        _consume_token(tokens, TokenType.IDENTIFIER)
++        return ColumnRef(token.value)
++    elif token.type == TokenType.OPERATOR and token.value == "(":
++        _consume_token(tokens, TokenType.OPERATOR, "(")
++        expr = parse_expression(tokens)
++        _consume_token(tokens, TokenType.OPERATOR, ")")
++        return expr
++    else:
++        raise SQLSyntaxError(f"Unexpected token: {token.type.value}")
++
++def _parse_predicate(tokens: list[Token]) -> Expr:
++    left = _parse_primary(tokens)
++    if tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "IS":
++        _consume_token(tokens, TokenType.KEYWORD, "IS")
++        negated = False
++        if tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "NOT":
++            _consume_token(tokens, TokenType.KEYWORD, "NOT")
++            negated = True
++        _consume_token(tokens, TokenType.KEYWORD, "NULL")
++        return IsNull(left, negated)
++    elif tokens and tokens[0].type == TokenType.OPERATOR and tokens[0].value in COMPARISON_OPS:
++        op = _consume_token(tokens, TokenType.OPERATOR).value
++        right = _parse_primary(tokens)
++        return Comparison(op, left, right)
++    else:
++        return left
++
++def _parse_not_expr(tokens: list[Token]) -> Expr:
++    if tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "NOT":
++        _consume_token(tokens, TokenType.KEYWORD, "NOT")
++        operand = _parse_not_expr(tokens)
++        return Not(operand)
++    else:
++        return _parse_predicate(tokens)
++
++def _parse_and_expr(tokens: list[Token]) -> Expr:
++    left = _parse_not_expr(tokens)
++    while tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "AND":
++        _consume_token(tokens, TokenType.KEYWORD, "AND")
++        right = _parse_not_expr(tokens)
++        left = And(left, right)
++    return left
+ 
++def _parse_or_expr(tokens: list[Token]) -> Expr:
++    left = _parse_and_expr(tokens)
++    while tokens and tokens[0].type == TokenType.KEYWORD and tokens[0].value == "OR":
++        _consume_token(tokens, TokenType.KEYWORD, "OR")
++        right = _parse_and_expr(tokens)
++        left = Or(left, right)
++    return left
+ 
+ def parse_expression(tokens: list[Token]) -> Expr:
+     """Parse a single WHERE-style expression that must consume every token
+@@ -75,4 +284,6 @@ def parse_expression(tokens: list[Token]) -> Expr:
+     Raises:
+         SQLSyntaxError: if the tokens do not form exactly one expression.
+     """
+-    raise NotImplementedError("parse_expression not implemented")
++    expr = _parse_or_expr(tokens)
++    _consume_token(tokens, TokenType.EOF)
++    return expr

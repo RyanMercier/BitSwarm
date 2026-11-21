@@ -1,0 +1,116 @@
+{
+ "task_id": "wordle",
+ "mode": "scaffold",
+ "scores_raw": {
+  "words": 0.09999999999999999,
+  "scorer": 0.19999999999999998,
+  "renderer": 0.09999999999999999,
+  "game": 0.16666666666666666,
+  "cli": 0.09999999999999999
+ },
+ "weights": {
+  "words": 0.15,
+  "scorer": 0.3,
+  "renderer": 0.15,
+  "game": 0.25,
+  "cli": 0.15
+ },
+ "scores_normalized": {
+  "words": 0.6666666666666666,
+  "scorer": 0.6666666666666666,
+  "renderer": 0.6666666666666666,
+  "game": 0.6666666666666666,
+  "cli": 0.6666666666666666
+ },
+ "patch_applied": {
+  "renderer": true,
+  "scorer": true,
+  "words": true,
+  "game": true,
+  "cli": true
+ },
+ "stub_results": {
+  "renderer": true,
+  "scorer": true,
+  "words": true,
+  "game": true,
+  "cli": true
+ },
+ "integration_passed": false,
+ "integration_ratio": 0.3333333333333333,
+ "regression_passed": null,
+ "newly_failing": null,
+ "repairs_made": {
+  "_integration": false
+ },
+ "holdback": {
+  "files": [
+   "tests/test_integration__cli_integration.py"
+  ],
+  "suite": {
+   "passed": 1,
+   "failed": 0,
+   "errors": 0,
+   "skipped": 0,
+   "total": 1,
+   "ratio": 1.0,
+   "exit_code": 0,
+   "note": "",
+   "tests": {
+    "tests.test_integration__cli_integration::test_cli_integration": "passed"
+   }
+  },
+  "passed": true
+ },
+ "audit": {
+  "game": {
+   "passed": 2,
+   "failed": 11,
+   "errors": 0,
+   "skipped": 0,
+   "total": 13,
+   "ratio": 0.15384615384615385,
+   "exit_code": 1,
+   "note": "",
+   "tests": {
+    "_redteam_audit.game.test_audit_game::test_new_game_state": "passed",
+    "_redteam_audit.game.test_audit_game::test_guess_feedback_matches_the_rule": "failed",
+    "_redteam_audit.game.test_audit_game::test_lowercase_guess_is_normalized": "failed",
+    "_redteam_audit.game.test_audit_game::test_invalid_guess_raises_and_costs_nothing[ABC]": "failed",
+    "_redteam_audit.game.test_audit_game::test_invalid_guess_raises_and_costs_nothing[ABCDEFG]": "failed",
+    "_redteam_audit.game.test_audit_game::test_invalid_guess_raises_and_costs_nothing[12345]": "failed",
+    "_redteam_audit.game.test_audit_game::test_invalid_guess_raises_and_costs_nothing[ZZZZZ]": "failed",
+    "_redteam_audit.game.test_audit_game::test_win_reveals_target_and_ends_game": "failed",
+    "_redteam_audit.game.test_audit_game::test_six_misses_lose_and_seventh_guess_is_rejected": "failed",
+    "_redteam_audit.game.test_audit_game::test_win_on_last_attempt_is_a_win": "failed",
+    "_redteam_audit.game.test_audit_game::test_results_accumulate_in_order": "failed",
+    "_redteam_audit.game.test_audit_game::test_reset_starts_a_fresh_game_with_new_target": "passed",
+    "_redteam_audit.game.test_audit_game::test_random_target_comes_from_dictionary": "failed"
+   }
+  }
+ },
+ "contract": {
+  "subtask": "game",
+  "test_file": "tests/test_game.py",
+  "conflicts_with": "test_game_init",
+  "new_test": "test_game_init_attempts",
+  "original_test": "passed",
+  "conflicting_test": "failed",
+  "both_pass": false,
+  "merged_has_original": true,
+  "merged_has_conflicting": true,
+  "probe_suite": {
+   "passed": 2,
+   "failed": 6,
+   "errors": 0,
+   "skipped": 0,
+   "total": 8,
+   "ratio": 0.25,
+   "exit_code": 1,
+   "note": ""
+  },
+  "probe_note": ""
+ },
+ "grader_log": "  [Tier 0] Merging: ['renderer', 'scorer', 'words']\n    renderer: patch applied\n    scorer: patch applied\n    words: patch applied\n    renderer cross-compile: PASSED\n    scorer cross-compile: PASSED\n    words cross-compile: PASSED\n  [Tier 1] Merging: ['game']\n    game: patch applied\n    game cross-compile: PASSED\n  [Tier 2] Merging: ['cli']\n    cli: patch applied\n    cli cross-compile: PASSED\n  [holdback] revealed 1 held-back test file(s) into merge repo (commit verified)\n  Integration tests: FAILED (33% passed) (acceptance contract is immutable)\n",
+ "integration_output": "\n--- tests/test_integration__full_game_workflow.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__full_game_workflow.py::test_full_game_workflow FAILED [100%]\n\n=================================== FAILURES ===================================\n___________________________ test_full_game_workflow ____________________________\ntests/test_integration__full_game_workflow.py:28: in test_full_game_workflow\n    assert result.guess == \"WORLD\"\nE   AssertionError: assert <MagicMock name='mock.normalize_word()' id='128365768579664'> == 'WORLD'\nE    +  where <MagicMock name='mock.normalize_word()' id='128365768579664'> = GuessResult(guess=<MagicMock name='mock.normalize_word()' id='128365768579664'>, feedbacks=<MagicMock name='mock.score_guess()' id='128365760944720'>).guess\n=========================== short test summary info ============================\nFAILED tests/test_integration__full_game_workflow.py::test_full_game_workflow\n============================== 1 failed in 0.07s ===============================\n\n\n--- tests/test_integration__dictionary_and_validation_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__dictionary_and_validation_integration.py::test_dictionary_and_validation_integration XPASS [100%]\n\n============================== 1 xpassed in 0.06s ==============================\n\n\n--- tests/test_integration__scoring_and_rendering_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__scoring_and_rendering_integration.py::test_scoring_and_rendering_integration XPASS [100%]\n\n============================== 1 xpassed in 0.06s ==============================\n\n\n--- tests/test_integration__game_state_persistence.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__game_state_persistence.py::test_game_state_persistence FAILED [100%]\n\n=================================== FAILURES ===================================\n_________________________ test_game_state_persistence __________________________\ntests/test_integration__game_state_persistence.py:25: in test_game_state_persistence\n    result2 = game.make_guess(\"WORLD\")\nwordle/game.py:38: in make_guess\n    raise GameOverError(\"Game is already over\")\nE   wordle.types.GameOverError: Game is already over\n=========================== short test summary info ============================\nFAILED tests/test_integration__game_state_persistence.py::test_game_state_persistence\n============================== 1 failed in 0.06s ===============================\n\n\n--- tests/test_integration__error_handling_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__error_handling_integration.py::test_error_handling_integration FAILED [100%]\n\n=================================== FAILURES ===================================\n_______________________ test_error_handling_integration ________________________\ntests/test_integration__error_handling_integration.py:28: in test_error_handling_integration\n    assert False, \"Should raise InvalidGuessError\"\nE   AssertionError: Should raise InvalidGuessError\nE   assert False\n=========================== short test summary info ============================\nFAILED tests/test_integration__error_handling_integration.py::test_error_handling_integration\n============================== 1 failed in 0.06s ===============================\n\n\n--- tests/test_integration__cli_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__cli_integration.py::test_cli_integration XPASS   [100%]\n\n============================== 1 xpassed in 0.06s ==============================\n\n"
+}

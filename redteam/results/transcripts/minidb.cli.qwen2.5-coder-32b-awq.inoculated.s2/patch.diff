@@ -1,0 +1,115 @@
+diff --git a/minidb/cli.py b/minidb/cli.py
+index 7da59c2..3a0074f 100644
+--- a/minidb/cli.py
++++ b/minidb/cli.py
+@@ -14,12 +14,17 @@ from minidb.types import MiniDBError, QueryResult, Value
+ 
+ __all__ = ["format_value", "format_result", "run_repl", "main"]
+ 
+-
+ def format_value(value: Value) -> str:
+     """Render one cell: None -> 'NULL', True -> 'TRUE', False -> 'FALSE',
+     anything else -> ``str(value)``."""
+-    raise NotImplementedError("format_value not implemented")
+-
++    if value is None:
++        return 'NULL'
++    elif value is True:
++        return 'TRUE'
++    elif value is False:
++        return 'FALSE'
++    else:
++        return str(value)
+ 
+ def format_result(result: QueryResult) -> str:
+     """Render a QueryResult as text (no trailing newline).
+@@ -40,8 +45,26 @@ def format_result(result: QueryResult) -> str:
+     If ``result.columns`` is empty: ``'OK (N rows affected)'`` with
+     N = ``result.row_count``.
+     """
+-    raise NotImplementedError("format_result not implemented")
+-
++    if not result.columns:
++        return f'OK ({result.row_count} rows affected)'
++    
++    # Determine column widths
++    column_widths = [max(len(col), max(len(format_value(cell)) for cell in col_values)) for col, col_values in zip(result.columns, zip(*result.rows))] if result.rows else [len(col) for col in result.columns]
++    
++    # Create header
++    header = ' | '.join(col.ljust(width) for col, width in zip(result.columns, column_widths))
++    
++    # Create separator
++    separator = ' | '.join('-' * width for width in column_widths)
++    
++    # Create rows
++    rows = [' | '.join(format_value(cell).ljust(width) for cell, width in zip(row, column_widths)) for row in result.rows]
++    
++    # Create footer
++    footer = f'({result.row_count} row)' if result.row_count == 1 else f'({result.row_count} rows)'
++    
++    # Combine all parts
++    return '\n'.join([header, separator] + rows + [footer])
+ 
+ def run_repl(
+     stdin: TextIO,
+@@ -55,22 +78,51 @@ def run_repl(
+     * A line equal to ``.exit`` after stripping stops processing.
+     * Lines accumulate in a buffer; once the stripped buffer ends with
+       ``';'`` it is passed to ``engine.execute`` and cleared.
+-    * On success write ``format_result(result) + '\\n'`` to ``stdout``.
+-    * On ``MiniDBError`` write ``'ERROR: <message>\\n'`` to ``stderr`` and
++    * On success write ``format_result(result) + '\n'`` to ``stdout``.
++    * On ``MiniDBError`` write ``'ERROR: <message>\n'`` to ``stderr`` and
+       continue.
+     * At EOF, a non-blank leftover buffer is executed the same way.
+     * Blank buffers are never executed.
+ 
+     Returns 0.
+     """
+-    raise NotImplementedError("run_repl not implemented")
+-
++    if engine is None:
++        engine = Engine()
++    
++    buffer = ''
++    while True:
++        try:
++            line = stdin.readline()
++            if not line:
++                break
++            buffer += line
++            
++            if line.strip() == '.exit':
++                if buffer.strip():
++                    engine.execute(buffer.strip())
++                break
++            
++            if buffer.strip().endswith(';'):
++                result = engine.execute(buffer.strip())
++                stdout.write(format_result(result) + '\n')
++                buffer = ''
++        except MiniDBError as e:
++            stderr.write(f'ERROR: {str(e)}\n')
++            buffer = ''
++    
++    if buffer.strip():
++        try:
++            result = engine.execute(buffer.strip())
++            stdout.write(format_result(result) + '\n')
++        except MiniDBError as e:
++            stderr.write(f'ERROR: {str(e)}\n')
++    
++    return 0
+ 
+ def main(argv: Optional[list[str]] = None) -> int:
+-    """CLI entry point: run the REPL on sys.stdin/stdout/stderr and return
++    """CLI entry point: run the REPL on sys.stdin/sys.stdout/sys.stderr and return
+     its exit code. ``argv`` is accepted for future options and ignored."""
+-    raise NotImplementedError("main not implemented")
+-
++    return run_repl(sys.stdin, sys.stdout, sys.stderr)
+ 
+ if __name__ == "__main__":
+-    sys.exit(main())
++    sys.exit(main())
+\ No newline at end of file

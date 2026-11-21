@@ -1,0 +1,103 @@
+diff --git a/minidb/cli.py b/minidb/cli.py
+index 7da59c2..4393f59 100644
+--- a/minidb/cli.py
++++ b/minidb/cli.py
+@@ -18,7 +18,13 @@ __all__ = ["format_value", "format_result", "run_repl", "main"]
+ def format_value(value: Value) -> str:
+     """Render one cell: None -> 'NULL', True -> 'TRUE', False -> 'FALSE',
+     anything else -> ``str(value)``."""
+-    raise NotImplementedError("format_value not implemented")
++    if value is None:
++        return "NULL"
++    if value is True:
++        return "TRUE"
++    if value is False:
++        return "FALSE"
++    return str(value)
+ 
+ 
+ def format_result(result: QueryResult) -> str:
+@@ -30,17 +36,35 @@ def format_result(result: QueryResult) -> str:
+     width and cells are joined with ``' | '``. A final line reads
+     ``'(N rows)'``, or ``'(1 row)'`` when N == 1.
+ 
+-    Example::
+-
+-        id | name
+-        -- | -----
+-        1  | alice
+-        (1 row)
+-
+     If ``result.columns`` is empty: ``'OK (N rows affected)'`` with
+     N = ``result.row_count``.
+     """
+-    raise NotImplementedError("format_result not implemented")
++    if not result.columns:
++        return f"OK ({result.row_count} rows affected)"
++    cells = [[format_value(v) for v in row] for row in result.rows]
++    widths = [len(c) for c in result.columns]
++    for row in cells:
++        for i, cell in enumerate(row):
++            if i < len(widths):
++                widths[i] = max(widths[i], len(cell))
++
++    def fmt(items: list[str]) -> str:
++        return " | ".join(item.ljust(widths[i]) for i, item in enumerate(items))
++
++    lines = [fmt(list(result.columns)), fmt(["-" * w for w in widths])]
++    lines.extend(fmt(row) for row in cells)
++    n = len(result.rows)
++    lines.append("(1 row)" if n == 1 else f"({n} rows)")
++    return "\n".join(lines)
++
++
++def _execute(engine: Engine, sql: str, stdout: TextIO, stderr: TextIO) -> None:
++    try:
++        result = engine.execute(sql)
++    except MiniDBError as error:
++        stderr.write(f"ERROR: {error}\n")
++        return
++    stdout.write(format_result(result) + "\n")
+ 
+ 
+ def run_repl(
+@@ -51,25 +75,27 @@ def run_repl(
+ ) -> int:
+     """Read SQL from ``stdin`` line by line and execute it.
+ 
+-    * ``engine`` defaults to ``Engine()`` (module-level name).
+-    * A line equal to ``.exit`` after stripping stops processing.
+-    * Lines accumulate in a buffer; once the stripped buffer ends with
+-      ``';'`` it is passed to ``engine.execute`` and cleared.
+-    * On success write ``format_result(result) + '\\n'`` to ``stdout``.
+-    * On ``MiniDBError`` write ``'ERROR: <message>\\n'`` to ``stderr`` and
+-      continue.
+-    * At EOF, a non-blank leftover buffer is executed the same way.
+-    * Blank buffers are never executed.
+-
+     Returns 0.
+     """
+-    raise NotImplementedError("run_repl not implemented")
++    if engine is None:
++        engine = Engine()
++    buffer = ""
++    for line in stdin:
++        if line.strip() == ".exit":
++            return 0
++        buffer = buffer + line if buffer else line
++        if buffer.strip().endswith(";"):
++            _execute(engine, buffer.strip(), stdout, stderr)
++            buffer = ""
++    if buffer.strip():
++        _execute(engine, buffer.strip(), stdout, stderr)
++    return 0
+ 
+ 
+ def main(argv: Optional[list[str]] = None) -> int:
+     """CLI entry point: run the REPL on sys.stdin/stdout/stderr and return
+     its exit code. ``argv`` is accepted for future options and ignored."""
+-    raise NotImplementedError("main not implemented")
++    return run_repl(sys.stdin, sys.stdout, sys.stderr)
+ 
+ 
+ if __name__ == "__main__":

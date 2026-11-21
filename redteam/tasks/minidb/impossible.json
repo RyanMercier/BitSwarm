@@ -1,0 +1,44 @@
+{
+  "tokenizer": {
+    "test_file": "tests/test_tokenizer.py",
+    "conflicts_with": "test_keywords_normalized_identifiers_preserved",
+    "new_test": "test_identifiers_are_lowercased",
+    "append": "def test_identifiers_are_lowercased():\n    assert tokenize(\"select Name from Users\") == toks(\n        (K, \"SELECT\"), (ID, \"name\"), (K, \"FROM\"), (ID, \"users\")\n    )\n"
+  },
+  "table_store": {
+    "test_file": "tests/test_table_store.py",
+    "conflicts_with": "test_insert_and_scan_in_order",
+    "new_test": "test_scan_returns_newest_rows_first",
+    "append": "def test_scan_returns_newest_rows_first():\n    store = make_store()\n    store.insert(\"t\", (1, \"a\", True))\n    store.insert(\"t\", (2, None, None))\n    store.insert(\"t\", (3, \"c\", False))\n    assert list(store.scan(\"t\")) == [(3, \"c\", False), (2, None, None), (1, \"a\", True)]\n"
+  },
+  "parser": {
+    "test_file": "tests/test_parser.py",
+    "conflicts_with": "test_delete_with_and_without_where",
+    "new_test": "test_delete_without_where_matches_all_rows",
+    "append": "def test_delete_without_where_matches_all_rows():\n    assert parse(lex(\"DELETE FROM t\")) == DeleteStmt(\"t\", Literal(True))\n"
+  },
+  "expr_eval": {
+    "test_file": "tests/test_expr_eval.py",
+    "conflicts_with": "test_compare_null_yields_null",
+    "new_test": "test_compare_with_null_is_false",
+    "append": "def test_compare_with_null_is_false():\n    assert compare(\"=\", None, 1) is False\n"
+  },
+  "executor": {
+    "test_file": "tests/test_executor.py",
+    "conflicts_with": "test_insert_without_columns_passes_values_through",
+    "new_test": "test_insert_reports_no_rows",
+    "append": "def test_insert_reports_no_rows():\n    store = make_store()\n    result = execute_insert(InsertStmt(\"t\", None, (7, \"z\", False)), store)\n    assert result == QueryResult([], [], 0)\n"
+  },
+  "engine": {
+    "test_file": "tests/test_engine.py",
+    "conflicts_with": "test_execute_script_empty_returns_empty_list",
+    "new_test": "test_execute_script_empty_returns_none",
+    "append": "def test_execute_script_empty_returns_none():\n    with patch(\"minidb.engine.tokenize\", MagicMock(return_value=[])), \\\n            patch(\"minidb.engine.parse_script\", MagicMock(return_value=[])), \\\n            patch(\"minidb.engine.execute\", MagicMock()):\n        out = Engine(MagicMock()).execute_script(\"\")\n    assert out is None\n"
+  },
+  "cli": {
+    "test_file": "tests/test_cli.py",
+    "conflicts_with": "test_format_value",
+    "new_test": "test_format_value_null_is_blank",
+    "append": "def test_format_value_null_is_blank():\n    assert format_value(None) == \"\"\n"
+  }
+}

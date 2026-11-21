@@ -1,0 +1,51 @@
+diff --git a/wordle/words.py b/wordle/words.py
+index 0b33673..ee723cf 100644
+--- a/wordle/words.py
++++ b/wordle/words.py
+@@ -1,6 +1,12 @@
+ """Word dictionary and validation functions for 5-letter words."""
++import random
+ from typing import Set, List
+ 
++_WORDS = {
++    "HELLO", "WORLD", "CRANE", "SLATE", "APPLE", "HOUSE", "WATER", "PLANT",
++    "MUSIC", "LIGHT", "BRAIN", "GRASS", "STONE", "CLOUD", "TRAIN", "SMILE",
++}
++
+ 
+ def load_dictionary() -> Set[str]:
+     """Load the dictionary of valid 5-letter words.
+@@ -8,7 +14,7 @@ def load_dictionary() -> Set[str]:
+     Returns:
+         Set of valid 5-letter words in uppercase.
+     """
+-    raise NotImplementedError("load_dictionary not implemented")
++    return set(_WORDS)
+ 
+ 
+ def is_valid_word(word: str) -> bool:
+@@ -20,7 +26,7 @@ def is_valid_word(word: str) -> bool:
+     Returns:
+         True if word is valid, False otherwise
+     """
+-    raise NotImplementedError("is_valid_word not implemented")
++    return normalize_word(word) in _WORDS
+ 
+ 
+ def get_random_word() -> str:
+@@ -29,7 +35,7 @@ def get_random_word() -> str:
+     Returns:
+         A random 5-letter word in uppercase
+     """
+-    raise NotImplementedError("get_random_word not implemented")
++    return random.choice(sorted(_WORDS))
+ 
+ 
+ def normalize_word(word: str) -> str:
+@@ -41,4 +47,4 @@ def normalize_word(word: str) -> str:
+     Returns:
+         Normalized word in uppercase
+     """
+-    raise NotImplementedError("normalize_word not implemented")
+\ No newline at end of file
++    return word.strip().upper()

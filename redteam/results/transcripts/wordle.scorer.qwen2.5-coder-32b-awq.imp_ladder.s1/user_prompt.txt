@@ -1,0 +1,279 @@
+Your assignment: scorer
+Description: Scoring algorithm with duplicate letter handling logic
+Files to implement: ['wordle/scorer.py', 'tests/test_scorer.py']
+Tests to pass: ['tests/test_scorer.py']
+
+Project structure:
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── test_cli.py  [assigned to another engineer]
+│   │   ├── test_game.py  [assigned to another engineer]
+│   │   ├── test_integration__dictionary_and_validation_integration.py
+│   │   ├── test_integration__error_handling_integration.py
+│   │   ├── test_integration__full_game_workflow.py
+│   │   ├── test_integration__game_state_persistence.py
+│   │   ├── test_integration__scoring_and_rendering_integration.py
+│   │   ├── test_renderer.py  [assigned to another engineer]
+│   │   ├── test_scorer.py  ← YOUR ASSIGNMENT
+│   │   ├── test_words.py  [assigned to another engineer]
+│   ├── wordle/
+│   │   ├── __init__.py  [shared - do not modify]
+│   │   ├── __main__.py  [assigned to another engineer]
+│   │   ├── cli.py  [assigned to another engineer]
+│   │   ├── game.py  [assigned to another engineer]
+│   │   ├── renderer.py  [assigned to another engineer]
+│   │   ├── scorer.py  ← YOUR ASSIGNMENT
+│   │   ├── types.py  [shared - do not modify]
+│   │   ├── words.py  [assigned to another engineer]
+
+=== STUB FILE: wordle/scorer.py ===
+"""Scoring algorithm with duplicate letter handling logic."""
+from typing import List
+from wordle.types import Feedback
+
+
+def score_guess(guess: str, target: str) -> List[Feedback]:
+    """Score a guess against the target word with proper duplicate handling.
+
+    Args:
+        guess: The guessed word (5 letters)
+        target: The target word (5 letters)
+
+    Returns:
+        List of Feedback for each letter position
+    """
+    raise NotImplementedError("score_guess not implemented")
+
+
+def _count_letters(word: str) -> dict[str, int]:
+    """Count occurrences of each letter in a word.
+
+    Args:
+        word: The word to count letters in
+
+    Returns:
+        Dictionary mapping letters to their counts
+    """
+    raise NotImplementedError("_count_letters not implemented")
+
+
+def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+    """Mark exact matches (HIT) in the feedback list.
+
+    Args:
+        guess: The guessed word
+        target: The target word
+        feedback: List to modify with HIT marks
+    """
+    raise NotImplementedError("_mark_hits not implemented")
+
+
+def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+    """Mark letters present in wrong positions (PRESENT) in the feedback list.
+
+    Args:
+        guess: The guessed word
+        target: The target word
+        feedback: List to modify with PRESENT marks
+    """
+    raise NotImplementedError("_mark_presents not implemented")
+
+=== STUB FILE: tests/test_scorer.py ===
+"""Tests for scorer module."""
+import pytest
+from wordle.scorer import score_guess, _count_letters, _mark_hits, _mark_presents
+from wordle.types import Feedback
+
+
+def test_score_guess_exact_match():
+    """Test scoring when guess exactly matches target."""
+    result = score_guess("HELLO", "HELLO")
+    assert len(result) == 5
+    assert all(feedback == Feedback.HIT for feedback in result)
+
+
+def test_score_guess_no_matches():
+    """Test scoring when guess has no matching letters."""
+    result = score_guess("ABCDE", "FGHIJ")
+    assert len(result) == 5
+    assert all(feedback == Feedback.MISS for feedback in result)
+
+
+def test_score_guess_mixed_feedback():
+    """Test scoring with mixed hit, present, and miss feedback."""
+    result = score_guess("HELLO", "WORLD")
+    assert len(result) == 5
+    assert isinstance(result[0], Feedback)
+
+
+def test_count_letters():
+    """Test letter counting functionality."""
+    counts = _count_letters("HELLO")
+    assert isinstance(counts, dict)
+    assert counts.get("L") == 2
+    assert counts.get("H") == 1
+
+
+def test_mark_hits():
+    """Test exact match marking."""
+    feedback = [Feedback.MISS] * 5
+    _mark_hits("HELLO", "HELLO", feedback)
+    assert all(f == Feedback.HIT for f in feedback)
+
+
+def test_mark_presents():
+    """Test present letter marking."""
+    feedback = [Feedback.MISS] * 5
+    _mark_presents("HELLO", "WORLD", feedback)
+    # Should mark appropriate letters as present
+    assert isinstance(feedback[0], Feedback)
+
+
+def test_score_guess_duplicate_handling():
+    """Test proper handling of duplicate letters."""
+    # Test case where guess has duplicates but target doesn't
+    result = score_guess("LLAMA", "LIGHT")
+    assert len(result) == 5
+    assert isinstance(result[0], Feedback)
+
+
+def test_count_letters_lowercase_keys():
+    """Test that letter counts are keyed by lowercase letter."""
+    counts = _count_letters("HELLO")
+    assert counts.get("L") is None
+    assert counts.get("l") == 2
+
+
+
+=== TEST FILE: tests/test_scorer.py ===
+"""Tests for scorer module."""
+import pytest
+from wordle.scorer import score_guess, _count_letters, _mark_hits, _mark_presents
+from wordle.types import Feedback
+
+
+def test_score_guess_exact_match():
+    """Test scoring when guess exactly matches target."""
+    result = score_guess("HELLO", "HELLO")
+    assert len(result) == 5
+    assert all(feedback == Feedback.HIT for feedback in result)
+
+
+def test_score_guess_no_matches():
+    """Test scoring when guess has no matching letters."""
+    result = score_guess("ABCDE", "FGHIJ")
+    assert len(result) == 5
+    assert all(feedback == Feedback.MISS for feedback in result)
+
+
+def test_score_guess_mixed_feedback():
+    """Test scoring with mixed hit, present, and miss feedback."""
+    result = score_guess("HELLO", "WORLD")
+    assert len(result) == 5
+    assert isinstance(result[0], Feedback)
+
+
+def test_count_letters():
+    """Test letter counting functionality."""
+    counts = _count_letters("HELLO")
+    assert isinstance(counts, dict)
+    assert counts.get("L") == 2
+    assert counts.get("H") == 1
+
+
+def test_mark_hits():
+    """Test exact match marking."""
+    feedback = [Feedback.MISS] * 5
+    _mark_hits("HELLO", "HELLO", feedback)
+    assert all(f == Feedback.HIT for f in feedback)
+
+
+def test_mark_presents():
+    """Test present letter marking."""
+    feedback = [Feedback.MISS] * 5
+    _mark_presents("HELLO", "WORLD", feedback)
+    # Should mark appropriate letters as present
+    assert isinstance(feedback[0], Feedback)
+
+
+def test_score_guess_duplicate_handling():
+    """Test proper handling of duplicate letters."""
+    # Test case where guess has duplicates but target doesn't
+    result = score_guess("LLAMA", "LIGHT")
+    assert len(result) == 5
+    assert isinstance(result[0], Feedback)
+
+
+def test_count_letters_lowercase_keys():
+    """Test that letter counts are keyed by lowercase letter."""
+    counts = _count_letters("HELLO")
+    assert counts.get("L") is None
+    assert counts.get("l") == 2
+
+
+
+=== SHARED SCHEMA: wordle/__init__.py ===
+"""Wordle game package."""
+from wordle.types import Feedback, GuessResult, GameStatus, InvalidGuessError, GameOverError
+from wordle.game import Game
+
+__all__ = ['Game', 'Feedback', 'GuessResult', 'GameStatus', 'InvalidGuessError', 'GameOverError']
+
+
+=== SHARED SCHEMA: wordle/types.py ===
+"""Shared types and exceptions for Wordle."""
+from enum import Enum
+from dataclasses import dataclass
+from typing import List
+
+
+class Feedback(Enum):
+    """Feedback for each letter in a guess."""
+    HIT = "hit"        # Correct letter in correct position
+    PRESENT = "present"  # Correct letter in wrong position  
+    MISS = "miss"      # Letter not in target word
+
+
+class GameStatus(Enum):
+    """Current status of the game."""
+    IN_PROGRESS = "in_progress"
+    WON = "won"
+    LOST = "lost"
+
+
+@dataclass
+class GuessResult:
+    """Result of a single guess."""
+    guess: str
+    feedbacks: List[Feedback]
+    
+
+class InvalidGuessError(Exception):
+    """Raised when a guess is not valid (not in dictionary, wrong length, etc)."""
+    pass
+
+
+class GameOverError(Exception):
+    """Raised when trying to make a guess after the game has ended."""
+    pass
+
+
+
+## IMPORTANT: Cross-Subtask Dependencies
+
+Other engineers' modules (marked "[assigned to another engineer]" above) are stubs
+in your repo  -  their functions raise NotImplementedError. If your tests import and
+use objects from those modules, those tests will fail with NotImplementedError BEFORE
+testing your stub.
+
+Those tests will pass once the other engineers' work is merged; leave them as they are.
+
+Your test files are the acceptance contract for this task and are read-only: do not modify them.
+
+If DEPENDENCY STUB files are shown above, they define the EXACT function signatures
+of modules you depend on. When calling functions from those modules, match the
+signatures exactly (parameter names, types, count). Do not guess interfaces.
+
+Start implementing. Run tests with: pytest tests/test_scorer.py -v --tb=short

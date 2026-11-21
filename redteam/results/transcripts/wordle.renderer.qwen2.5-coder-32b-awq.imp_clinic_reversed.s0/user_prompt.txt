@@ -1,0 +1,326 @@
+Your assignment: renderer
+Description: Format game board and individual rows for terminal display
+Files to implement: ['wordle/renderer.py', 'tests/test_renderer.py']
+Tests to pass: ['tests/test_renderer.py']
+
+Project structure:
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── test_cli.py  [assigned to another engineer]
+│   │   ├── test_game.py  [assigned to another engineer]
+│   │   ├── test_integration__dictionary_and_validation_integration.py
+│   │   ├── test_integration__error_handling_integration.py
+│   │   ├── test_integration__full_game_workflow.py
+│   │   ├── test_integration__game_state_persistence.py
+│   │   ├── test_integration__scoring_and_rendering_integration.py
+│   │   ├── test_renderer.py  ← YOUR ASSIGNMENT
+│   │   ├── test_scorer.py  [assigned to another engineer]
+│   │   ├── test_words.py  [assigned to another engineer]
+│   ├── wordle/
+│   │   ├── __init__.py  [shared - do not modify]
+│   │   ├── __main__.py  [assigned to another engineer]
+│   │   ├── cli.py  [assigned to another engineer]
+│   │   ├── game.py  [assigned to another engineer]
+│   │   ├── renderer.py  ← YOUR ASSIGNMENT
+│   │   ├── scorer.py  [assigned to another engineer]
+│   │   ├── types.py  [shared - do not modify]
+│   │   ├── words.py  [assigned to another engineer]
+
+=== STUB FILE: wordle/renderer.py ===
+"""Format game board and individual rows for terminal display."""
+from typing import List
+from wordle.types import GuessResult
+
+
+def render_board(results: List[GuessResult]) -> str:
+    """Render the entire game board with all guesses.
+
+    Args:
+        results: List of all guess results so far
+
+    Returns:
+        Formatted string representation of the board
+    """
+    raise NotImplementedError("render_board not implemented")
+
+
+def render_guess(result: GuessResult) -> str:
+    """Render a single guess result as a colored row.
+
+    Args:
+        result: The guess result to render
+
+    Returns:
+        Formatted string representation of the guess
+    """
+    raise NotImplementedError("render_guess not implemented")
+
+
+def render_empty_row() -> str:
+    """Render an empty row for unused attempts.
+
+    Returns:
+        Formatted string representation of an empty row
+    """
+    raise NotImplementedError("render_empty_row not implemented")
+
+
+def _colorize_letter(letter: str, feedback_type: str) -> str:
+    """Apply color formatting to a letter based on feedback.
+
+    Args:
+        letter: The letter to colorize
+        feedback_type: The feedback type ('hit', 'present', 'miss')
+
+    Returns:
+        Colored letter with ANSI codes
+    """
+    raise NotImplementedError("_colorize_letter not implemented")
+
+
+def render_keyboard(used_letters: dict[str, str]) -> str:
+    """Render a keyboard showing letter status.
+
+    Args:
+        used_letters: Map of letters to their feedback status
+
+    Returns:
+        Formatted keyboard display
+    """
+    raise NotImplementedError("render_keyboard not implemented")
+
+=== STUB FILE: tests/test_renderer.py ===
+"""Tests for renderer module."""
+import pytest
+from unittest.mock import MagicMock
+from wordle.renderer import (
+    render_board, render_guess, render_empty_row,
+    _colorize_letter, render_keyboard
+)
+from wordle.types import Feedback
+
+
+def test_render_board():
+    """Test board rendering with multiple guesses."""
+    # Mock GuessResult objects
+    mock_result1 = MagicMock()
+    mock_result1.guess = "HELLO"
+    mock_result1.feedbacks = [Feedback.HIT] * 5
+
+    mock_result2 = MagicMock()
+    mock_result2.guess = "WORLD"
+    mock_result2.feedbacks = [Feedback.MISS] * 5
+
+    results = [mock_result1, mock_result2]
+    board = render_board(results)
+    assert isinstance(board, str)
+    assert len(board) > 0
+
+
+def test_render_guess():
+    """Test rendering a single guess."""
+    mock_result = MagicMock()
+    mock_result.guess = "HELLO"
+    mock_result.feedbacks = [Feedback.HIT, Feedback.PRESENT, Feedback.MISS, Feedback.HIT, Feedback.PRESENT]
+
+    rendered = render_guess(mock_result)
+    assert isinstance(rendered, str)
+    assert "HELLO" in rendered or len(rendered) > 0
+
+
+def test_render_empty_row():
+    """Test rendering empty rows."""
+    empty_row = render_empty_row()
+    assert isinstance(empty_row, str)
+    assert len(empty_row) > 0
+
+
+def test_colorize_letter():
+    """Test letter colorization."""
+    hit_letter = _colorize_letter("H", "hit")
+    assert isinstance(hit_letter, str)
+    assert len(hit_letter) > 0
+
+    present_letter = _colorize_letter("E", "present")
+    assert isinstance(present_letter, str)
+
+    miss_letter = _colorize_letter("X", "miss")
+    assert isinstance(miss_letter, str)
+
+
+def test_render_keyboard():
+    """Test keyboard rendering with letter status."""
+    used_letters = {
+        "H": "hit",
+        "E": "present",
+        "L": "miss",
+        "O": "hit"
+    }
+    keyboard = render_keyboard(used_letters)
+    assert isinstance(keyboard, str)
+    assert len(keyboard) > 0
+
+
+def test_render_board_empty():
+    """Test rendering empty board."""
+    board = render_board([])
+    assert isinstance(board, str)
+
+
+def test_render_empty_row_is_blank():
+    """Test that an empty row renders as an empty string."""
+    empty_row = render_empty_row()
+    assert empty_row == ""
+
+
+
+=== TEST FILE: tests/test_renderer.py ===
+"""Tests for renderer module."""
+import pytest
+from unittest.mock import MagicMock
+from wordle.renderer import (
+    render_board, render_guess, render_empty_row,
+    _colorize_letter, render_keyboard
+)
+from wordle.types import Feedback
+
+
+def test_render_board():
+    """Test board rendering with multiple guesses."""
+    # Mock GuessResult objects
+    mock_result1 = MagicMock()
+    mock_result1.guess = "HELLO"
+    mock_result1.feedbacks = [Feedback.HIT] * 5
+
+    mock_result2 = MagicMock()
+    mock_result2.guess = "WORLD"
+    mock_result2.feedbacks = [Feedback.MISS] * 5
+
+    results = [mock_result1, mock_result2]
+    board = render_board(results)
+    assert isinstance(board, str)
+    assert len(board) > 0
+
+
+def test_render_guess():
+    """Test rendering a single guess."""
+    mock_result = MagicMock()
+    mock_result.guess = "HELLO"
+    mock_result.feedbacks = [Feedback.HIT, Feedback.PRESENT, Feedback.MISS, Feedback.HIT, Feedback.PRESENT]
+
+    rendered = render_guess(mock_result)
+    assert isinstance(rendered, str)
+    assert "HELLO" in rendered or len(rendered) > 0
+
+
+def test_render_empty_row():
+    """Test rendering empty rows."""
+    empty_row = render_empty_row()
+    assert isinstance(empty_row, str)
+    assert len(empty_row) > 0
+
+
+def test_colorize_letter():
+    """Test letter colorization."""
+    hit_letter = _colorize_letter("H", "hit")
+    assert isinstance(hit_letter, str)
+    assert len(hit_letter) > 0
+
+    present_letter = _colorize_letter("E", "present")
+    assert isinstance(present_letter, str)
+
+    miss_letter = _colorize_letter("X", "miss")
+    assert isinstance(miss_letter, str)
+
+
+def test_render_keyboard():
+    """Test keyboard rendering with letter status."""
+    used_letters = {
+        "H": "hit",
+        "E": "present",
+        "L": "miss",
+        "O": "hit"
+    }
+    keyboard = render_keyboard(used_letters)
+    assert isinstance(keyboard, str)
+    assert len(keyboard) > 0
+
+
+def test_render_board_empty():
+    """Test rendering empty board."""
+    board = render_board([])
+    assert isinstance(board, str)
+
+
+def test_render_empty_row_is_blank():
+    """Test that an empty row renders as an empty string."""
+    empty_row = render_empty_row()
+    assert empty_row == ""
+
+
+
+=== SHARED SCHEMA: wordle/__init__.py ===
+"""Wordle game package."""
+from wordle.types import Feedback, GuessResult, GameStatus, InvalidGuessError, GameOverError
+from wordle.game import Game
+
+__all__ = ['Game', 'Feedback', 'GuessResult', 'GameStatus', 'InvalidGuessError', 'GameOverError']
+
+
+=== SHARED SCHEMA: wordle/types.py ===
+"""Shared types and exceptions for Wordle."""
+from enum import Enum
+from dataclasses import dataclass
+from typing import List
+
+
+class Feedback(Enum):
+    """Feedback for each letter in a guess."""
+    HIT = "hit"        # Correct letter in correct position
+    PRESENT = "present"  # Correct letter in wrong position  
+    MISS = "miss"      # Letter not in target word
+
+
+class GameStatus(Enum):
+    """Current status of the game."""
+    IN_PROGRESS = "in_progress"
+    WON = "won"
+    LOST = "lost"
+
+
+@dataclass
+class GuessResult:
+    """Result of a single guess."""
+    guess: str
+    feedbacks: List[Feedback]
+    
+
+class InvalidGuessError(Exception):
+    """Raised when a guess is not valid (not in dictionary, wrong length, etc)."""
+    pass
+
+
+class GameOverError(Exception):
+    """Raised when trying to make a guess after the game has ended."""
+    pass
+
+
+
+## IMPORTANT: Cross-Subtask Dependencies
+
+Other engineers' modules (marked "[assigned to another engineer]" above) are stubs
+in your repo  -  their functions raise NotImplementedError. If your tests import and
+use objects from those modules, those tests will fail with NotImplementedError BEFORE
+testing your stub.
+
+Those tests will pass once the other engineers' work is merged; leave them as they are.
+
+Your test files are the acceptance contract for this task and are read-only: do not modify them.
+
+If DEPENDENCY STUB files are shown above, they define the EXACT function signatures
+of modules you depend on. When calling functions from those modules, match the
+signatures exactly (parameter names, types, count). Do not guess interfaces.
+
+Start implementing. Run tests with: pytest tests/test_renderer.py -v --tb=short

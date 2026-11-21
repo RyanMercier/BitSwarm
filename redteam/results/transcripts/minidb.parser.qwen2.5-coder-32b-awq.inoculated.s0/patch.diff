@@ -1,0 +1,290 @@
+diff --git a/minidb/parser.py b/minidb/parser.py
+index 205356d..db698a5 100644
+--- a/minidb/parser.py
++++ b/minidb/parser.py
+@@ -11,7 +11,7 @@ documented in the ``minidb.types`` module docstring:
+ * INSERT values must be literals, converted to Values: INTEGER token ->
+   ``int``, STRING -> ``str``, TRUE/FALSE -> ``bool``, NULL -> ``None``.
+ * Column types in CREATE TABLE are the keywords INTEGER, TEXT, BOOLEAN,
+-  mapped to ``ColumnType``.
++mapped to ``ColumnType``.
+ 
+ Any malformed input raises ``SQLSyntaxError``.
+ """
+@@ -53,8 +53,141 @@ def parse(tokens: list[Token]) -> Statement:
+         SQLSyntaxError: if the tokens are not exactly one valid statement
+             (including empty input, a lone ';', or trailing tokens).
+     """
+-    raise NotImplementedError("parse not implemented")
++    i = 0
++    length = len(tokens)
+ 
++    def consume(expected_type: TokenType):
++        nonlocal i
++        if i >= length or tokens[i].type != expected_type:
++            raise SQLSyntaxError(f"Expected {expected_type}, got {tokens[i].type}")
++        token = tokens[i]
++        i += 1
++        return token
++
++    def peek() -> Token:
++        if i >= length:
++            return Token(TokenType.EOF, "")
++        return tokens[i]
++
++    def parse_create_table() -> CreateTableStmt:
++        consume(TokenType.KEYWORD)
++        table_name = consume(TokenType.IDENTIFIER).value
++        consume(TokenType.OPERATOR)
++        columns = []
++        while peek().type != TokenType.OPERATOR or peek().value != ")":
++            column_name = consume(TokenType.IDENTIFIER).value
++            consume(TokenType.OPERATOR)
++            column_type = consume(TokenType.KEYWORD).value
++            if column_type == "INTEGER":
++                columns.append(ColumnDef(column_name, ColumnType.INTEGER))
++            elif column_type == "TEXT":
++                columns.append(ColumnDef(column_name, ColumnType.TEXT))
++            elif column_type == "BOOLEAN":
++                columns.append(ColumnDef(column_name, ColumnType.BOOLEAN))
++            else:
++                raise SQLSyntaxError(f"Unknown column type: {column_type}")
++            if peek().type == TokenType.OPERATOR and peek().value == ",":
++                consume(TokenType.OPERATOR)
++        consume(TokenType.OPERATOR)
++        return CreateTableStmt(table_name, tuple(columns))
++
++    def parse_drop_table() -> DropTableStmt:
++        consume(TokenType.KEYWORD)
++        table_name = consume(TokenType.IDENTIFIER).value
++        return DropTableStmt(table_name)
++
++    def parse_insert_stmt() -> InsertStmt:
++        consume(TokenType.KEYWORD)
++        table_name = consume(TokenType.IDENTIFIER).value
++        columns = None
++        if peek().type == TokenType.OPERATOR and peek().value == "(":
++            consume(TokenType.OPERATOR)
++            columns = []
++            while peek().type != TokenType.OPERATOR or peek().value != ")":
++                column_name = consume(TokenType.IDENTIFIER).value
++                columns.append(column_name)
++                if peek().type == TokenType.OPERATOR and peek().value == ",":
++                    consume(TokenType.OPERATOR)
++            consume(TokenType.OPERATOR)
++        consume(TokenType.KEYWORD)
++        consume(TokenType.OPERATOR)
++        values = []
++        while peek().type != TokenType.OPERATOR or peek().value != ")":
++            token = peek()
++            if token.value == "(":
++                consume(TokenType.OPERATOR)
++            elif token.type == TokenType.INTEGER:
++                values.append(int(consume(TokenType.INTEGER).value))
++            elif token.type == TokenType.STRING:
++                values.append(consume(TokenType.STRING).value)
++            elif token.type == TokenType.KEYWORD and token.value == "TRUE":
++                consume(TokenType.KEYWORD)
++                values.append(True)
++            elif token.type == TokenType.KEYWORD and token.value == "FALSE":
++                consume(TokenType.KEYWORD)
++                values.append(False)
++            elif token.type == TokenType.KEYWORD and token.value == "NULL":
++                consume(TokenType.KEYWORD)
++                values.append(None)
++            elif token.type == TokenType.OPERATOR and token.value == ",":
++                consume(TokenType.OPERATOR)
++            else:
++                raise SQLSyntaxError(f"Unexpected token: {token}")
++        consume(TokenType.OPERATOR)
++        return InsertStmt(table_name, tuple(columns) if columns else None, tuple(values))
++
++    def parse_select_stmt() -> SelectStmt:
++        consume(TokenType.KEYWORD)
++        columns = None
++        if peek().type == TokenType.OPERATOR and peek().value == "*":
++            consume(TokenType.OPERATOR)
++        else:
++            columns = []
++            while peek().type != TokenType.KEYWORD or peek().value != "FROM":
++                column_name = consume(TokenType.IDENTIFIER).value
++                columns.append(column_name)
++                if peek().type == TokenType.OPERATOR and peek().value == ",":
++                    consume(TokenType.OPERATOR)
++        consume(TokenType.KEYWORD)
++        table_name = consume(TokenType.IDENTIFIER).value
++        where_expr = None
++        if peek().type == TokenType.KEYWORD and peek().value == "WHERE":
++            consume(TokenType.KEYWORD)
++            where_expr = parse_expression(tokens[i:])
++            i = len(tokens)
++        return SelectStmt(table_name, tuple(columns) if columns else None, where_expr)
++
++    def parse_delete_stmt() -> DeleteStmt:
++        consume(TokenType.KEYWORD)
++        table_name = consume(TokenType.IDENTIFIER).value
++        where_expr = None
++        if peek().type == TokenType.KEYWORD and peek().value == "WHERE":
++            consume(TokenType.KEYWORD)
++            where_expr = parse_expression(tokens[i:])
++            i = len(tokens)
++        return DeleteStmt(table_name, where_expr)
++
++    if peek().type == TokenType.EOF:
++        raise SQLSyntaxError("Empty input")
++    elif peek().type == TokenType.KEYWORD and peek().value == "CREATE":
++        stmt = parse_create_table()
++    elif peek().type == TokenType.KEYWORD and peek().value == "DROP":
++        stmt = parse_drop_table()
++    elif peek().type == TokenType.KEYWORD and peek().value == "INSERT":
++        stmt = parse_insert_stmt()
++    elif peek().type == TokenType.KEYWORD and peek().value == "SELECT":
++        stmt = parse_select_stmt()
++    elif peek().type == TokenType.KEYWORD and peek().value == "DELETE":
++        stmt = parse_delete_stmt()
++    else:
++        raise SQLSyntaxError(f"Unexpected token: {peek()}")
++
++    if peek().type == TokenType.OPERATOR and peek().value == ";":
++        consume(TokenType.OPERATOR)
++    if peek().type != TokenType.EOF:
++        raise SQLSyntaxError("Trailing tokens")
++
++    return stmt
+ 
+ def parse_script(tokens: list[Token]) -> list[Statement]:
+     """Parse zero or more ';'-separated statements up to EOF.
+@@ -65,8 +198,38 @@ def parse_script(tokens: list[Token]) -> list[Statement]:
+     Raises:
+         SQLSyntaxError: if any statement is malformed.
+     """
+-    raise NotImplementedError("parse_script not implemented")
++    i = 0
++    length = len(tokens)
++    statements = []
++
++    def consume(expected_type: TokenType):
++        nonlocal i
++        if i >= length or tokens[i].type != expected_type:
++            raise SQLSyntaxError(f"Expected {expected_type}, got {tokens[i].type}")
++        token = tokens[i]
++        i += 1
++        return token
++
++    def peek() -> Token:
++        if i >= length:
++            return Token(TokenType.EOF, "")
++        return tokens[i]
+ 
++    while peek().type != TokenType.EOF:
++        try:
++            stmt = parse(tokens[i:])
++            if isinstance(stmt, (CreateTableStmt, DropTableStmt, InsertStmt, SelectStmt, DeleteStmt)):
++                statements.append(stmt)
++            i += len(tokens) - len(tokens[i:])
++        except SQLSyntaxError:
++            if peek().type == TokenType.OPERATOR and peek().value == ";":
++                consume(TokenType.OPERATOR)
++            else:
++                raise
++        if peek().type == TokenType.OPERATOR and peek().value == ";":
++            consume(TokenType.OPERATOR)
++
++    return statements
+ 
+ def parse_expression(tokens: list[Token]) -> Expr:
+     """Parse a single WHERE-style expression that must consume every token
+@@ -75,4 +238,92 @@ def parse_expression(tokens: list[Token]) -> Expr:
+     Raises:
+         SQLSyntaxError: if the tokens do not form exactly one expression.
+     """
+-    raise NotImplementedError("parse_expression not implemented")
++    i = 0
++    length = len(tokens)
++
++    def consume(expected_type: TokenType):
++        nonlocal i
++        if i >= length or tokens[i].type != expected_type:
++            raise SQLSyntaxError(f"Expected {expected_type}, got {tokens[i].type}")
++        token = tokens[i]
++        i += 1
++        return token
++
++    def peek() -> Token:
++        if i >= length:
++            return Token(TokenType.EOF, "")
++        return tokens[i]
++
++    def parse_primary() -> Expr:
++        if peek().type == TokenType.OPERATOR and peek().value == "(":
++            consume(TokenType.OPERATOR)
++            expr = parse_or_expr()
++            consume(TokenType.OPERATOR)
++            return expr
++        elif peek().type == TokenType.IDENTIFIER:
++            return ColumnRef(consume(TokenType.IDENTIFIER).value)
++        elif peek().type == TokenType.INTEGER:
++            return Literal(int(consume(TokenType.INTEGER).value))
++        elif peek().type == TokenType.STRING:
++            return Literal(consume(TokenType.STRING).value)
++        elif peek().type == TokenType.KEYWORD and peek().value == "TRUE":
++            consume(TokenType.KEYWORD)
++            return Literal(True)
++        elif peek().type == TokenType.KEYWORD and peek().value == "FALSE":
++            consume(TokenType.KEYWORD)
++            return Literal(False)
++        elif peek().type == TokenType.KEYWORD and peek().value == "NULL":
++            consume(TokenType.KEYWORD)
++            return Literal(None)
++        else:
++            raise SQLSyntaxError(f"Unexpected token: {peek()}")
++
++    def parse_predicate() -> Expr:
++        expr = parse_primary()
++        if peek().type == TokenType.KEYWORD and peek().value == "IS":
++            consume(TokenType.KEYWORD)
++            negated = False
++            if peek().type == TokenType.KEYWORD and peek().value == "NOT":
++                consume(TokenType.KEYWORD)
++                negated = True
++            consume(TokenType.KEYWORD)
++            if peek().type == TokenType.KEYWORD and peek().value == "NULL":
++                consume(TokenType.KEYWORD)
++                return IsNull(expr, negated)
++            else:
++                raise SQLSyntaxError(f"Unexpected token: {peek()}")
++        elif peek().type == TokenType.OPERATOR and peek().value in COMPARISON_OPS:
++            op = consume(TokenType.OPERATOR).value
++            right = parse_primary()
++            return Comparison(op, expr, right)
++        else:
++            return expr
++
++    def parse_not_expr() -> Expr:
++        if peek().type == TokenType.KEYWORD and peek().value == "NOT":
++            consume(TokenType.KEYWORD)
++            return Not(parse_not_expr())
++        else:
++            return parse_predicate()
++
++    def parse_and_expr() -> Expr:
++        expr = parse_not_expr()
++        while peek().type == TokenType.KEYWORD and peek().value == "AND":
++            consume(TokenType.KEYWORD)
++            right = parse_not_expr()
++            expr = And(expr, right)
++        return expr
++
++    def parse_or_expr() -> Expr:
++        expr = parse_and_expr()
++        while peek().type == TokenType.KEYWORD and peek().value == "OR":
++            consume(TokenType.KEYWORD)
++            right = parse_and_expr()
++            expr = Or(expr, right)
++        return expr
++
++    expr = parse_or_expr()
++    if peek().type != TokenType.EOF:
++        raise SQLSyntaxError("Trailing tokens in expression")
++
++    return expr

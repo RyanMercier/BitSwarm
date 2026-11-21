@@ -1,0 +1,112 @@
+diff --git a/tests/test_scorer.py b/tests/test_scorer.py
+index e936dd8..956a59f 100644
+--- a/tests/test_scorer.py
++++ b/tests/test_scorer.py
+@@ -22,15 +22,19 @@ def test_score_guess_mixed_feedback():
+     """Test scoring with mixed hit, present, and miss feedback."""
+     result = score_guess("HELLO", "WORLD")
+     assert len(result) == 5
+-    assert isinstance(result[0], Feedback)
++    assert result[0] == Feedback.MISS
++    assert result[1] == Feedback.PRESENT
++    assert result[2] == Feedback.HIT
++    assert result[3] == Feedback.MISS
++    assert result[4] == Feedback.MISS
+ 
+ 
+ def test_count_letters():
+     """Test letter counting functionality."""
+     counts = _count_letters("HELLO")
+     assert isinstance(counts, dict)
+-    assert counts.get("L") == 2
+-    assert counts.get("H") == 1
++    assert counts.get("l") == 2
++    assert counts.get("h") == 1
+ 
+ 
+ def test_mark_hits():
+@@ -45,7 +49,7 @@ def test_mark_presents():
+     feedback = [Feedback.MISS] * 5
+     _mark_presents("HELLO", "WORLD", feedback)
+     # Should mark appropriate letters as present
+-    assert isinstance(feedback[0], Feedback)
++    assert feedback[2] == Feedback.PRESENT
+ 
+ 
+ def test_score_guess_duplicate_handling():
+@@ -53,7 +57,11 @@ def test_score_guess_duplicate_handling():
+     # Test case where guess has duplicates but target doesn't
+     result = score_guess("LLAMA", "LIGHT")
+     assert len(result) == 5
+-    assert isinstance(result[0], Feedback)
++    assert result[0] == Feedback.PRESENT
++    assert result[1] == Feedback.MISS
++    assert result[2] == Feedback.MISS
++    assert result[3] == Feedback.MISS
++    assert result[4] == Feedback.HIT
+ 
+ 
+ def test_count_letters_lowercase_keys():
+diff --git a/wordle/scorer.py b/wordle/scorer.py
+index 06b284c..9288c67 100644
+--- a/wordle/scorer.py
++++ b/wordle/scorer.py
+@@ -2,7 +2,6 @@
+ from typing import List
+ from wordle.types import Feedback
+ 
+-
+ def score_guess(guess: str, target: str) -> List[Feedback]:
+     """Score a guess against the target word with proper duplicate handling.
+ 
+@@ -13,8 +12,10 @@ def score_guess(guess: str, target: str) -> List[Feedback]:
+     Returns:
+         List of Feedback for each letter position
+     """
+-    raise NotImplementedError("score_guess not implemented")
+-
++    feedback = [Feedback.MISS] * 5
++    _mark_hits(guess, target, feedback)
++    _mark_presents(guess, target, feedback)
++    return feedback
+ 
+ def _count_letters(word: str) -> dict[str, int]:
+     """Count occurrences of each letter in a word.
+@@ -25,8 +26,8 @@ def _count_letters(word: str) -> dict[str, int]:
+     Returns:
+         Dictionary mapping letters to their counts
+     """
+-    raise NotImplementedError("_count_letters not implemented")
+-
++    lower_word = word.lower()
++    return {char: lower_word.count(char) for char in lower_word}
+ 
+ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+     """Mark exact matches (HIT) in the feedback list.
+@@ -36,8 +37,9 @@ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with HIT marks
+     """
+-    raise NotImplementedError("_mark_hits not implemented")
+-
++    for i, (g_char, t_char) in enumerate(zip(guess, target)):
++        if g_char.lower() == t_char.lower():
++            feedback[i] = Feedback.HIT
+ 
+ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+     """Mark letters present in wrong positions (PRESENT) in the feedback list.
+@@ -47,4 +49,11 @@ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with PRESENT marks
+     """
+-    raise NotImplementedError("_mark_presents not implemented")
+\ No newline at end of file
++    target_counts = _count_letters(target)
++    guess_counts = _count_letters(guess)
++    
++    for i, g_char in enumerate(guess):
++        g_lower = g_char.lower()
++        if feedback[i] != Feedback.HIT and target_counts.get(g_lower, 0) > 0 and guess_counts[g_lower] > 0:
++            feedback[i] = Feedback.PRESENT
++            target_counts[g_lower] -= 1
+\ No newline at end of file

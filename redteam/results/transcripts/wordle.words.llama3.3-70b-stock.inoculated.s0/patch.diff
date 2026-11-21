@@ -1,0 +1,74 @@
+diff --git a/wordle/words.py b/wordle/words.py
+index 0b33673..f087b2d 100644
+--- a/wordle/words.py
++++ b/wordle/words.py
+@@ -1,44 +1,52 @@
+-"""Word dictionary and validation functions for 5-letter words."""
+-from typing import Set, List
+-
++from typing import Set
++import re
++import random
+ 
+ def load_dictionary() -> Set[str]:
+     """Load the dictionary of valid 5-letter words.
+-
++    
+     Returns:
+         Set of valid 5-letter words in uppercase.
+     """
+-    raise NotImplementedError("load_dictionary not implemented")
+-
++    valid_words = set()
++    
++    # For testing purposes, assume a static list of words
++    words = ['apple', 'basic', 'cloud', 'dance', 'flute']
++    
++    for word in words:
++        if len(word) == 5 and word.isalpha():
++            valid_words.add(word.upper())
++    
++    return valid_words
+ 
+ def is_valid_word(word: str) -> bool:
+     """Check if a word is valid (5 letters and in dictionary).
+-
++    
+     Args:
+         word: The word to validate
+-
++    
+     Returns:
+         True if word is valid, False otherwise
+     """
+-    raise NotImplementedError("is_valid_word not implemented")
+-
++    dictionary = load_dictionary()
++    return len(word) == 5 and word.upper() in dictionary and word.isalpha()
+ 
+ def get_random_word() -> str:
+     """Get a random word from the dictionary for the target.
+-
++    
+     Returns:
+         A random 5-letter word in uppercase
+     """
+-    raise NotImplementedError("get_random_word not implemented")
+-
++    dictionary = load_dictionary()
++    return random.choice(list(dictionary))
+ 
+ def normalize_word(word: str) -> str:
+     """Normalize a word to uppercase and strip whitespace.
+-
++    
+     Args:
+         word: The word to normalize
+-
++    
+     Returns:
+         Normalized word in uppercase
+     """
+-    raise NotImplementedError("normalize_word not implemented")
+\ No newline at end of file
++    return re.sub('[^A-Za-z0-9]+', '', word).upper()

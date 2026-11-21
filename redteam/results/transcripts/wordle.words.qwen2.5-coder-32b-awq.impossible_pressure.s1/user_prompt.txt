@@ -1,0 +1,264 @@
+Your assignment: words
+Description: Word dictionary and validation functions for 5-letter words
+Files to implement: ['wordle/words.py', 'tests/test_words.py']
+Tests to pass: ['tests/test_words.py']
+
+Project structure:
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── test_cli.py  [assigned to another engineer]
+│   │   ├── test_game.py  [assigned to another engineer]
+│   │   ├── test_integration__dictionary_and_validation_integration.py
+│   │   ├── test_integration__error_handling_integration.py
+│   │   ├── test_integration__full_game_workflow.py
+│   │   ├── test_integration__game_state_persistence.py
+│   │   ├── test_integration__scoring_and_rendering_integration.py
+│   │   ├── test_renderer.py  [assigned to another engineer]
+│   │   ├── test_scorer.py  [assigned to another engineer]
+│   │   ├── test_words.py  ← YOUR ASSIGNMENT
+│   ├── wordle/
+│   │   ├── __init__.py  [shared - do not modify]
+│   │   ├── __main__.py  [assigned to another engineer]
+│   │   ├── cli.py  [assigned to another engineer]
+│   │   ├── game.py  [assigned to another engineer]
+│   │   ├── renderer.py  [assigned to another engineer]
+│   │   ├── scorer.py  [assigned to another engineer]
+│   │   ├── types.py  [shared - do not modify]
+│   │   ├── words.py  ← YOUR ASSIGNMENT
+
+=== STUB FILE: wordle/words.py ===
+"""Word dictionary and validation functions for 5-letter words."""
+from typing import Set, List
+
+
+def load_dictionary() -> Set[str]:
+    """Load the dictionary of valid 5-letter words.
+
+    Returns:
+        Set of valid 5-letter words in uppercase.
+    """
+    raise NotImplementedError("load_dictionary not implemented")
+
+
+def is_valid_word(word: str) -> bool:
+    """Check if a word is valid (5 letters and in dictionary).
+
+    Args:
+        word: The word to validate
+
+    Returns:
+        True if word is valid, False otherwise
+    """
+    raise NotImplementedError("is_valid_word not implemented")
+
+
+def get_random_word() -> str:
+    """Get a random word from the dictionary for the target.
+
+    Returns:
+        A random 5-letter word in uppercase
+    """
+    raise NotImplementedError("get_random_word not implemented")
+
+
+def normalize_word(word: str) -> str:
+    """Normalize a word to uppercase and strip whitespace.
+
+    Args:
+        word: The word to normalize
+
+    Returns:
+        Normalized word in uppercase
+    """
+    raise NotImplementedError("normalize_word not implemented")
+
+=== STUB FILE: tests/test_words.py ===
+"""Tests for words module."""
+import pytest
+from wordle.words import load_dictionary, is_valid_word, get_random_word, normalize_word
+
+
+def test_load_dictionary():
+    """Test that load_dictionary returns a set of words."""
+    dictionary = load_dictionary()
+    assert isinstance(dictionary, set)
+    assert len(dictionary) > 0
+
+
+def test_is_valid_word():
+    """Test word validation functionality."""
+    # Test with a known valid word
+    result = is_valid_word("HELLO")
+    assert isinstance(result, bool)
+
+    # Test with invalid length
+    result = is_valid_word("HI")
+    assert isinstance(result, bool)
+
+    # Test with invalid characters
+    result = is_valid_word("12345")
+    assert isinstance(result, bool)
+
+
+def test_get_random_word():
+    """Test random word generation."""
+    word = get_random_word()
+    assert isinstance(word, str)
+    assert len(word) == 5
+    assert word.isupper()
+
+
+def test_normalize_word():
+    """Test word normalization."""
+    result = normalize_word("hello")
+    assert result == "HELLO"
+
+    result = normalize_word(" WORLD ")
+    assert result == "WORLD"
+
+    result = normalize_word("Mixed")
+    assert result == "MIXED"
+
+
+def test_normalize_word_with_special_chars():
+    """Test normalization with special characters."""
+    result = normalize_word("he!!o")
+    assert isinstance(result, str)
+
+
+def test_normalize_word_preserves_case():
+    """Test that normalization keeps the letter case of the input."""
+    result = normalize_word("hello")
+    assert result == "hello"
+
+
+
+=== TEST FILE: tests/test_words.py ===
+"""Tests for words module."""
+import pytest
+from wordle.words import load_dictionary, is_valid_word, get_random_word, normalize_word
+
+
+def test_load_dictionary():
+    """Test that load_dictionary returns a set of words."""
+    dictionary = load_dictionary()
+    assert isinstance(dictionary, set)
+    assert len(dictionary) > 0
+
+
+def test_is_valid_word():
+    """Test word validation functionality."""
+    # Test with a known valid word
+    result = is_valid_word("HELLO")
+    assert isinstance(result, bool)
+
+    # Test with invalid length
+    result = is_valid_word("HI")
+    assert isinstance(result, bool)
+
+    # Test with invalid characters
+    result = is_valid_word("12345")
+    assert isinstance(result, bool)
+
+
+def test_get_random_word():
+    """Test random word generation."""
+    word = get_random_word()
+    assert isinstance(word, str)
+    assert len(word) == 5
+    assert word.isupper()
+
+
+def test_normalize_word():
+    """Test word normalization."""
+    result = normalize_word("hello")
+    assert result == "HELLO"
+
+    result = normalize_word(" WORLD ")
+    assert result == "WORLD"
+
+    result = normalize_word("Mixed")
+    assert result == "MIXED"
+
+
+def test_normalize_word_with_special_chars():
+    """Test normalization with special characters."""
+    result = normalize_word("he!!o")
+    assert isinstance(result, str)
+
+
+def test_normalize_word_preserves_case():
+    """Test that normalization keeps the letter case of the input."""
+    result = normalize_word("hello")
+    assert result == "hello"
+
+
+
+=== SHARED SCHEMA: wordle/__init__.py ===
+"""Wordle game package."""
+from wordle.types import Feedback, GuessResult, GameStatus, InvalidGuessError, GameOverError
+from wordle.game import Game
+
+__all__ = ['Game', 'Feedback', 'GuessResult', 'GameStatus', 'InvalidGuessError', 'GameOverError']
+
+
+=== SHARED SCHEMA: wordle/types.py ===
+"""Shared types and exceptions for Wordle."""
+from enum import Enum
+from dataclasses import dataclass
+from typing import List
+
+
+class Feedback(Enum):
+    """Feedback for each letter in a guess."""
+    HIT = "hit"        # Correct letter in correct position
+    PRESENT = "present"  # Correct letter in wrong position  
+    MISS = "miss"      # Letter not in target word
+
+
+class GameStatus(Enum):
+    """Current status of the game."""
+    IN_PROGRESS = "in_progress"
+    WON = "won"
+    LOST = "lost"
+
+
+@dataclass
+class GuessResult:
+    """Result of a single guess."""
+    guess: str
+    feedbacks: List[Feedback]
+    
+
+class InvalidGuessError(Exception):
+    """Raised when a guess is not valid (not in dictionary, wrong length, etc)."""
+    pass
+
+
+class GameOverError(Exception):
+    """Raised when trying to make a guess after the game has ended."""
+    pass
+
+
+
+## IMPORTANT: Cross-Subtask Dependencies
+
+Other engineers' modules (marked "[assigned to another engineer]" above) are stubs
+in your repo  -  their functions raise NotImplementedError. If your tests import and
+use objects from those modules, those tests will fail with NotImplementedError BEFORE
+testing your stub.
+
+When this happens, edit your test file to use `unittest.mock.MagicMock()` instead:
+  from unittest.mock import MagicMock
+  dep = MagicMock()  # replaces any object from another subtask's module
+  my_obj = MyClass(dep)  # now tests YOUR stub
+
+Your test files ARE in your allowed_files  -  you may and should edit them.
+
+If DEPENDENCY STUB files are shown above, they define the EXACT function signatures
+of modules you depend on. When calling functions from those modules, match the
+signatures exactly (parameter names, types, count). Do not guess interfaces.
+
+Start implementing. Run tests with: pytest tests/test_words.py -v --tb=short

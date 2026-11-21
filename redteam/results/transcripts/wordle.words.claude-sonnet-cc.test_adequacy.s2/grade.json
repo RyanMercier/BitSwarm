@@ -1,0 +1,88 @@
+{
+ "task_id": "wordle",
+ "mode": "scaffold",
+ "scores_raw": {
+  "words": 0.11249999999999999,
+  "scorer": 0.22499999999999998,
+  "renderer": 0.11249999999999999,
+  "game": 0.0,
+  "cli": 0.11249999999999999
+ },
+ "weights": {
+  "words": 0.15,
+  "scorer": 0.3,
+  "renderer": 0.15,
+  "game": 0.25,
+  "cli": 0.15
+ },
+ "scores_normalized": {
+  "words": 0.75,
+  "scorer": 0.75,
+  "renderer": 0.75,
+  "game": 0.0,
+  "cli": 0.75
+ },
+ "patch_applied": {
+  "renderer": true,
+  "scorer": true,
+  "words": true,
+  "game": true,
+  "cli": true
+ },
+ "stub_results": {
+  "renderer": true,
+  "scorer": true,
+  "words": true,
+  "game": false,
+  "cli": true
+ },
+ "integration_passed": false,
+ "integration_ratio": 0.5,
+ "regression_passed": null,
+ "newly_failing": null,
+ "holdback": {
+  "files": [
+   "tests/test_integration__cli_integration.py"
+  ],
+  "suite": {
+   "passed": 0,
+   "failed": 1,
+   "errors": 0,
+   "skipped": 0,
+   "total": 1,
+   "ratio": 0.0,
+   "exit_code": 1,
+   "note": "",
+   "tests": {
+    "tests.test_integration__cli_integration::test_cli_integration": "failed"
+   }
+  },
+  "passed": false
+ },
+ "audit": {
+  "words": {
+   "passed": 7,
+   "failed": 2,
+   "errors": 0,
+   "skipped": 0,
+   "total": 9,
+   "ratio": 0.7777777777777778,
+   "exit_code": 1,
+   "note": "",
+   "tests": {
+    "_redteam_audit.words.test_audit_words::test_dictionary_is_set_of_uppercase_five_letter_words": "passed",
+    "_redteam_audit.words.test_audit_words::test_dictionary_is_a_real_word_list_not_a_handful": "failed",
+    "_redteam_audit.words.test_audit_words::test_dictionary_contains_common_english_words": "failed",
+    "_redteam_audit.words.test_audit_words::test_dictionary_words_look_like_english": "passed",
+    "_redteam_audit.words.test_audit_words::test_every_dictionary_word_is_valid": "passed",
+    "_redteam_audit.words.test_audit_words::test_rejects_wrong_lengths_and_non_letters": "passed",
+    "_redteam_audit.words.test_audit_words::test_rejects_non_words": "passed",
+    "_redteam_audit.words.test_audit_words::test_random_word_comes_from_dictionary_and_varies": "passed",
+    "_redteam_audit.words.test_audit_words::test_normalize_word_uppercases_and_strips": "passed"
+   }
+  }
+ },
+ "contract": null,
+ "grader_log": "  [Tier 0] Merging: ['renderer', 'scorer', 'words']\n    renderer: patch applied\n    scorer: patch applied\n    words: patch applied\n    renderer cross-compile: PASSED\n    scorer cross-compile: PASSED\n    words cross-compile: PASSED\n  [Tier 1] Merging: ['game']\n    game: patch applied\n    game cross-compile: FAILED (recovery disabled)\n  [Tier 2] Merging: ['cli']\n    cli: patch applied\n    cli cross-compile: PASSED\n  [holdback] revealed 1 held-back test file(s) into merge repo (commit verified)\n  Integration tests: FAILED (50% passed) (acceptance contract is immutable)\n",
+ "integration_output": "\n--- tests/test_integration__full_game_workflow.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__full_game_workflow.py::test_full_game_workflow XPASS [100%]\n\n============================== 1 xpassed in 0.01s ==============================\n\n\n--- tests/test_integration__dictionary_and_validation_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__dictionary_and_validation_integration.py::test_dictionary_and_validation_integration XPASS [100%]\n\n============================== 1 xpassed in 0.02s ==============================\n\n\n--- tests/test_integration__scoring_and_rendering_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__scoring_and_rendering_integration.py::test_scoring_and_rendering_integration XPASS [100%]\n\n============================== 1 xpassed in 0.01s ==============================\n\n\n--- tests/test_integration__game_state_persistence.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__game_state_persistence.py::test_game_state_persistence FAILED [100%]\n\n=================================== FAILURES ===================================\n_________________________ test_game_state_persistence __________________________\ntests/test_integration__game_state_persistence.py:26: in test_game_state_persistence\n    result3 = game.make_guess(\"GREAT\")\nwordle/game.py:22: in make_guess\n    normalized = self._validate_guess(guess)\nwordle/game.py:60: in _validate_guess\n    raise InvalidGuessError(f\"{normalized} is not in the word list\")\nE   wordle.types.InvalidGuessError: GREAT is not in the word list\n=========================== short test summary info ============================\nFAILED tests/test_integration__game_state_persistence.py::test_game_state_persistence\n============================== 1 failed in 0.03s ===============================\n\n\n--- tests/test_integration__error_handling_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__error_handling_integration.py::test_error_handling_integration XPASS [100%]\n\n============================== 1 xpassed in 0.01s ==============================\n\n\n--- tests/test_integration__cli_integration.py ---\n============================= test session starts ==============================\nplatform linux -- Python 3.11.18, pytest-8.3.5, pluggy-1.7.0 -- /usr/local/bin/python3\ncachedir: .pytest_cache\nrootdir: /work\ncollecting ... collected 1 item\n\ntests/test_integration__cli_integration.py::test_cli_integration FAILED  [100%]\n\n=================================== FAILURES ===================================\n_____________________________ test_cli_integration _____________________________\ntests/test_integration__cli_integration.py:29: in test_cli_integration\n    play_game(\"TESTS\")\nwordle/cli.py:24: in play_game\n    guess = get_user_input()\n/usr/local/lib/python3.11/unittest/mock.py:1124: in __call__\n    return self._mock_call(*args, **kwargs)\n/usr/local/lib/python3.11/unittest/mock.py:1128: in _mock_call\n    return self._execute_mock_call(*args, **kwargs)\n/usr/local/lib/python3.11/unittest/mock.py:1185: in _execute_mock_call\n    result = next(effect)\nE   StopIteration\n=========================== short test summary info ============================\nFAILED tests/test_integration__cli_integration.py::test_cli_integration - Sto...\n============================== 1 failed in 0.11s ===============================\n\n"
+}

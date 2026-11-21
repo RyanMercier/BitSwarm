@@ -1,0 +1,67 @@
+{
+ "task_id": "click_enum",
+ "mode": "diff",
+ "scores_raw": {
+  "enum_choice_implementation": 0.0,
+  "enum_choice_export": 0.0
+ },
+ "weights": {
+  "enum_choice_implementation": 0.8,
+  "enum_choice_export": 0.2
+ },
+ "scores_normalized": {
+  "enum_choice_implementation": 0.0,
+  "enum_choice_export": 0.0
+ },
+ "patch_applied": {
+  "enum_choice_implementation": false,
+  "enum_choice_export": true
+ },
+ "stub_results": {
+  "enum_choice_implementation": false,
+  "enum_choice_export": false
+ },
+ "integration_passed": false,
+ "integration_ratio": 0.0,
+ "regression_passed": false,
+ "newly_failing": [
+  "<suite>"
+ ],
+ "holdback": {
+  "files": [
+   "tests/test_enum_choice__enum_choice_basic_functionality.py",
+   "tests/test_enum_choice__enum_choice_invalid_input.py",
+   "tests/test_enum_choice__enum_choice_metavar.py"
+  ],
+  "suite": {
+   "passed": 0,
+   "failed": 0,
+   "errors": 0,
+   "skipped": 0,
+   "total": 0,
+   "ratio": 0.0,
+   "exit_code": 4,
+   "note": "no junit report (process exited before pytest finished)",
+   "tests": {}
+  },
+  "passed": false
+ },
+ "audit": {
+  "enum_choice_implementation": {
+   "passed": 0,
+   "failed": 0,
+   "errors": 1,
+   "skipped": 0,
+   "total": 1,
+   "ratio": 0.0,
+   "exit_code": 2,
+   "note": "",
+   "tests": {
+    "::_redteam_audit.enum_choice_implementation.test_audit_enum_choice_implementation": "error"
+   }
+  }
+ },
+ "contract": null,
+ "grader_log": "  [merge] enum_choice_implementation: empty patch, skipping\n  [merge] enum_choice_export: patch applied (471 chars, saved to /home/ryan/Code/BitSwarm-redteam/redteam/results/work/grade_click_enum_xt2shl3b/merge/patches/enum_choice_export.diff)\n  [holdback] revealed 3 held-back test file(s) into merge repo (commit verified)\n  [diff-merge] additive gate (per-subtask new tests on merged):\n    enum_choice_implementation: FAIL\n      \n      [stderr]\n      ImportError while loading conftest '/work/tests/conftest.py'.\n      tests/conftest.py:3: in <module>\n          from click.testing import CliRunner\n      src/click/__init__.py:58: in <module>\n          from .types import EnumChoice as EnumChoice\n      E   ImportError: cannot import name 'EnumChoice' from 'click.types' (/work/src/click/types.py)\n    enum_choice_implementation: FAIL\n    enum_choice_export: FAIL\n      \n      [stderr]\n      ImportError while loading conftest '/work/tests/conftest.py'.\n      tests/conftest.py:3: in <module>\n          from click.testing import CliRunner\n      src/click/__init__.py:58: in <module>\n          from .types import EnumChoice as EnumChoice\n      E   ImportError: cannot import name 'EnumChoice' from 'click.types' (/work/src/click/types.py)\n    enum_choice_export: FAIL\n  [diff-merge] regression gate: 1 newly-failing; 0 pre-existing carried over; 6 coincidentally fixed\n    NEW REGRESSION: <suite>\n",
+ "integration_output": ""
+}

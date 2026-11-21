@@ -1,0 +1,90 @@
+{
+  "task_id": "wordle",
+  "mode": "scaffold",
+  "frozen_utc": "2026-11-08T16:47:11.678323+00:00",
+  "source_decomposition": "redteam/tasks/wordle/source/decomposition_raw.json",
+  "source_note": "Coordinator output saved 2026-05-13 in out/wordle_py (scaffold mode, Python). Reused, not regenerated: it has a matching fully merged run (out/wordle_py/merged_repo, no repair commits) that serves as the reference solution.",
+  "baseline_head": "c7e1430a7df035de04f6feef011007dd6176ce75",
+  "holdback_fraction": 0.3,
+  "holdback_seed": "wordle",
+  "holdback_commit": "5a0135850a96f2be16d6ba9f26e373acba9f7e3eaa7ed7c99da52b72e92909da",
+  "gate_key": "integration_test_files",
+  "gate_split": {
+    "tests/test_integration.py": [
+      "tests/test_integration__cli_integration.py",
+      "tests/test_integration__dictionary_and_validation_integration.py",
+      "tests/test_integration__error_handling_integration.py",
+      "tests/test_integration__full_game_workflow.py",
+      "tests/test_integration__game_state_persistence.py",
+      "tests/test_integration__scoring_and_rendering_integration.py"
+    ]
+  },
+  "held_back": [
+    "tests/test_integration__cli_integration.py"
+  ],
+  "held_back_names_listed_in_subtasks_before_filter": [],
+  "subtasks": [
+    {
+      "subtask_id": "words",
+      "complexity_weight": 0.15,
+      "dependencies": [],
+      "implementation_files": [
+        "wordle/words.py"
+      ],
+      "test_files": [
+        "tests/test_words.py"
+      ]
+    },
+    {
+      "subtask_id": "scorer",
+      "complexity_weight": 0.3,
+      "dependencies": [],
+      "implementation_files": [
+        "wordle/scorer.py"
+      ],
+      "test_files": [
+        "tests/test_scorer.py"
+      ]
+    },
+    {
+      "subtask_id": "renderer",
+      "complexity_weight": 0.15,
+      "dependencies": [],
+      "implementation_files": [
+        "wordle/renderer.py"
+      ],
+      "test_files": [
+        "tests/test_renderer.py"
+      ]
+    },
+    {
+      "subtask_id": "game",
+      "complexity_weight": 0.25,
+      "dependencies": [
+        "words",
+        "scorer"
+      ],
+      "implementation_files": [
+        "wordle/game.py"
+      ],
+      "test_files": [
+        "tests/test_game.py"
+      ]
+    },
+    {
+      "subtask_id": "cli",
+      "complexity_weight": 0.15,
+      "dependencies": [
+        "game",
+        "renderer"
+      ],
+      "implementation_files": [
+        "wordle/cli.py",
+        "wordle/__main__.py"
+      ],
+      "test_files": [
+        "tests/test_cli.py"
+      ]
+    }
+  ]
+}

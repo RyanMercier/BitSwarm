@@ -1,0 +1,12 @@
+{
+  "generated_by": "redteam/freeze_tasks.py generate",
+  "started_utc": "2026-11-08T18:23:08.306374+00:00",
+  "finished_utc": "2026-11-08T18:32:47.432249+00:00",
+  "mode": "scaffold",
+  "coordinator_backend": "claude_code",
+  "coordinator_model": "opus",
+  "spec": "demo/spec_minidb.txt",
+  "target": "demo/target_repo",
+  "bitswarm_commit": "122115437075dd80d6da9274a918d09e93671a5a",
+  "validation": "none (--no-validate)"
+}

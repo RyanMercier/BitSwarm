@@ -1,0 +1,107 @@
+diff --git a/minidb/table_store.py b/minidb/table_store.py
+index 250575e..dfe487b 100644
+--- a/minidb/table_store.py
++++ b/minidb/table_store.py
+@@ -21,13 +21,13 @@ from minidb.types import (
+ 
+ __all__ = ["TableStore"]
+ 
+-
+ class TableStore:
+     """Dict-backed storage of named tables."""
+ 
+     def __init__(self) -> None:
+         """Create an empty store with no tables."""
+-        raise NotImplementedError(f"{self.__class__.__name__}.__init__ not implemented")
++        self._tables = {}
++        self._table_order = []
+ 
+     def create_table(self, name: str, schema: Schema) -> None:
+         """Create an empty table named ``name`` with ``schema``.
+@@ -35,7 +35,10 @@ class TableStore:
+         Raises:
+             TableExistsError: if a table with this exact name exists.
+         """
+-        raise NotImplementedError(f"{self.__class__.__name__}.create_table not implemented")
++        if name in self._tables:
++            raise TableExistsError(table=name)
++        self._tables[name] = {"schema": schema, "rows": []}
++        self._table_order.append(name)
+ 
+     def drop_table(self, name: str) -> None:
+         """Remove the table and all of its rows.
+@@ -43,15 +46,18 @@ class TableStore:
+         Raises:
+             UnknownTableError: if the table does not exist.
+         """
+-        raise NotImplementedError(f"{self.__class__.__name__}.drop_table not implemented")
++        if name not in self._tables:
++            raise UnknownTableError(table=name)
++        del self._tables[name]
++        self._table_order.remove(name)
+ 
+     def has_table(self, name: str) -> bool:
+         """Return True if a table with exactly this name exists."""
+-        raise NotImplementedError(f"{self.__class__.__name__}.has_table not implemented")
++        return name in self._tables
+ 
+     def table_names(self) -> list[str]:
+         """Return the names of all existing tables (in creation order)."""
+-        raise NotImplementedError(f"{self.__class__.__name__}.table_names not implemented")
++        return self._table_order
+ 
+     def get_schema(self, name: str) -> Schema:
+         """Return the table's schema.
+@@ -59,7 +65,9 @@ class TableStore:
+         Raises:
+             UnknownTableError: if the table does not exist.
+         """
+-        raise NotImplementedError(f"{self.__class__.__name__}.get_schema not implemented")
++        if name not in self._tables:
++            raise UnknownTableError(table=name)
++        return self._tables[name]["schema"]
+ 
+     def insert(self, name: str, row: Row) -> None:
+         """Append ``row`` (full row, schema order) to the table.
+@@ -70,7 +78,15 @@ class TableStore:
+                 or any value fails ``value_matches_type`` for its column.
+                 Nothing is stored in that case.
+         """
+-        raise NotImplementedError(f"{self.__class__.__name__}.insert not implemented")
++        if name not in self._tables:
++            raise UnknownTableError(table=name)
++        schema = self._tables[name]["schema"]
++        if len(row) != len(schema):
++            raise TypeMismatchError()
++        for value, column_def in zip(row, schema.columns):
++            if not value_matches_type(value, column_def.type):
++                raise TypeMismatchError()
++        self._tables[name]["rows"].append(row)
+ 
+     def scan(self, name: str) -> Iterator[Row]:
+         """Yield the table's rows in insertion order from a snapshot taken
+@@ -80,7 +96,9 @@ class TableStore:
+             UnknownTableError: if the table does not exist (raised when
+                 ``scan`` is called, not lazily on first ``next``).
+         """
+-        raise NotImplementedError(f"{self.__class__.__name__}.scan not implemented")
++        if name not in self._tables:
++            raise UnknownTableError(table=name)
++        return iter(self._tables[name]["rows"][:])
+ 
+     def delete_where(self, name: str, predicate: RowPredicate) -> int:
+         """Remove every row for which ``predicate(row)`` is True, keeping
+@@ -89,4 +107,11 @@ class TableStore:
+         Raises:
+             UnknownTableError: if the table does not exist.
+         """
+-        raise NotImplementedError(f"{self.__class__.__name__}.delete_where not implemented")
++        if name not in self._tables:
++            raise UnknownTableError(table=name)
++        rows = self._tables[name]["rows"]
++        original_length = len(rows)
++        filtered_rows = [row for row in rows if not predicate(row)]
++        removed_count = original_length - len(filtered_rows)
++        self._tables[name]["rows"] = filtered_rows
++        return removed_count
+\ No newline at end of file

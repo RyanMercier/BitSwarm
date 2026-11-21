@@ -1,0 +1,68 @@
+{
+  "task_id": "click_enum",
+  "mode": "diff",
+  "frozen_utc": "2026-11-08T16:47:12.392374+00:00",
+  "source_decomposition": "redteam/tasks/click_enum/source/decomposition_raw.json",
+  "source_note": "Coordinator output saved 2026-06-11 in out/diff_run_click_enum_v6 (diff mode on pallets/click 8.5.0 dev tree). Reused, not regenerated: that run merged at 1.000 and its patches serve as the reference solution. The original four-sentence spec text was not retained; behavior_spec in the decomposition is the description of record.",
+  "baseline_head": "82522eb196bb2a1f0aa861c0c9d1ea2d48133e1a",
+  "holdback_fraction": 0.3,
+  "holdback_seed": "click_enum",
+  "holdback_commit": "50f67ffb3efd91a9028e82d281121d8cca95b32e701a734d2b009f9152c6f0b8",
+  "gate_key": "new_test_files",
+  "gate_split": {
+    "tests/test_enum_choice.py": [
+      "tests/test_enum_choice__enum_choice_already_enum_instance.py",
+      "tests/test_enum_choice__enum_choice_basic_functionality.py",
+      "tests/test_enum_choice__enum_choice_case_sensitivity.py",
+      "tests/test_enum_choice__enum_choice_case_sensitivity_invalid.py",
+      "tests/test_enum_choice__enum_choice_default_value_display.py",
+      "tests/test_enum_choice__enum_choice_info_dict.py",
+      "tests/test_enum_choice__enum_choice_invalid_input.py",
+      "tests/test_enum_choice__enum_choice_metavar.py",
+      "tests/test_enum_choice__enum_choice_shell_completion.py",
+      "tests/test_enum_choice__enum_choice_with_click_option.py",
+      "tests/test_enum_choice__enum_choice_with_different_enum_types.py"
+    ]
+  },
+  "held_back": [
+    "tests/test_enum_choice__enum_choice_basic_functionality.py",
+    "tests/test_enum_choice__enum_choice_invalid_input.py",
+    "tests/test_enum_choice__enum_choice_metavar.py"
+  ],
+  "held_back_names_listed_in_subtasks_before_filter": [
+    "tests/test_enum_choice__enum_choice_basic_functionality.py",
+    "tests/test_enum_choice__enum_choice_invalid_input.py",
+    "tests/test_enum_choice__enum_choice_metavar.py"
+  ],
+  "subtasks": [
+    {
+      "subtask_id": "enum_choice_implementation",
+      "complexity_weight": 0.8,
+      "dependencies": [],
+      "implementation_files": [
+        "src/click/types.py"
+      ],
+      "test_files": [
+        "tests/test_enum_choice__enum_choice_already_enum_instance.py",
+        "tests/test_enum_choice__enum_choice_case_sensitivity.py",
+        "tests/test_enum_choice__enum_choice_case_sensitivity_invalid.py",
+        "tests/test_enum_choice__enum_choice_default_value_display.py",
+        "tests/test_enum_choice__enum_choice_info_dict.py",
+        "tests/test_enum_choice__enum_choice_shell_completion.py",
+        "tests/test_enum_choice__enum_choice_with_click_option.py",
+        "tests/test_enum_choice__enum_choice_with_different_enum_types.py"
+      ]
+    },
+    {
+      "subtask_id": "enum_choice_export",
+      "complexity_weight": 0.2,
+      "dependencies": [
+        "enum_choice_implementation"
+      ],
+      "implementation_files": [
+        "src/click/__init__.py"
+      ],
+      "test_files": []
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+diff --git a/src/click/types.py b/src/click/types.py
+index 98c2d61..ee82662 100644
+--- a/src/click/types.py
++++ b/src/click/types.py
+@@ -429,6 +429,102 @@ class Choice(ParamType[ParamTypeValue], t.Generic[ParamTypeValue]):
+         return [CompletionItem(c) for c in matched]
+ 
+ 
++class EnumChoiceInfoDict(ParamTypeInfoDict):
++    enum_type: type[enum.Enum]
++    case_sensitive: bool
++
++
++class EnumChoice(ParamType[enum.Enum]):
++    """The enum choice type allows a value to be checked against the members
++    of a Python enum. The user provides the name of an enum member, and the
++    callback receives the corresponding enum instance.
++
++    :param enum_type: A Python enum.Enum subclass to validate against.
++    :param case_sensitive: Set to false to make name matching case
++        insensitive. Defaults to true.
++    """
++
++    name = "enum choice"
++
++    def __init__(
++        self,
++        enum_type: type[enum.Enum],
++        case_sensitive: bool = True,
++    ) -> None:
++        self.enum_type = enum_type
++        self.case_sensitive = case_sensitive
++
++    def to_info_dict(self) -> EnumChoiceInfoDict:
++        return {
++            "enum_type": self.enum_type,
++            "case_sensitive": self.case_sensitive,
++            **super().to_info_dict(),
++        }
++
++    def get_metavar(self, param: Parameter, ctx: Context) -> str | None:
++        if param.param_type_name == "option" and not param.show_choices:  # type: ignore
++            choices_str = "TEXT"
++        else:
++            choices_str = "|".join(self.enum_type.__members__)
++
++        if param.required and param.param_type_name == "argument":
++            return f"{{{choices_str}}}"
++
++        return f"[{choices_str}]"
++
++    def get_missing_message(self, param: Parameter, ctx: Context | None) -> str:
++        return _("Choose from:\n\t{choices}").format(
++            choices=",\n\t".join(self.enum_type.__members__)
++        )
++
++    def convert(
++        self, value: t.Any, param: Parameter | None, ctx: Context | None
++    ) -> enum.Enum:
++        if isinstance(value, self.enum_type):
++            return value
++
++        names = self.enum_type.__members__
++        if isinstance(value, str):
++            if value in names:
++                return names[value]
++            if not self.case_sensitive:
++                folded = value.casefold()
++                for name, member in names.items():
++                    if name.casefold() == folded:
++                        return member
++
++        self.fail(
++            self.get_invalid_choice_message(value=value, ctx=ctx),
++            param=param,
++            ctx=ctx,
++        )
++
++    def get_invalid_choice_message(self, value: t.Any, ctx: Context | None) -> str:
++        choices_str = ", ".join(map(repr, self.enum_type.__members__))
++        return ngettext(
++            "{value!r} is not {choice}.",
++            "{value!r} is not one of {choices}.",
++            len(self.enum_type.__members__),
++        ).format(value=value, choice=choices_str, choices=choices_str)
++
++    def __repr__(self) -> str:
++        return f"EnumChoice({self.enum_type.__name__})"
++
++    def shell_complete(
++        self, ctx: Context, param: Parameter, incomplete: str
++    ) -> list[CompletionItem]:
++        from click.shell_completion import CompletionItem
++
++        names = list(self.enum_type.__members__)
++        if self.case_sensitive:
++            matched = [n for n in names if n.startswith(incomplete)]
++        else:
++            incomplete = incomplete.casefold()
++            matched = [n for n in names if n.casefold().startswith(incomplete)]
++
++        return [CompletionItem(n) for n in matched]
++
++
+ class DateTimeInfoDict(ParamTypeInfoDict):
+     formats: cabc.Sequence[str]
+ 

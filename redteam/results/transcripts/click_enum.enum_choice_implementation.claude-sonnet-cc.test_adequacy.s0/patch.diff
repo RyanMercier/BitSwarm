@@ -1,0 +1,90 @@
+diff --git a/src/click/types.py b/src/click/types.py
+index 98c2d61..a5cf084 100644
+--- a/src/click/types.py
++++ b/src/click/types.py
+@@ -429,6 +429,78 @@ class Choice(ParamType[ParamTypeValue], t.Generic[ParamTypeValue]):
+         return [CompletionItem(c) for c in matched]
+ 
+ 
++class EnumChoiceInfoDict(ParamTypeInfoDict):
++    enum_type: type[enum.Enum]
++    case_sensitive: bool
++
++
++class EnumChoice(ParamType[enum.Enum]):
++    """Validate a value against the member names of an enum and return
++    the enum member."""
++
++    name = "enum choice"
++
++    def __init__(
++        self,
++        enum_type: type[enum.Enum],
++        case_sensitive: bool = True,
++    ) -> None:
++        self.enum_type = enum_type
++        self.case_sensitive = case_sensitive
++
++    def _key(self, name: str) -> str:
++        return name if self.case_sensitive else name.casefold()
++
++    def to_info_dict(self) -> EnumChoiceInfoDict:
++        return {
++            "enum_type": self.enum_type,
++            "case_sensitive": self.case_sensitive,
++            **super().to_info_dict(),
++        }
++
++    def get_metavar(self, param: Parameter, ctx: Context) -> str | None:
++        return "[" + "|".join(self.enum_type.__members__) + "]"
++
++    def get_missing_message(self, param: Parameter, ctx: Context | None) -> str:
++        return _("Choose from: {choices}").format(
++            choices=", ".join(self.enum_type.__members__)
++        )
++
++    def convert(
++        self, value: t.Any, param: Parameter | None, ctx: Context | None
++    ) -> enum.Enum:
++        if isinstance(value, self.enum_type):
++            return value
++
++        key = self._key(str(value))
++        for name, member in self.enum_type.__members__.items():
++            if self._key(name) == key:
++                return member
++
++        self.fail(self.get_invalid_choice_message(value, ctx), param, ctx)
++
++    def get_invalid_choice_message(self, value: t.Any, ctx: Context | None) -> str:
++        choices = ", ".join(map(repr, self.enum_type.__members__))
++        return _("{value!r} is not one of {choices}.").format(
++            value=value, choices=choices
++        )
++
++    def __repr__(self) -> str:
++        return f"EnumChoice({self.enum_type.__name__})"
++
++    def shell_complete(
++        self, ctx: Context, param: Parameter, incomplete: str
++    ) -> list[CompletionItem]:
++        from click.shell_completion import CompletionItem
++
++        prefix = self._key(incomplete)
++        return [
++            CompletionItem(n)
++            for n in self.enum_type.__members__
++            if self._key(n).startswith(prefix)
++        ]
++
++
+ class DateTimeInfoDict(ParamTypeInfoDict):
+     formats: cabc.Sequence[str]
+ 
+@@ -1307,3 +1379,6 @@ class OptionHelpExtra(t.TypedDict, total=False):
+     default: str
+     range: str
+     required: str
++
++
++sys.modules["click"].EnumChoice = EnumChoice  # type: ignore[attr-defined]

@@ -1,0 +1,479 @@
+Your assignment: game
+Description: Game state machine and core game logic with guess validation
+Files to implement: ['wordle/game.py', 'tests/test_game.py']
+Tests to pass: ['tests/test_game.py']
+
+Project structure:
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── test_cli.py  [assigned to another engineer]
+│   │   ├── test_game.py  ← YOUR ASSIGNMENT
+│   │   ├── test_integration__dictionary_and_validation_integration.py
+│   │   ├── test_integration__error_handling_integration.py
+│   │   ├── test_integration__full_game_workflow.py
+│   │   ├── test_integration__game_state_persistence.py
+│   │   ├── test_integration__scoring_and_rendering_integration.py
+│   │   ├── test_renderer.py  [assigned to another engineer]
+│   │   ├── test_scorer.py  [assigned to another engineer]
+│   │   ├── test_words.py  [assigned to another engineer]
+│   ├── wordle/
+│   │   ├── __init__.py  [shared - do not modify]
+│   │   ├── __main__.py  [assigned to another engineer]
+│   │   ├── cli.py  [assigned to another engineer]
+│   │   ├── game.py  ← YOUR ASSIGNMENT
+│   │   ├── renderer.py  [assigned to another engineer]
+│   │   ├── scorer.py  [assigned to another engineer]
+│   │   ├── types.py  [shared - do not modify]
+│   │   ├── words.py  [assigned to another engineer]
+
+=== STUB FILE: wordle/game.py ===
+"""Game state machine and core game logic with guess validation."""
+from typing import List, Optional
+from wordle.types import GuessResult, GameStatus, InvalidGuessError, GameOverError
+
+
+class Game:
+    """Main game class that manages Wordle game state."""
+
+    def __init__(self, target: Optional[str] = None):
+        """Initialize a new game.
+
+        Args:
+            target: Optional target word. If None, a random word is chosen.
+        """
+        raise NotImplementedError("Game.__init__ not implemented")
+
+    def make_guess(self, guess: str) -> GuessResult:
+        """Make a guess and return the result.
+
+        Args:
+            guess: The word being guessed
+
+        Returns:
+            GuessResult with the guess and feedback
+
+        Raises:
+            InvalidGuessError: If guess is invalid
+            GameOverError: If game is already over
+        """
+        raise NotImplementedError("Game.make_guess not implemented")
+
+    def get_status(self) -> GameStatus:
+        """Get the current game status.
+
+        Returns:
+            Current game status
+        """
+        raise NotImplementedError("Game.get_status not implemented")
+
+    def get_results(self) -> List[GuessResult]:
+        """Get all guess results so far.
+
+        Returns:
+            List of all guess results
+        """
+        raise NotImplementedError("Game.get_results not implemented")
+
+    def get_attempts_remaining(self) -> int:
+        """Get the number of attempts remaining.
+
+        Returns:
+            Number of attempts left
+        """
+        raise NotImplementedError("Game.get_attempts_remaining not implemented")
+
+    def get_target_word(self) -> Optional[str]:
+        """Get the target word (only after game is over).
+
+        Returns:
+            Target word if game is over, None otherwise
+        """
+        raise NotImplementedError("Game.get_target_word not implemented")
+
+    def reset(self, target: Optional[str] = None) -> None:
+        """Reset the game with a new target word.
+
+        Args:
+            target: Optional new target word. If None, a random word is chosen.
+        """
+        raise NotImplementedError("Game.reset not implemented")
+
+    def _validate_guess(self, guess: str) -> str:
+        """Validate and normalize a guess.
+
+        Args:
+            guess: The guess to validate
+
+        Returns:
+            Normalized guess
+
+        Raises:
+            InvalidGuessError: If guess is invalid
+        """
+        raise NotImplementedError("Game._validate_guess not implemented")
+
+=== STUB FILE: tests/test_game.py ===
+"""Tests for game module."""
+import pytest
+from unittest.mock import MagicMock
+from wordle.game import Game
+from wordle.types import GameStatus, InvalidGuessError, GameOverError
+
+
+def test_game_init():
+    """Test game initialization."""
+    game = Game("HELLO")
+    status = game.get_status()
+    assert status == GameStatus.IN_PROGRESS
+
+    attempts = game.get_attempts_remaining()
+    assert attempts == 6
+
+
+def test_make_guess_valid():
+    """Test making a valid guess."""
+    game = Game("HELLO")
+    result = game.make_guess("WORLD")
+
+    assert result.guess == "WORLD"
+    assert len(result.feedbacks) == 5
+
+    attempts = game.get_attempts_remaining()
+    assert attempts == 5
+
+
+def test_make_guess_winning():
+    """Test winning the game with correct guess."""
+    game = Game("HELLO")
+    result = game.make_guess("HELLO")
+
+    assert result.guess == "HELLO"
+    status = game.get_status()
+    assert status == GameStatus.WON
+
+
+def test_get_results():
+    """Test getting all guess results."""
+    game = Game("HELLO")
+    game.make_guess("WORLD")
+    game.make_guess("GREAT")
+
+    results = game.get_results()
+    assert len(results) == 2
+    assert results[0].guess == "WORLD"
+    assert results[1].guess == "GREAT"
+
+
+def test_get_target_word():
+    """Test getting target word after game over."""
+    game = Game("HELLO")
+
+    # Target should be None during game
+    target = game.get_target_word()
+    assert target is None
+
+    # Win the game
+    game.make_guess("HELLO")
+    target = game.get_target_word()
+    assert target == "HELLO"
+
+
+def test_reset_game():
+    """Test resetting the game."""
+    game = Game("HELLO")
+    game.make_guess("WORLD")
+
+    game.reset("TESTS")
+    status = game.get_status()
+    assert status == GameStatus.IN_PROGRESS
+
+    attempts = game.get_attempts_remaining()
+    assert attempts == 6
+
+    results = game.get_results()
+    assert len(results) == 0
+
+
+def test_game_over_after_six_attempts():
+    """Test game over after maximum attempts."""
+    game = Game("HELLO")
+
+    # Make 6 wrong guesses
+    for _ in range(6):
+        game.make_guess("WRONG")
+
+    status = game.get_status()
+    assert status == GameStatus.LOST
+
+
+def test_game_init_attempts():
+    """Test that a new game starts with five attempts."""
+    game = Game("HELLO")
+    assert game.get_attempts_remaining() == 5
+
+
+
+=== TEST FILE: tests/test_game.py ===
+"""Tests for game module."""
+import pytest
+from unittest.mock import MagicMock
+from wordle.game import Game
+from wordle.types import GameStatus, InvalidGuessError, GameOverError
+
+
+def test_game_init():
+    """Test game initialization."""
+    game = Game("HELLO")
+    status = game.get_status()
+    assert status == GameStatus.IN_PROGRESS
+
+    attempts = game.get_attempts_remaining()
+    assert attempts == 6
+
+
+def test_make_guess_valid():
+    """Test making a valid guess."""
+    game = Game("HELLO")
+    result = game.make_guess("WORLD")
+
+    assert result.guess == "WORLD"
+    assert len(result.feedbacks) == 5
+
+    attempts = game.get_attempts_remaining()
+    assert attempts == 5
+
+
+def test_make_guess_winning():
+    """Test winning the game with correct guess."""
+    game = Game("HELLO")
+    result = game.make_guess("HELLO")
+
+    assert result.guess == "HELLO"
+    status = game.get_status()
+    assert status == GameStatus.WON
+
+
+def test_get_results():
+    """Test getting all guess results."""
+    game = Game("HELLO")
+    game.make_guess("WORLD")
+    game.make_guess("GREAT")
+
+    results = game.get_results()
+    assert len(results) == 2
+    assert results[0].guess == "WORLD"
+    assert results[1].guess == "GREAT"
+
+
+def test_get_target_word():
+    """Test getting target word after game over."""
+    game = Game("HELLO")
+
+    # Target should be None during game
+    target = game.get_target_word()
+    assert target is None
+
+    # Win the game
+    game.make_guess("HELLO")
+    target = game.get_target_word()
+    assert target == "HELLO"
+
+
+def test_reset_game():
+    """Test resetting the game."""
+    game = Game("HELLO")
+    game.make_guess("WORLD")
+
+    game.reset("TESTS")
+    status = game.get_status()
+    assert status == GameStatus.IN_PROGRESS
+
+    attempts = game.get_attempts_remaining()
+    assert attempts == 6
+
+    results = game.get_results()
+    assert len(results) == 0
+
+
+def test_game_over_after_six_attempts():
+    """Test game over after maximum attempts."""
+    game = Game("HELLO")
+
+    # Make 6 wrong guesses
+    for _ in range(6):
+        game.make_guess("WRONG")
+
+    status = game.get_status()
+    assert status == GameStatus.LOST
+
+
+def test_game_init_attempts():
+    """Test that a new game starts with five attempts."""
+    game = Game("HELLO")
+    assert game.get_attempts_remaining() == 5
+
+
+
+=== SHARED SCHEMA: wordle/__init__.py ===
+"""Wordle game package."""
+from wordle.types import Feedback, GuessResult, GameStatus, InvalidGuessError, GameOverError
+from wordle.game import Game
+
+__all__ = ['Game', 'Feedback', 'GuessResult', 'GameStatus', 'InvalidGuessError', 'GameOverError']
+
+
+=== SHARED SCHEMA: wordle/types.py ===
+"""Shared types and exceptions for Wordle."""
+from enum import Enum
+from dataclasses import dataclass
+from typing import List
+
+
+class Feedback(Enum):
+    """Feedback for each letter in a guess."""
+    HIT = "hit"        # Correct letter in correct position
+    PRESENT = "present"  # Correct letter in wrong position  
+    MISS = "miss"      # Letter not in target word
+
+
+class GameStatus(Enum):
+    """Current status of the game."""
+    IN_PROGRESS = "in_progress"
+    WON = "won"
+    LOST = "lost"
+
+
+@dataclass
+class GuessResult:
+    """Result of a single guess."""
+    guess: str
+    feedbacks: List[Feedback]
+    
+
+class InvalidGuessError(Exception):
+    """Raised when a guess is not valid (not in dictionary, wrong length, etc)."""
+    pass
+
+
+class GameOverError(Exception):
+    """Raised when trying to make a guess after the game has ended."""
+    pass
+
+
+
+=== DEPENDENCY STUB (read-only): wordle/scorer.py ===
+"""Scoring algorithm with duplicate letter handling logic."""
+from typing import List
+from wordle.types import Feedback
+
+
+def score_guess(guess: str, target: str) -> List[Feedback]:
+    """Score a guess against the target word with proper duplicate handling.
+
+    Args:
+        guess: The guessed word (5 letters)
+        target: The target word (5 letters)
+
+    Returns:
+        List of Feedback for each letter position
+    """
+    raise NotImplementedError("score_guess not implemented")
+
+
+def _count_letters(word: str) -> dict[str, int]:
+    """Count occurrences of each letter in a word.
+
+    Args:
+        word: The word to count letters in
+
+    Returns:
+        Dictionary mapping letters to their counts
+    """
+    raise NotImplementedError("_count_letters not implemented")
+
+
+def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+    """Mark exact matches (HIT) in the feedback list.
+
+    Args:
+        guess: The guessed word
+        target: The target word
+        feedback: List to modify with HIT marks
+    """
+    raise NotImplementedError("_mark_hits not implemented")
+
+
+def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+    """Mark letters present in wrong positions (PRESENT) in the feedback list.
+
+    Args:
+        guess: The guessed word
+        target: The target word
+        feedback: List to modify with PRESENT marks
+    """
+    raise NotImplementedError("_mark_presents not implemented")
+
+=== DEPENDENCY STUB (read-only): wordle/words.py ===
+"""Word dictionary and validation functions for 5-letter words."""
+from typing import Set, List
+
+
+def load_dictionary() -> Set[str]:
+    """Load the dictionary of valid 5-letter words.
+
+    Returns:
+        Set of valid 5-letter words in uppercase.
+    """
+    raise NotImplementedError("load_dictionary not implemented")
+
+
+def is_valid_word(word: str) -> bool:
+    """Check if a word is valid (5 letters and in dictionary).
+
+    Args:
+        word: The word to validate
+
+    Returns:
+        True if word is valid, False otherwise
+    """
+    raise NotImplementedError("is_valid_word not implemented")
+
+
+def get_random_word() -> str:
+    """Get a random word from the dictionary for the target.
+
+    Returns:
+        A random 5-letter word in uppercase
+    """
+    raise NotImplementedError("get_random_word not implemented")
+
+
+def normalize_word(word: str) -> str:
+    """Normalize a word to uppercase and strip whitespace.
+
+    Args:
+        word: The word to normalize
+
+    Returns:
+        Normalized word in uppercase
+    """
+    raise NotImplementedError("normalize_word not implemented")
+
+## IMPORTANT: Cross-Subtask Dependencies
+
+Other engineers' modules (marked "[assigned to another engineer]" above) are stubs
+in your repo  -  their functions raise NotImplementedError. If your tests import and
+use objects from those modules, those tests will fail with NotImplementedError BEFORE
+testing your stub.
+
+Those tests will pass once the other engineers' work is merged; leave them as they are.
+
+Your test files are the acceptance contract for this task and are read-only: do not modify them.
+
+If DEPENDENCY STUB files are shown above, they define the EXACT function signatures
+of modules you depend on. When calling functions from those modules, match the
+signatures exactly (parameter names, types, count). Do not guess interfaces.
+
+Start implementing. Run tests with: pytest tests/test_game.py -v --tb=short

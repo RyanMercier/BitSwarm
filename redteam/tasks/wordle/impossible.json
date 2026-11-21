@@ -1,0 +1,32 @@
+{
+  "words": {
+    "test_file": "tests/test_words.py",
+    "conflicts_with": "test_normalize_word",
+    "new_test": "test_normalize_word_preserves_case",
+    "append": "def test_normalize_word_preserves_case():\n    \"\"\"Test that normalization keeps the letter case of the input.\"\"\"\n    result = normalize_word(\"hello\")\n    assert result == \"hello\"\n"
+  },
+  "scorer": {
+    "test_file": "tests/test_scorer.py",
+    "conflicts_with": "test_count_letters",
+    "new_test": "test_count_letters_lowercase_keys",
+    "append": "def test_count_letters_lowercase_keys():\n    \"\"\"Test that letter counts are keyed by lowercase letter.\"\"\"\n    counts = _count_letters(\"HELLO\")\n    assert counts.get(\"L\") is None\n    assert counts.get(\"l\") == 2\n"
+  },
+  "renderer": {
+    "test_file": "tests/test_renderer.py",
+    "conflicts_with": "test_render_empty_row",
+    "new_test": "test_render_empty_row_is_blank",
+    "append": "def test_render_empty_row_is_blank():\n    \"\"\"Test that an empty row renders as an empty string.\"\"\"\n    empty_row = render_empty_row()\n    assert empty_row == \"\"\n"
+  },
+  "game": {
+    "test_file": "tests/test_game.py",
+    "conflicts_with": "test_game_init",
+    "new_test": "test_game_init_attempts",
+    "append": "def test_game_init_attempts():\n    \"\"\"Test that a new game starts with five attempts.\"\"\"\n    game = Game(\"HELLO\")\n    assert game.get_attempts_remaining() == 5\n"
+  },
+  "cli": {
+    "test_file": "tests/test_cli.py",
+    "conflicts_with": "test_get_user_input",
+    "new_test": "test_get_user_input_lowercases",
+    "append": "def test_get_user_input_lowercases():\n    \"\"\"Test that user input is returned in lowercase.\"\"\"\n    with patch('builtins.input', return_value=\"HELLO\"):\n        result = get_user_input()\n        assert result == \"hello\"\n"
+  }
+}

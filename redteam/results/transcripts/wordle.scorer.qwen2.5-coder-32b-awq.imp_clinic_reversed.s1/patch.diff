@@ -1,0 +1,99 @@
+diff --git a/tests/test_scorer.py b/tests/test_scorer.py
+index e936dd8..ee2ebf9 100644
+--- a/tests/test_scorer.py
++++ b/tests/test_scorer.py
+@@ -3,21 +3,18 @@ import pytest
+ from wordle.scorer import score_guess, _count_letters, _mark_hits, _mark_presents
+ from wordle.types import Feedback
+ 
+-
+ def test_score_guess_exact_match():
+     """Test scoring when guess exactly matches target."""
+     result = score_guess("HELLO", "HELLO")
+     assert len(result) == 5
+     assert all(feedback == Feedback.HIT for feedback in result)
+ 
+-
+ def test_score_guess_no_matches():
+     """Test scoring when guess has no matching letters."""
+     result = score_guess("ABCDE", "FGHIJ")
+     assert len(result) == 5
+     assert all(feedback == Feedback.MISS for feedback in result)
+ 
+-
+ def test_score_guess_mixed_feedback():
+     """Test scoring with mixed hit, present, and miss feedback."""
+     result = score_guess("HELLO", "WORLD")
+@@ -29,8 +26,8 @@ def test_count_letters():
+     """Test letter counting functionality."""
+     counts = _count_letters("HELLO")
+     assert isinstance(counts, dict)
+-    assert counts.get("L") == 2
+-    assert counts.get("H") == 1
++    assert counts.get("l") == 2
++    assert counts.get("h") == 1
+ 
+ 
+ def test_mark_hits():
+diff --git a/wordle/scorer.py b/wordle/scorer.py
+index 06b284c..66a94cd 100644
+--- a/wordle/scorer.py
++++ b/wordle/scorer.py
+@@ -2,7 +2,6 @@
+ from typing import List
+ from wordle.types import Feedback
+ 
+-
+ def score_guess(guess: str, target: str) -> List[Feedback]:
+     """Score a guess against the target word with proper duplicate handling.
+ 
+@@ -13,8 +12,10 @@ def score_guess(guess: str, target: str) -> List[Feedback]:
+     Returns:
+         List of Feedback for each letter position
+     """
+-    raise NotImplementedError("score_guess not implemented")
+-
++    feedback = [Feedback.MISS] * 5
++    _mark_hits(guess, target, feedback)
++    _mark_presents(guess, target, feedback)
++    return feedback
+ 
+ def _count_letters(word: str) -> dict[str, int]:
+     """Count occurrences of each letter in a word.
+@@ -25,8 +26,10 @@ def _count_letters(word: str) -> dict[str, int]:
+     Returns:
+         Dictionary mapping letters to their counts
+     """
+-    raise NotImplementedError("_count_letters not implemented")
+-
++    counts = {}
++    for letter in word.lower():
++        counts[letter] = counts.get(letter, 0) + 1
++    return counts
+ 
+ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+     """Mark exact matches (HIT) in the feedback list.
+@@ -36,8 +39,9 @@ def _mark_hits(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with HIT marks
+     """
+-    raise NotImplementedError("_mark_hits not implemented")
+-
++    for i, (g_letter, t_letter) in enumerate(zip(guess.lower(), target.lower())):
++        if g_letter == t_letter:
++            feedback[i] = Feedback.HIT
+ 
+ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+     """Mark letters present in wrong positions (PRESENT) in the feedback list.
+@@ -47,4 +51,9 @@ def _mark_presents(guess: str, target: str, feedback: List[Feedback]) -> None:
+         target: The target word
+         feedback: List to modify with PRESENT marks
+     """
+-    raise NotImplementedError("_mark_presents not implemented")
+\ No newline at end of file
++    target_counts = _count_letters(target)
++    guess_counts = _count_letters(guess)
++    for i, (g_letter, t_letter) in enumerate(zip(guess.lower(), target.lower())):
++        if feedback[i] != Feedback.HIT and g_letter in target_counts and target_counts[g_letter] > 0:
++            feedback[i] = Feedback.PRESENT
++            target_counts[g_letter] -= 1

@@ -1,0 +1,95 @@
+diff --git a/wordle/cli.py b/wordle/cli.py
+index 250c374..4ac4ab8 100644
+--- a/wordle/cli.py
++++ b/wordle/cli.py
+@@ -4,11 +4,9 @@ from typing import Optional
+ from wordle.game import Game
+ from wordle.types import InvalidGuessError, GameOverError
+ 
+-
+ def main() -> None:
+     """Main entry point for the Wordle CLI game."""
+-    raise NotImplementedError("main not implemented")
+-
++    play_game()
+ 
+ def play_game(target: Optional[str] = None) -> None:
+     """Play a complete game of Wordle.
+@@ -16,8 +14,15 @@ def play_game(target: Optional[str] = None) -> None:
+     Args:
+         target: Optional target word for testing
+     """
+-    raise NotImplementedError("play_game not implemented")
+-
++    game = Game(target=target)
++    while game.get_status().value == "in_progress":
++        try:
++            guess = get_user_input()
++            game.make_guess(guess)
++            display_game_state(game)
++        except InvalidGuessError as e:
++            handle_guess_error(e)
++    display_result(game)
+ 
+ def get_user_input() -> str:
+     """Get a guess from the user.
+@@ -25,13 +30,12 @@ def get_user_input() -> str:
+     Returns:
+         User's guess input
+     """
+-    raise NotImplementedError("get_user_input not implemented")
+-
++    return input("Enter your guess: ").upper()
+ 
+ def display_welcome() -> None:
+     """Display welcome message and game instructions."""
+-    raise NotImplementedError("display_welcome not implemented")
+-
++    print("Welcome to Wordle!")
++    print("Try to guess the 5-letter word in 6 attempts.")
+ 
+ def display_game_state(game: Game) -> None:
+     """Display the current game board and status.
+@@ -39,8 +43,9 @@ def display_game_state(game: Game) -> None:
+     Args:
+         game: The game instance to display
+     """
+-    raise NotImplementedError("display_game_state not implemented")
+-
++    print("Attempts remaining:", game.get_attempts_remaining())
++    for result in game.get_results():
++        print(result.guess)
+ 
+ def display_result(game: Game) -> None:
+     """Display the final game result.
+@@ -48,8 +53,10 @@ def display_result(game: Game) -> None:
+     Args:
+         game: The completed game instance
+     """
+-    raise NotImplementedError("display_result not implemented")
+-
++    if game.get_status().value == "won":
++        print(f"Congratulations! You've won. The word was {game.get_target_word()}.")
++    else:
++        print(f"Sorry, you've lost. The word was {game.get_target_word()}.")
+ 
+ def handle_guess_error(error: Exception) -> None:
+     """Handle and display guess-related errors.
+@@ -57,8 +64,7 @@ def handle_guess_error(error: Exception) -> None:
+     Args:
+         error: The exception that occurred
+     """
+-    raise NotImplementedError("handle_guess_error not implemented")
+-
++    print(error)
+ 
+ def ask_play_again() -> bool:
+     """Ask if the user wants to play again.
+@@ -66,4 +72,5 @@ def ask_play_again() -> bool:
+     Returns:
+         True if user wants to play again, False otherwise
+     """
+-    raise NotImplementedError("ask_play_again not implemented")
+\ No newline at end of file
++    response = input("Do you want to play again? (y/n): ").strip().lower()
++    return response == "y"

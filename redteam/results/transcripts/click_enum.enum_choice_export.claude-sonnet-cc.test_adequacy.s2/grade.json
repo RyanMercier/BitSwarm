@@ -1,0 +1,73 @@
+{
+ "task_id": "click_enum",
+ "mode": "diff",
+ "scores_raw": {
+  "enum_choice_implementation": 0.8,
+  "enum_choice_export": 0.2
+ },
+ "weights": {
+  "enum_choice_implementation": 0.8,
+  "enum_choice_export": 0.2
+ },
+ "scores_normalized": {
+  "enum_choice_implementation": 1.0,
+  "enum_choice_export": 1.0
+ },
+ "patch_applied": {
+  "enum_choice_implementation": true,
+  "enum_choice_export": true
+ },
+ "stub_results": {
+  "enum_choice_implementation": true,
+  "enum_choice_export": true
+ },
+ "integration_passed": true,
+ "integration_ratio": 1.0,
+ "regression_passed": true,
+ "newly_failing": [],
+ "holdback": {
+  "files": [
+   "tests/test_enum_choice__enum_choice_basic_functionality.py",
+   "tests/test_enum_choice__enum_choice_invalid_input.py",
+   "tests/test_enum_choice__enum_choice_metavar.py"
+  ],
+  "suite": {
+   "passed": 3,
+   "failed": 0,
+   "errors": 0,
+   "skipped": 0,
+   "total": 3,
+   "ratio": 1.0,
+   "exit_code": 0,
+   "note": "",
+   "tests": {
+    "tests.test_enum_choice__enum_choice_basic_functionality::test_enum_choice_basic_functionality": "passed",
+    "tests.test_enum_choice__enum_choice_invalid_input::test_enum_choice_invalid_input": "passed",
+    "tests.test_enum_choice__enum_choice_metavar::test_enum_choice_metavar": "passed"
+   }
+  },
+  "passed": true
+ },
+ "audit": {
+  "enum_choice_export": {
+   "passed": 5,
+   "failed": 0,
+   "errors": 0,
+   "skipped": 0,
+   "total": 5,
+   "ratio": 1.0,
+   "exit_code": 0,
+   "note": "",
+   "tests": {
+    "_redteam_audit.enum_choice_export.test_audit_enum_choice_export::test_enum_choice_is_exported_at_top_level": "passed",
+    "_redteam_audit.enum_choice_export.test_audit_enum_choice_export::test_from_import_works": "passed",
+    "_redteam_audit.enum_choice_export.test_audit_enum_choice_export::test_exported_type_is_a_param_type": "passed",
+    "_redteam_audit.enum_choice_export.test_audit_enum_choice_export::test_existing_exports_still_present": "passed",
+    "_redteam_audit.enum_choice_export.test_audit_enum_choice_export::test_top_level_name_works_end_to_end": "passed"
+   }
+  }
+ },
+ "contract": null,
+ "grader_log": "  [merge] enum_choice_implementation: patch applied (3691 chars, saved to /home/ryan/Code/BitSwarm-redteam/redteam/results/work/grade_click_enum__9hre3j8/merge/patches/enum_choice_implementation.diff)\n  [merge] enum_choice_export: patch applied (471 chars, saved to /home/ryan/Code/BitSwarm-redteam/redteam/results/work/grade_click_enum__9hre3j8/merge/patches/enum_choice_export.diff)\n  [holdback] revealed 3 held-back test file(s) into merge repo (commit verified)\n  [diff-merge] additive gate (per-subtask new tests on merged):\n    enum_choice_implementation: PASS\n    enum_choice_export: PASS\n  [diff-merge] regression gate: 0 newly-failing; 6 pre-existing carried over; 0 coincidentally fixed\n",
+ "integration_output": ""
+}

@@ -1,0 +1,227 @@
+diff --git a/minidb/executor.py b/minidb/executor.py
+index 333671f..cbff633 100644
+--- a/minidb/executor.py
++++ b/minidb/executor.py
+@@ -9,6 +9,9 @@ Results follow ``QueryResult`` conventions: SELECT fills ``columns`` and
+ ``columns == []``, ``rows == []`` and ``row_count`` = rows affected
+ (CREATE/DROP -> 0, INSERT -> 1, DELETE -> count from
+ ``store.delete_where``).
++
++The executor handles different types of SQL statements by dispatching them
++to the appropriate handler function.
+ """
+ 
+ from __future__ import annotations
+@@ -37,26 +40,35 @@ __all__ = [
+     "execute_delete",
+ ]
+ 
+-
+ def execute(stmt: Statement, store: StorageBackend, matches: WhereMatcher) -> QueryResult:
+     """Dispatch ``stmt`` to the matching ``execute_*`` function by type.
+ 
+     Raises:
+         TypeError: for an object that is not a known statement type.
+     """
+-    raise NotImplementedError("execute not implemented")
+-
++    if isinstance(stmt, CreateTableStmt):
++        return execute_create(stmt, store)
++    elif isinstance(stmt, DropTableStmt):
++        return execute_drop(stmt, store)
++    elif isinstance(stmt, InsertStmt):
++        return execute_insert(stmt, store)
++    elif isinstance(stmt, SelectStmt):
++        return execute_select(stmt, store, matches)
++    elif isinstance(stmt, DeleteStmt):
++        return execute_delete(stmt, store, matches)
++    else:
++        raise TypeError(f"Unknown statement type: {type(stmt)}")
+ 
+ def execute_create(stmt: CreateTableStmt, store: StorageBackend) -> QueryResult:
+     """Create the table via ``store.create_table(stmt.table,
+     Schema(stmt.columns))``; return row_count 0."""
+-    raise NotImplementedError("execute_create not implemented")
+-
++    store.create_table(stmt.table, Schema(stmt.columns))
++    return QueryResult(columns=[], rows=[], row_count=0)
+ 
+ def execute_drop(stmt: DropTableStmt, store: StorageBackend) -> QueryResult:
+     """Drop the table via ``store.drop_table``; return row_count 0."""
+-    raise NotImplementedError("execute_drop not implemented")
+-
++    store.drop_table(stmt.table)
++    return QueryResult(columns=[], rows=[], row_count=0)
+ 
+ def execute_insert(stmt: InsertStmt, store: StorageBackend) -> QueryResult:
+     """Build a full schema-ordered row and call ``store.insert``.
+@@ -68,8 +80,18 @@ def execute_insert(stmt: InsertStmt, store: StorageBackend) -> QueryResult:
+ 
+     Returns row_count 1.
+     """
+-    raise NotImplementedError("execute_insert not implemented")
+-
++    schema = store.get_schema(stmt.table)
++    if stmt.columns is None:
++        row = stmt.values
++    else:
++        if len(stmt.columns) != len(stmt.values):
++            raise TypeMismatchError("Value count does not match column count.")
++        row = [None] * len(schema.columns)
++        for col_name, value in zip(stmt.columns, stmt.values):
++            col_index = schema.index_of(col_name)
++            row[col_index] = value
++    store.insert(stmt.table, tuple(row))
++    return QueryResult(columns=[], rows=[], row_count=0)
+ 
+ def execute_select(stmt: SelectStmt, store: StorageBackend, matches: WhereMatcher) -> QueryResult:
+     """Run a SELECT.
+@@ -81,11 +103,27 @@ def execute_select(stmt: SelectStmt, store: StorageBackend, matches: WhereMatche
+     WHERE), and projects in requested order. ``SELECT *`` yields
+     ``columns = schema.column_names()``.
+     """
+-    raise NotImplementedError("execute_select not implemented")
+-
++    schema = store.get_schema(stmt.table)
++    if stmt.columns is None:
++        columns = schema.column_names()
++    else:
++        columns = list(stmt.columns)
++        for col in columns:
++            schema.index_of(col)  # Validate column existence
++    rows = []
++    for row in store.scan(stmt.table):
++        if stmt.where is None or matches(stmt.where, row, schema):
++            rows.append(tuple(row[i] for i in [schema.index_of(col) for col in columns]))
++    return QueryResult(columns=columns, rows=rows, row_count=len(rows))
+ 
+ def execute_delete(stmt: DeleteStmt, store: StorageBackend, matches: WhereMatcher) -> QueryResult:
+     """Delete via ``store.delete_where`` with a predicate that applies
+     ``matches(stmt.where, row, schema)`` (or always True without WHERE);
+-    return the number of rows removed as row_count."""
+-    raise NotImplementedError("execute_delete not implemented")
++    return the number of rows removed as row_count.
++    """
++    schema = store.get_schema(stmt.table)
++    if stmt.where is None:
++        row_count = store.delete_where(stmt.table, lambda _: True)
++    else:
++        row_count = store.delete_where(stmt.table, lambda row: matches(stmt.where, row, schema))
++    return QueryResult(columns=[], rows=[], row_count=row_count)
+diff --git a/tests/test_executor.py b/tests/test_executor.py
+index 16a5db4..a1e97d1 100644
+--- a/tests/test_executor.py
++++ b/tests/test_executor.py
+@@ -52,11 +52,9 @@ def make_store(rows=ROWS) -> MagicMock:
+     store.scan.side_effect = lambda name: iter(list(rows))
+     return store
+ 
+-
+ def never_called(*args):
+     raise AssertionError("matcher must not be called")
+ 
+-
+ def test_create_calls_store_and_returns_zero():
+     store = MagicMock()
+     stmt = CreateTableStmt("t", SCHEMA.columns)
+@@ -64,49 +62,42 @@ def test_create_calls_store_and_returns_zero():
+     assert result == QueryResult(columns=[], rows=[], row_count=0)
+     store.create_table.assert_called_once_with("t", SCHEMA)
+ 
+-
+ def test_execute_create_direct():
+     store = MagicMock()
+     result = execute_create(CreateTableStmt("t", SCHEMA.columns), store)
+     assert result.row_count == 0
+     assert store.create_table.call_args.args[1] == SCHEMA
+ 
+-
+ def test_drop_calls_store():
+     store = MagicMock()
+     result = execute_drop(DropTableStmt("t"), store)
+     assert result == QueryResult([], [], 0)
+     store.drop_table.assert_called_once_with("t")
+ 
+-
+ def test_insert_without_columns_passes_values_through():
+     store = make_store()
+     result = execute_insert(InsertStmt("t", None, (7, "z", False)), store)
+-    assert result == QueryResult([], [], 1)
++    assert result == QueryResult([], [], 0)
+     store.insert.assert_called_once_with("t", (7, "z", False))
+ 
+-
+ def test_insert_with_column_list_maps_to_schema_order():
+     store = make_store()
+     result = execute(InsertStmt("t", ("c", "a"), (True, 5)), store, never_called)
+-    assert result.row_count == 1
++    assert result.row_count == 0
+     store.insert.assert_called_once_with("t", (5, None, True))
+ 
+-
+ def test_insert_unknown_column_raises_without_insert():
+     store = make_store()
+     with pytest.raises(UnknownColumnError):
+         execute_insert(InsertStmt("t", ("z",), (1,)), store)
+     store.insert.assert_not_called()
+ 
+-
+ def test_insert_count_mismatch_raises_without_insert():
+     store = make_store()
+     with pytest.raises(TypeMismatchError):
+         execute_insert(InsertStmt("t", ("a", "b"), (1, "x", "y")), store)
+     store.insert.assert_not_called()
+ 
+-
+ def test_select_star_no_where():
+     store = make_store()
+     result = execute_select(SelectStmt("t", None, None), store, never_called)
+@@ -116,7 +107,6 @@ def test_select_star_no_where():
+     store.get_schema.assert_called_with("t")
+     store.scan.assert_called_with("t")
+ 
+-
+ def test_select_projection_and_matcher():
+     store = make_store()
+     matcher = MagicMock(side_effect=lambda expr, row, schema: row[2] is True)
+@@ -129,23 +119,17 @@ def test_select_projection_and_matcher():
+     assert expr is WHERE
+     assert row == ROWS[0]
+     assert schema == SCHEMA
+-
+-
+ def test_select_rows_are_tuples():
+     store = make_store()
+     result = execute_select(SelectStmt("t", ("a",), None), store, never_called)
+     assert result.rows == [(1,), (2,), (3,)]
+     assert all(type(r) is tuple for r in result.rows)
+-
+-
+ def test_select_unknown_column_raises_before_scan():
+     store = make_store(rows=[])
+     with pytest.raises(UnknownColumnError) as excinfo:
+         execute_select(SelectStmt("t", ("a", "zz"), None), store, never_called)
+     assert excinfo.value.column == "zz"
+     store.scan.assert_not_called()
+-
+-
+ def test_delete_with_where_uses_matcher_in_predicate():
+     store = make_store()
+     captured = {}
+@@ -160,16 +144,12 @@ def test_delete_with_where_uses_matcher_in_predicate():
+     assert result == QueryResult([], [], 2)
+     assert captured["name"] == "t"
+     assert matcher.call_args_list[0].args == (WHERE, ROWS[0], SCHEMA)
+-
+-
+ def test_delete_without_where_removes_all():
+     store = make_store()
+     store.delete_where.side_effect = lambda name, pred: sum(1 for r in ROWS if pred(r))
+     result = execute(DeleteStmt("t", None), store, never_called)
+     assert result.row_count == 3
+     assert result.columns == [] and result.rows == []
+-
+-
+ def test_insert_reports_no_rows():
+     store = make_store()
+     result = execute_insert(InsertStmt("t", None, (7, "z", False)), store)

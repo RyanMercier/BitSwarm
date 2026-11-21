@@ -1,0 +1,155 @@
+diff --git a/wordle/game.py b/wordle/game.py
+index 8f632fd..bb045c8 100644
+--- a/wordle/game.py
++++ b/wordle/game.py
+@@ -1,84 +1,109 @@
+-"""Game state machine and core game logic with guess validation."""
+-from typing import List, Optional
+-from wordle.types import GuessResult, GameStatus, InvalidGuessError, GameOverError
+-
++from wordle.types import GameStatus, InvalidGuessError, GameOverError, GuessResult, Feedback
++from wordle.words import get_random_word
++from wordle.scorer import score_guess
+ 
+ class Game:
+-    """Main game class that manages Wordle game state."""
+-
+-    def __init__(self, target: Optional[str] = None):
++    def __init__(self, target: str = None):
+         """Initialize a new game.
+-
++        
+         Args:
+             target: Optional target word. If None, a random word is chosen.
+         """
+-        raise NotImplementedError("Game.__init__ not implemented")
++        self.target_word = target if target else get_random_word()
++        self.results = []
++        self.status = GameStatus.IN_PROGRESS
++        self.attempts_left = 6
++
++    def _validate_guess(self, guess: str) -> str:
++        """Validate and normalize a guess.
++        
++        Args:
++            guess: The guess to validate
++        
++        Returns:
++            Normalized guess
++        
++        Raises:
++            InvalidGuessError: If guess is invalid
++        """
++        # Implement validation logic
++        if not guess.isalpha() or len(guess) != 5:
++            raise InvalidGuessError("Invalid guess. Please enter a 5-letter word.")
++        
++        normalized_guess = guess.upper()
++        return normalized_guess
+ 
+     def make_guess(self, guess: str) -> GuessResult:
+         """Make a guess and return the result.
+-
++        
+         Args:
+             guess: The word being guessed
+-
++        
+         Returns:
+             GuessResult with the guess and feedback
+-
++        
+         Raises:
+             InvalidGuessError: If guess is invalid
+             GameOverError: If game is already over
+         """
+-        raise NotImplementedError("Game.make_guess not implemented")
++        # Implement guess logic
++        if self.status != GameStatus.IN_PROGRESS:
++            raise GameOverError("Game is already over.")
++        
++        normalized_guess = self._validate_guess(guess)
++        feedbacks = score_guess(normalized_guess, self.target_word)
++        result = GuessResult(guess=normalized_guess, feedbacks=feedbacks)
++        self.results.append(result)
++        
++        self.attempts_left -= 1
++        if normalized_guess == self.target_word:
++            self.status = GameStatus.WON
++        elif self.attempts_left == 0:
++            self.status = GameStatus.LOST
++        
++        return result
+ 
+     def get_status(self) -> GameStatus:
+         """Get the current game status.
+-
++        
+         Returns:
+             Current game status
+         """
+-        raise NotImplementedError("Game.get_status not implemented")
++        return self.status
+ 
+-    def get_results(self) -> List[GuessResult]:
++    def get_results(self) -> list[GuessResult]:
+         """Get all guess results so far.
+-
++        
+         Returns:
+             List of all guess results
+         """
+-        raise NotImplementedError("Game.get_results not implemented")
++        return self.results
+ 
+     def get_attempts_remaining(self) -> int:
+         """Get the number of attempts remaining.
+-
++        
+         Returns:
+             Number of attempts left
+         """
+-        raise NotImplementedError("Game.get_attempts_remaining not implemented")
++        return self.attempts_left
+ 
+-    def get_target_word(self) -> Optional[str]:
++    def get_target_word(self) -> str | None:
+         """Get the target word (only after game is over).
+-
++        
+         Returns:
+             Target word if game is over, None otherwise
+         """
+-        raise NotImplementedError("Game.get_target_word not implemented")
++        if self.status != GameStatus.IN_PROGRESS:
++            return self.target_word
++        return None
+ 
+-    def reset(self, target: Optional[str] = None) -> None:
++    def reset(self, target: str | None = None) -> None:
+         """Reset the game with a new target word.
+-
++        
+         Args:
+             target: Optional new target word. If None, a random word is chosen.
+         """
+-        raise NotImplementedError("Game.reset not implemented")
+-
+-    def _validate_guess(self, guess: str) -> str:
+-        """Validate and normalize a guess.
+-
+-        Args:
+-            guess: The guess to validate
+-
+-        Returns:
+-            Normalized guess
+-
+-        Raises:
+-            InvalidGuessError: If guess is invalid
+-        """
+-        raise NotImplementedError("Game._validate_guess not implemented")
+\ No newline at end of file
++        self.target_word = target if target else get_random_word()
++        self.results = []
++        self.status = GameStatus.IN_PROGRESS
++        self.attempts_left = 6
