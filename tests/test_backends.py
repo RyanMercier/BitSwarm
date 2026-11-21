@@ -2,7 +2,7 @@
 Tests for multi-LLM backend selection on the miner.
 
 Verifies:
-  - ``MINER_BACKEND`` routes ``miner.server._select_backend`` to the
+  - ``MINER_BACKEND`` routes ``miner.runtime.select_backend`` to the
     right ``execute_subtask`` callable for each supported value.
   - Unknown values raise a clear error.
   - The Anthropic -> OpenAI tool-schema translation in
@@ -14,13 +14,13 @@ that lets a miner operator pick "sdk" / "claude_code" / "openai" via
 env var.
 """
 import importlib
-import os
 import sys
+from types import SimpleNamespace
 
 import pytest
 
 
-_BACKEND_MODULES = ("miner.server", "miner.runtime", "config")
+_BACKEND_MODULES = ("miner.runtime", "config")
 
 
 @pytest.fixture(autouse=True)
@@ -39,11 +39,16 @@ def _clean_backend_modules():
 
 def _reload_backend(monkeypatch, backend_value):
     """Set ``MINER_BACKEND`` and reload the modules that read it at
-    import time. Returns the freshly imported ``miner.server`` module."""
+    import time. Returns an object whose ``execute_subtask`` is the
+    callable ``miner.runtime.select_backend`` resolved.
+
+    (The redteam branch cut ``miner/server.py``; ``miner.runtime`` owns
+    the same dispatch and is what every remaining transport uses.)"""
     monkeypatch.setenv("MINER_BACKEND", backend_value)
     for mod in _BACKEND_MODULES:
         sys.modules.pop(mod, None)
-    return importlib.import_module("miner.server")
+    runtime = importlib.import_module("miner.runtime")
+    return SimpleNamespace(execute_subtask=runtime.select_backend())
 
 
 def test_backend_sdk_default(monkeypatch):

@@ -29,3 +29,12 @@ docs/YUMA_*.md
 
 # Personal notes (resume bullets, interview prep), never tracked
 docs/private/
+
+# Red-team study: secrets and bulky artifacts never tracked
+.env.*
+!.env.example
+*.pem
+*.key
+wallets/
+.bittensor/
+redteam/results/work/

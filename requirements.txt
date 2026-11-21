@@ -1,22 +1,4 @@
 anthropic
 openai
-flask
-flask-sqlalchemy
-pytest
 pydantic
-gitpython
-fastapi
-uvicorn
-httpx
-tree-sitter
-tree-sitter-typescript
-tree-sitter-java
-tree-sitter-c-sharp
-tree-sitter-c
-tree-sitter-cpp
-tree-sitter-rust
-
-# Bittensor subnet layer. Only needed to run the neurons
-# (neurons/miner.py, neurons/validator.py); the local pipelines,
-# HTTP servers, and the full test suite run without it.
-bittensor>=9.0.0
+pytest==8.3.5

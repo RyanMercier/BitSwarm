@@ -6,11 +6,8 @@ silently undo the change.
 """
 from __future__ import annotations
 
-import asyncio
 import os
-import socket
 import subprocess
-import tempfile
 from unittest.mock import patch
 
 import pytest
@@ -111,90 +108,6 @@ def test_python_class_with_method_named_new_does_not_get_arity_checked_as_ctor()
     assert not any("Arity mismatch" in e for e in errors), errors
 
 
-def test_rust_constructor_arity_still_fires_via_class_name_alias():
-    """The Rust parser registers ``new`` under both its real name AND
-    the class's name, so the language-agnostic ``cls.name in methods``
-    branch finds it without a generic ``new``-as-constructor rule."""
-    from validator.parsers.rust import parser as rust
-    from validator.validator_checks_common import (
-        FileFacts, check_interface_contracts,
-    )
-
-    widget_src = (
-        "pub struct Widget;\n"
-        "impl Widget {\n"
-        "  pub fn new(host: String, port: u16) -> Self { unimplemented!() }\n"
-        "}\n"
-    )
-    user_src = (
-        "use crate::widget::Widget;\n"
-        "pub fn make() -> Widget { Widget::new(host()) }\n"  # 1 arg, needs 2
-    )
-
-    def facts(path, src):
-        tree = rust.parse(src, path)
-        return FileFacts(
-            path=path,
-            module=rust.module_path_for_file(path),
-            language=rust.name,
-            imports=rust.extract_imports(tree, src, path),
-            defined_names=rust.extract_defined_names(tree, src),
-            call_sites=rust.extract_call_sites(tree, src),
-        )
-
-    errors = check_interface_contracts([
-        facts("src/widget.rs", widget_src),
-        facts("src/user.rs", user_src),
-    ])
-    assert any("Arity mismatch" in e and "Widget" in e for e in errors), errors
-
-
-# ---- Fix 4: TS arrow-function constants ----
-
-def test_ts_arrow_function_lexical_decl_has_arity():
-    """`export const handler = (req, res) => {...}` is a callable; the
-    arity check must look at (req, res), not skip it as a constant."""
-    from validator.parsers.typescript import parser as ts
-    from validator.validator_checks_common import (
-        FileFacts, check_interface_contracts,
-    )
-
-    server_src = (
-        "export const handler = (req: any, res: any) => { return res; };\n"
-    )
-    user_src = (
-        "import { handler } from './server';\n"
-        "handler(1);\n"  # 1 arg, needs 2
-    )
-
-    def facts(path, src):
-        tree = ts.parse(src, path)
-        return FileFacts(
-            path=path,
-            module=ts.module_path_for_file(path),
-            language=ts.name,
-            imports=ts.extract_imports(tree, src, path),
-            defined_names=ts.extract_defined_names(tree, src),
-            call_sites=ts.extract_call_sites(tree, src),
-        )
-
-    errors = check_interface_contracts([
-        facts("src/server.ts", server_src),
-        facts("src/user.ts", user_src),
-    ])
-    assert any("Arity mismatch" in e and "handler" in e for e in errors), errors
-
-
-def test_ts_shorthand_arrow_single_param():
-    """`const f = x => x` is a 1-arg function, not a constant."""
-    from validator.parsers.typescript import parser as ts
-    src = "export const identity = x => x;\n"
-    tree = ts.parse(src, "src/x.ts")
-    info = ts.extract_defined_names(tree, src)["identity"]
-    assert info.kind == "function"
-    assert info.required_arg_count == 1
-
-
 # ---- Fix 7: Python posonlyargs counted in arity ----
 
 def test_python_posonly_args_count_toward_arity():
@@ -244,41 +157,6 @@ def test_scaffolder_works_when_repo_has_no_requirements_txt(tmp_path):
         assert "some-new-pkg" in f.read()
 
 
-# ---- Fix 9: miner server TOCTOU on lock ----
-
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def test_miner_lock_does_not_deadlock_when_repeatedly_busy():
-    """Pre-fix: the TOCTOU race could let two requests both pass the
-    ``lock.locked()`` check; the second would block on the async with
-    rather than 409. With the fix the second request gets 409 cleanly."""
-    from miner.server import state
-
-    async def run():
-        # Manually acquire the lock to simulate "task in flight".
-        await state.lock.acquire()
-        try:
-            # A new request that tries to acquire non-blockingly should
-            # fail fast  -  exactly what the fixed endpoint does.
-            try:
-                await asyncio.wait_for(state.lock.acquire(), timeout=0)
-                acquired = True
-            except asyncio.TimeoutError:
-                acquired = False
-            return acquired
-        finally:
-            state.lock.release()
-
-    acquired = asyncio.run(run())
-    assert acquired is False
-
-
 # ---- Fix 11: Makefile ``test:`` detection ignores recipe lines ----
 
 def test_makefile_test_target_ignores_recipe_lines(tmp_path):
@@ -319,39 +197,3 @@ def test_detect_runner_does_not_crash_on_missing_repo(tmp_path):
     spec = detect_runner(missing)
     # Falls through to pytest (the default).
     assert spec.name == "pytest"
-
-
-# ---- Fix 3: C# aliased using doesn't trip cross-file consistency check ----
-
-def test_csharp_aliased_using_no_spurious_interface_mismatch():
-    """``using A = Demo.Other;`` previously set imported_names=['A'],
-    which produced 'Interface mismatch: imports A from Demo.Other'
-    whenever Demo.Other was in the registry. The alias is now empty."""
-    from validator.parsers.csharp import parser as cs
-    from validator.validator_checks_common import (
-        FileFacts, check_interface_contracts,
-    )
-
-    other_src = "namespace Demo.Other;\npublic class Helper {}\n"
-    user_src = (
-        "namespace Demo;\n"
-        "using Aliased = Demo.Other;\n"
-        "public class C {}\n"
-    )
-
-    def facts(path, src):
-        tree = cs.parse(src, path)
-        return FileFacts(
-            path=path,
-            module=cs.module_path_for_file(path, tree=tree, source=src),
-            language=cs.name,
-            imports=cs.extract_imports(tree, src, path),
-            defined_names=cs.extract_defined_names(tree, src),
-            call_sites=cs.extract_call_sites(tree, src),
-        )
-
-    errors = check_interface_contracts([
-        facts("Demo/Other/Helper.cs", other_src),
-        facts("Demo/C.cs", user_src),
-    ])
-    assert not any("Aliased" in e for e in errors), errors
