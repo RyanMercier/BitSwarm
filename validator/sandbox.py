@@ -19,6 +19,10 @@ BITSWARM_SANDBOX_IMAGE names the container image (default
 ``bitswarm-base:latest``, built by docker/Dockerfile.base with all
 seven language toolchains).
 
+BITSWARM_SANDBOX_LABEL, when set, is attached to every container as
+the ``bitswarm.owner`` label, so a supervisor that kills this process
+can find and remove the containers it left running.
+
 The container gets:
 
   --network=none            no egress: no exfiltration, no callbacks
@@ -146,6 +150,9 @@ def wrap_command(cmd: list, repo_root: str,
     ]
     if container_name:
         docker_cmd += ["--name", container_name]
+    if os.environ.get("BITSWARM_SANDBOX_LABEL"):
+        docker_cmd += ["--label",
+                       f"bitswarm.owner={os.environ['BITSWARM_SANDBOX_LABEL']}"]
     if hasattr(os, "getuid"):
         docker_cmd += ["--user", f"{os.getuid()}:{os.getgid()}"]
     docker_cmd += ["-v", f"{repo_abs}:/work", "-w", "/work"]

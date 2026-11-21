@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import os
+import sys
 from typing import Any
 
 from validator.parsers.types import (
@@ -56,6 +57,11 @@ STDLIB_TOP_LEVEL = {
     "wsgiref", "xdrlib", "xml", "xmlrpc", "zipapp", "zipfile", "zipimport",
     "zlib", "_thread",
 }
+# The hand list above misses __future__ (and newer modules such as
+# zoneinfo and tomllib). A coordinator that writes
+# ``from __future__ import annotations`` was rejected on every retry as
+# an "unresolved import". Union with the interpreter's own list.
+STDLIB_TOP_LEVEL |= set(getattr(sys, "stdlib_module_names", ()))
 
 # Well-known import-name to pip-package mappings (used by resolves()).
 _KNOWN_PACKAGE_NAMES = {

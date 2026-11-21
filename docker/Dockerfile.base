@@ -18,8 +18,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# less: pallets/click's suite runs `less` as a pager. Without it,
+# test_echo_via_pager breaks stdout for the rest of tests/test_utils.py,
+# pytest writes a duplicate <testcase>, harness.verify.parse_report
+# rejects the report, and the diff-mode regression gate is INCONCLUSIVE
+# on the untouched baseline (every click patch capped at 0.5).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
+        less \
         procps \
     && rm -rf /var/lib/apt/lists/*
 
@@ -28,4 +34,5 @@ RUN pip install --no-cache-dir pytest==8.3.5
 RUN set -eux \
     && python3 --version \
     && python3 -m pytest --version \
-    && git --version
+    && git --version \
+    && command -v less

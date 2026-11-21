@@ -59,6 +59,14 @@ def test_resolves_stdlib_and_requirements():
         assert not vc.resolves("totally_made_up", repo, {}, {}, [])
 
 
+def test_future_import_is_stdlib():
+    """A coordinator writing ``from __future__ import annotations`` in
+    every file was rejected on all retries as an unresolved import."""
+    with tempfile.TemporaryDirectory() as repo:
+        assert vc.resolves("__future__", repo, {}, {}, [])
+        assert vc.resolves("zoneinfo", repo, {}, {}, [])
+
+
 def test_resolves_scaffolded_files():
     with tempfile.TemporaryDirectory() as repo:
         shared = {"mypkg/types.py": "X = 1\n"}
