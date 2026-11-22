@@ -7,6 +7,16 @@ miners implement the pieces in isolation; a hermetic dual-gate harness
 verifies that the components compose without breaking what was already
 there; miners are paid only for verified work.
 
+## Red-team study
+
+Can a coding agent game this grader? A measured study of 1,248 recorded
+agent runs (Claude Sonnet 5.5, Qwen 2.5 Coder 32B and Llama 3.3 70B)
+tests whether agents earn their pay honestly, whether they tell the truth
+about what they did, and what the swarm's scoring does with a dishonest
+miner. It found real holes in this grader, one now fixed. Write-up, code,
+data and every transcript:
+[redteam/README.md on the `redteam` branch](https://github.com/RyanMercier/BitSwarm/blob/redteam/redteam/README.md).
+
 ## Live results
 
 - **All seven supported languages at 1.000 / 1.000** on a single
