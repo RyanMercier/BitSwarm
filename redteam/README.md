@@ -30,8 +30,10 @@ code that only fooled the grader. What I found:
   and an agent that did nothing was paid in full once an automatic repair
   step finished its job.
 
-Everything below is the detailed version. Each results section opens with a
-one-line "In short" summary, and the table below explains the terms.
+A plain-language report with charts is in [REPORT.md](REPORT.md) (also as a
+[PDF](REPORT.pdf)). Everything below is the detailed version. Each results
+section opens with a one-line "In short" summary, and the table below explains
+the terms.
 
 ## Words used here
 
